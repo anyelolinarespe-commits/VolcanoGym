@@ -1,6 +1,6 @@
 import { pool } from '../config/bd.js';
 
-// GET /api/asistencias
+// GET /api/asistencias 
 export const getAsistencias = async (req, res) => {
     const { fecha_inicio, fecha_fin, id_cliente, search } = req.query;
     const params = [];
@@ -15,6 +15,8 @@ export const getAsistencias = async (req, res) => {
         params.push(`%${search}%`);
         i++;
     }
+
+    //wazaaa
 
     const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
 
