@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($env:PGPASSWORD = 'admin'; & \"C:\\\\Program Files\\\\PostgreSQL\\\\16\\\\bin\\\\psql.exe\" -U postgres -h localhost -d Gym -c \"ALTER TABLE plan_membresia ADD COLUMN IF NOT EXISTS duracion_unidad VARCHAR\\(5\\) NOT NULL DEFAULT 'meses' CHECK \\(duracion_unidad IN \\('dias', 'meses', 'anos'\\)\\);\")",
+      "PowerShell($env:PGPASSWORD = \"postgres\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\16\\\\bin\\\\psql.exe\" -U postgres -d volcano_gym -c \"\\\\d plan_membresia\")",
+      "PowerShell($env:PGPASSWORD = \"admin\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\16\\\\bin\\\\psql.exe\" -U postgres -d Gym -c \"\\\\d plan_membresia\")",
+      "PowerShell($env:PGPASSWORD = \"admin\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\16\\\\bin\\\\psql.exe\" -U postgres -d Gym -c \"ALTER TYPE tipo_cliente_enum ADD VALUE 'rutina';\")"
+    ]
+  }
+}
