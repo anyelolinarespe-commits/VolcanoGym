@@ -5,6 +5,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard - Volcano Gym</title>
+  <link rel="icon" type="image/png" href="/icono.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Volcano Gym">
+  <meta name="theme-color" content="#e94560">
+  <link rel="apple-touch-icon" href="/icono.png">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
   <link rel="stylesheet" href="dashboard.css">
@@ -13,8 +21,7 @@
 <body>
   <aside id="sidebar">
     <div class="sidebar-brand">
-      <span class="logo"></span>
-      <span>Volcano Gym</span>
+      <img src="/logo.png" alt="Volcano Gym" class="sidebar-logo">
     </div>
     <div id="navMenu"></div>
     <div class="sidebar-footer">
@@ -23,6 +30,8 @@
       </a>
     </div>
   </aside>
+
+  <div id="sidebarOverlay"></div>
 
   <div id="main">
     <div id="topbar">
@@ -34,6 +43,9 @@
         </button>
         <span style="font-size:13px;color:#666">Bienvenido,</span>
         <span class="user-badge" id="topbarUser">—</span>
+        <button class="btn-logout-mobile" id="btnLogoutMobile" title="Cerrar sesión">
+          <i class="bi bi-box-arrow-right"></i>
+        </button>
       </div>
     </div>
 

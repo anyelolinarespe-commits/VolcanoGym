@@ -50,8 +50,8 @@ export const login = async (req, res) => {
         const nombrePerfil = usuario.perfil?.toLowerCase() || '';
         let opcionesResult;
 
-        if (nombrePerfil === 'administrador') {
-            // Administrador ve todos los módulos activos
+        if (nombrePerfil === 'administrador' || nombrePerfil === 'superadministrador') {
+            // Administrador y SuperAdministrador ven todos los módulos activos
             opcionesResult = await pool.query(`
                 SELECT id_opcion, nombre, ruta, icono, orden
                 FROM opciones

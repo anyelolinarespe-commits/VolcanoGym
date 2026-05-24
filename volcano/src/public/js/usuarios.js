@@ -22,15 +22,25 @@ function renderUsuarios(data) {
   }
   const miId = JSON.parse(atob(TOKEN.split('.')[1])).id;
   const miPerfil = (USUARIO.perfil || '').toLowerCase();
-  const yoSoyAdmin = miPerfil === 'administrador';
+  const yoSoyAdmin      = miPerfil === 'administrador';
+  const yoSoySuperAdmin = miPerfil === 'superadministrador';
 
   tbody.innerHTML = data.map(u => {
     const tPerfil = (u.perfil || '').toLowerCase();
-    const mismos = tPerfil === miPerfil;
-    const esAdmin = tPerfil === 'administrador';
-    const esSelf = u.id_usuario === miId;
-    const bloqDel = esSelf || mismos || esAdmin;
-    const bloqEdit = (!yoSoyAdmin && esAdmin) || (mismos && !esSelf);
+    const mismos       = tPerfil === miPerfil;
+    const esAdmin      = tPerfil === 'administrador';
+    const esSuperAdmin = tPerfil === 'superadministrador';
+    const esSelf       = u.id_usuario === miId;
+
+    // Eliminar bloqueado si: mismo perfil, yo mismo, superAdmin (nadie lo puede borrar),
+    // o es admin y yo no soy superAdmin
+    const bloqDel = esSelf || mismos || esSuperAdmin || (esAdmin && !yoSoySuperAdmin);
+    // Editar bloqueado si: no soy superAdmin y target es superAdmin;
+    // no soy superAdmin y target es admin y no es yo mismo;
+    // mismo perfil y no es yo mismo
+    const bloqEdit = (!yoSoySuperAdmin && esSuperAdmin) ||
+                     (!yoSoySuperAdmin && esAdmin && !esSelf) ||
+                     (mismos && !esSelf);
 
     return `<tr>
       <td>${u.id_usuario}</td>
@@ -57,12 +67,16 @@ async function cargarPerfilesSelect() {
   sel.innerHTML = '<option value="">Seleccionar perfil...</option>';
   try {
     const lista = dataPerfiles.length ? dataPerfiles : await api('GET', '/api/perfiles');
-    const yoSoyAdmin = (USUARIO.perfil || '').toLowerCase() === 'administrador';
+    const miPerfil2       = (USUARIO.perfil || '').toLowerCase();
+    const yoSoyAdmin      = miPerfil2 === 'administrador';
+    const yoSoySuperAdmin = miPerfil2 === 'superadministrador';
 
     lista
       .filter(p => p.estado === 1)
-      // Si el ejecutor NO es Administrador, se oculta el perfil Administrador del select
-      .filter(p => yoSoyAdmin || p.nombre.toLowerCase() !== 'administrador')
+      // superAdministrador solo visible para el propio superAdmin
+      .filter(p => yoSoySuperAdmin || p.nombre.toLowerCase() !== 'superadministrador')
+      // Administrador solo visible para admin o superAdmin
+      .filter(p => (yoSoyAdmin || yoSoySuperAdmin) || p.nombre.toLowerCase() !== 'administrador')
       .forEach(p => {
         sel.innerHTML += `<option value="${p.id_perfil}">${p.nombre}</option>`;
       });
@@ -91,7 +105,9 @@ function resetForm_usuario() {
 function editUsuario(id) {
   const u = dataUsuarios.find(x => x.id_usuario === id);
   if (!u) return;
-  const esAdmin = u.perfil?.toLowerCase() === 'administrador';
+  const esAdmin      = u.perfil?.toLowerCase() === 'administrador';
+  const esSuperAdmin = u.perfil?.toLowerCase() === 'superadministrador';
+  const yoSoySA      = (USUARIO.perfil || '').toLowerCase() === 'superadministrador';
 
   // Limpiar formulario primero
   resetForm_usuario();
@@ -124,10 +140,16 @@ function editUsuario(id) {
     document.getElementById('uCe2Telefono').value    = ces[1].telefono    || '';
   }
 
-  if (esAdmin) {
+  if (esSuperAdmin) {
+    // Cuenta superAdmin: nunca se puede cambiar su estado ni su perfil
+    document.getElementById('usuarioEstadoGroup').style.display = 'none';
+    document.getElementById('usuarioPerfil').disabled = true;
+  } else if (esAdmin && !yoSoySA) {
+    // Admin editado por alguien que NO es superAdmin: ocultar estado y perfil
     document.getElementById('usuarioEstadoGroup').style.display = 'none';
     document.getElementById('usuarioPerfil').disabled = true;
   } else {
+    // Todos los demás (incluye admin editado por superAdmin)
     document.getElementById('usuarioEstado').value = u.estado;
     document.getElementById('usuarioEstadoGroup').style.display = 'block';
     document.getElementById('usuarioPerfil').disabled = false;
@@ -161,11 +183,27 @@ async function saveUsuario() {
     return;
   }
 
-  // Validación frontend: no-admin no puede asignar perfil Administrador
-  const yoSoyAdmin = (USUARIO.perfil || '').toLowerCase() === 'administrador';
-  if (!yoSoyAdmin) {
-    const perfilSeleccionado = dataPerfiles.find(p => p.id_perfil === Number(id_perfil));
-    if (perfilSeleccionado && perfilSeleccionado.nombre.toLowerCase() === 'administrador') {
+  // Validación frontend: superAdmin nunca puede quedar inactivo
+  if (id) {
+    const uTarget = dataUsuarios.find(x => x.id_usuario === Number(id));
+    if (uTarget?.perfil?.toLowerCase() === 'superadministrador' && Number(estado) !== 1) {
+      showAlert('alertUsuario', 'El SuperAdministrador no puede desactivarse');
+      return;
+    }
+  }
+
+  // Validación frontend: protección de perfiles elevados
+  const miPerfilSave    = (USUARIO.perfil || '').toLowerCase();
+  const yoSoyAdminSave  = miPerfilSave === 'administrador';
+  const yoSoySuperAdminSave = miPerfilSave === 'superadministrador';
+  const perfilSel = dataPerfiles.find(p => p.id_perfil === Number(id_perfil));
+  if (perfilSel) {
+    const destNombre = perfilSel.nombre.toLowerCase();
+    if (destNombre === 'superadministrador' && !yoSoySuperAdminSave) {
+      showAlert('alertUsuario', 'No tienes permisos para asignar el perfil SuperAdministrador');
+      return;
+    }
+    if (destNombre === 'administrador' && !yoSoyAdminSave && !yoSoySuperAdminSave) {
       showAlert('alertUsuario', 'No tienes permisos para asignar el perfil Administrador');
       return;
     }

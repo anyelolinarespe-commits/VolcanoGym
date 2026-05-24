@@ -22,15 +22,23 @@ function renderPerfiles(data) {
     return;
   }
 
-  const miPerfilId = JSON.parse(atob(TOKEN.split('.')[1])).id_perfil;
-  const yoSoyAdmin = (USUARIO.perfil || '').toLowerCase() === 'administrador';
+  const miPerfilId      = JSON.parse(atob(TOKEN.split('.')[1])).id_perfil;
+  const miPerfil3       = (USUARIO.perfil || '').toLowerCase();
+  const yoSoyAdmin      = miPerfil3 === 'administrador';
+  const yoSoySuperAdmin = miPerfil3 === 'superadministrador';
 
   tbody.innerHTML = data.map(p => {
-    const esAdmin = p.nombre.toLowerCase() === 'administrador';
-    const esMio = p.id_perfil === miPerfilId;
-    const bloqEdit = (esAdmin && !yoSoyAdmin) || esMio;
-    const bloqDel = esAdmin || esMio;
-    const badge = (esAdmin || esMio)
+    const esAdmin      = p.nombre.toLowerCase() === 'administrador';
+    const esSuperAdmin = p.nombre.toLowerCase() === 'superadministrador';
+    const esMio        = p.id_perfil === miPerfilId;
+
+    // Edit bloqueado: superAdmin solo lo edita otro superAdmin; admin solo lo edita admin/superAdmin; propio perfil bloqueado
+    const bloqEdit = (!yoSoySuperAdmin && esSuperAdmin) ||
+                     (esAdmin && !yoSoyAdmin && !yoSoySuperAdmin) ||
+                     esMio;
+    // Delete bloqueado: superAdmin y Administrador son intocables; propio perfil bloqueado
+    const bloqDel  = esSuperAdmin || esAdmin || esMio;
+    const badge = (esSuperAdmin || esAdmin || esMio)
       ? `<span style="font-size:10px;color:#7c4dff;background:#ede7f6;padding:2px 7px;border-radius:20px">${esMio ? 'tu perfil' : 'protegido'}</span>`
       : '';
 
