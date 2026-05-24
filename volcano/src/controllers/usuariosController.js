@@ -4,12 +4,20 @@ import { pool } from '../config/bd.js';
 // GET /api/usuarios
 export const getUsuarios = async (req, res) => {
     try {
+        // Determinar si el ejecutor es superAdmin para controlar visibilidad
+        const ejecutorRes = await pool.query(
+            `SELECT p.nombre AS perfil_nombre
+             FROM usuarios u JOIN perfiles p ON p.id_perfil = u.id_perfil
+             WHERE u.id_usuario = $1`, [req.usuario.id]
+        );
+        const ejecutorEsSuperAdmin =
+            ejecutorRes.rows[0]?.perfil_nombre?.toLowerCase() === 'superadministrador';
+
         const result = await pool.query(`
             SELECT u.id_usuario, u.nombre, u.apellido, u.username, u.email,
                    u.alias_asesor, u.dni, u.celular, u.foto_perfil,
                    u.estado, u.created_at, u.id_perfil,
                    p.nombre AS perfil,
-                   -- Contactos de emergencia (array JSON)
                    COALESCE((
                        SELECT json_agg(json_build_object(
                            'id_contacto', ce.id_contacto,
@@ -23,8 +31,9 @@ export const getUsuarios = async (req, res) => {
             FROM usuarios u
             JOIN perfiles p ON p.id_perfil = u.id_perfil
             WHERE u.estado != 2
+              AND ($1::boolean = TRUE OR LOWER(p.nombre) != 'superadministrador')
             ORDER BY u.created_at DESC
-        `);
+        `, [ejecutorEsSuperAdmin]);
         res.json(result.rows);
     } catch (err) {
         console.error(err);
@@ -60,7 +69,9 @@ export const createUsuario = async (req, res) => {
              FROM usuarios u JOIN perfiles p ON p.id_perfil = u.id_perfil
              WHERE u.id_usuario = $1`, [req.usuario.id]
         );
-        const ejecutorEsAdmin = ejecutorRes.rows[0]?.perfil_nombre?.toLowerCase() === 'administrador';
+        const ejecutorPerfil       = ejecutorRes.rows[0]?.perfil_nombre?.toLowerCase();
+        const ejecutorEsAdmin      = ejecutorPerfil === 'administrador';
+        const ejecutorEsSuperAdmin = ejecutorPerfil === 'superadministrador';
 
         // Verificar perfil destino
         const perfilDestinoRes = await pool.query(
@@ -71,8 +82,12 @@ export const createUsuario = async (req, res) => {
 
         const perfilDestinoNombre = perfilDestinoRes.rows[0].nombre.toLowerCase();
 
-        // No-admin no puede crear usuarios con perfil Administrador
-        if (perfilDestinoNombre === 'administrador' && !ejecutorEsAdmin)
+        // Solo superAdmin puede crear usuarios con perfil superAdministrador
+        if (perfilDestinoNombre === 'superadministrador' && !ejecutorEsSuperAdmin)
+            return res.status(403).json({ message: 'No tienes permisos para asignar el perfil SuperAdministrador' });
+
+        // Solo admin o superAdmin puede crear usuarios con perfil Administrador
+        if (perfilDestinoNombre === 'administrador' && !ejecutorEsAdmin && !ejecutorEsSuperAdmin)
             return res.status(403).json({ message: 'No tienes permisos para asignar el perfil Administrador' });
 
         const existe = await pool.query(
@@ -159,7 +174,7 @@ export const createUsuario = async (req, res) => {
 export const updateUsuario = async (req, res) => {
     const { id } = req.params;
     const {
-        nombre, apellido, email, id_perfil, alias_asesor, estado, password,
+        nombre, apellido, username, email, id_perfil, alias_asesor, estado, password,
         dni, celular, foto_perfil,
         contactos_emergencia
     } = req.body;
@@ -198,72 +213,111 @@ export const updateUsuario = async (req, res) => {
             ejecutor_perfil_id, ejecutor_perfil_nombre
         } = info.rows[0];
 
-        const targetEsAdmin   = target_perfil_nombre?.toLowerCase() === 'administrador';
-        const ejecutorEsAdmin = ejecutor_perfil_nombre?.toLowerCase() === 'administrador';
-        const mismosPerfil    = target_perfil_id === ejecutor_perfil_id;
+        const targetEsAdmin      = target_perfil_nombre?.toLowerCase() === 'administrador';
+        const targetEsSuperAdmin = target_perfil_nombre?.toLowerCase() === 'superadministrador';
+        const ejecutorEsAdmin    = ejecutor_perfil_nombre?.toLowerCase() === 'administrador';
+        const ejecutorEsSuperAdmin = ejecutor_perfil_nombre?.toLowerCase() === 'superadministrador';
+        const mismosPerfil       = target_perfil_id === ejecutor_perfil_id;
+        const esSelf             = Number(id) === req.usuario.id;
 
-        // Un perfil no-Admin NO puede editar a ningún usuario Administrador
-        if (targetEsAdmin && !ejecutorEsAdmin) {
+        // SuperAdmin solo puede ser editado por otro superAdmin (o por sí mismo)
+        if (targetEsSuperAdmin && !ejecutorEsSuperAdmin) {
+            return res.status(403).json({
+                message: 'No tienes permisos para editar a un SuperAdministrador'
+            });
+        }
+
+        // Admin solo puede ser editado por sí mismo o por el superAdmin
+        if (targetEsAdmin && !ejecutorEsSuperAdmin && !esSelf) {
             return res.status(403).json({
                 message: 'No tienes permisos para editar a un usuario Administrador'
             });
         }
 
-        // Usuarios del mismo perfil no pueden editarse entre sí
-        // (excepto si se editan a sí mismos — eso sí está permitido)
-        if (mismosPerfil && Number(id) !== req.usuario.id) {
+        // Usuarios del mismo perfil no pueden editarse entre sí (excepto a sí mismos)
+        if (mismosPerfil && !esSelf) {
             return res.status(403).json({
                 message: `Los usuarios con perfil "${target_perfil_nombre}" no pueden editarse entre sí`
             });
         }
 
-        // Un usuario Administrador no puede desactivarse
-        if (targetEsAdmin && estado != null && Number(estado) !== 1) {
+        // SuperAdmin nunca puede desactivarse (ni él mismo ni nadie)
+        if (targetEsSuperAdmin && estado != null && Number(estado) !== 1) {
+            return res.status(403).json({
+                message: 'El SuperAdministrador no puede desactivarse'
+            });
+        }
+
+        // SuperAdmin no puede cambiar de perfil
+        if (targetEsSuperAdmin && id_perfil && Number(id_perfil) !== target_perfil_id) {
+            return res.status(403).json({
+                message: 'No se puede cambiar el perfil de un SuperAdministrador'
+            });
+        }
+
+        // Administrador no puede desactivarse (solo el superAdmin puede hacerlo)
+        if (targetEsAdmin && !ejecutorEsSuperAdmin && estado != null && Number(estado) !== 1) {
             return res.status(403).json({
                 message: 'Los usuarios Administrador no pueden desactivarse'
             });
         }
 
-        // Un usuario Administrador no puede cambiar de perfil
-        if (targetEsAdmin && id_perfil && Number(id_perfil) !== target_perfil_id) {
+        // Administrador no puede cambiar de perfil (solo el superAdmin puede hacerlo)
+        if (targetEsAdmin && !ejecutorEsSuperAdmin && id_perfil && Number(id_perfil) !== target_perfil_id) {
             return res.status(403).json({
                 message: 'No se puede cambiar el perfil de un usuario Administrador'
             });
         }
 
-        // ── NUEVA PROTECCIÓN: no-admin no puede asignar perfil Administrador ──
-        if (!ejecutorEsAdmin && id_perfil) {
+        // Protección al asignar perfiles elevados
+        if (id_perfil) {
             const perfilDestinoRes = await pool.query(
                 `SELECT nombre FROM perfiles WHERE id_perfil = $1`, [id_perfil]
             );
             const perfilDestinoNombre = perfilDestinoRes.rows[0]?.nombre?.toLowerCase();
-            if (perfilDestinoNombre === 'administrador') {
+            if (perfilDestinoNombre === 'superadministrador' && !ejecutorEsSuperAdmin) {
+                return res.status(403).json({
+                    message: 'No tienes permisos para asignar el perfil SuperAdministrador'
+                });
+            }
+            if (perfilDestinoNombre === 'administrador' && !ejecutorEsAdmin && !ejecutorEsSuperAdmin) {
                 return res.status(403).json({
                     message: 'No tienes permisos para asignar el perfil Administrador'
                 });
             }
         }
 
+        // Verificar que el nuevo username no esté en uso por otro usuario activo
+        if (username) {
+            const colision = await pool.query(
+                `SELECT id_usuario FROM usuarios
+                 WHERE username = $1 AND id_usuario != $2 AND estado != 2`,
+                [username.trim(), id]
+            );
+            if (colision.rows.length > 0)
+                return res.status(409).json({ message: 'El nombre de usuario ya está en uso' });
+        }
+
         if (password) {
             const hash = await bcrypt.hash(password, 10);
             await pool.query(
                 `UPDATE usuarios
-                 SET nombre=$1, apellido=$2, email=$3, id_perfil=$4,
-                     alias_asesor=$5, estado=$6, password_hash=$7,
-                     dni=$8, celular=$9, foto_perfil=$10, updated_at=NOW()
-                 WHERE id_usuario=$11`,
-                [nombre, apellido, email, id_perfil, alias_asesor || null,
+                 SET nombre=$1, apellido=$2, username=$3, email=$4, id_perfil=$5,
+                     alias_asesor=$6, estado=$7, password_hash=$8,
+                     dni=$9, celular=$10, foto_perfil=$11, updated_at=NOW()
+                 WHERE id_usuario=$12`,
+                [nombre, apellido, username?.trim(), email, id_perfil, alias_asesor || null,
                  estado ?? 1, hash,
                  dni || null, celular || null, foto_perfil || null, id]
             );
         } else {
             await pool.query(
                 `UPDATE usuarios
-                 SET nombre=$1, apellido=$2, email=$3, id_perfil=$4,
-                     alias_asesor=$5, estado=$6,
-                     dni=$7, celular=$8, foto_perfil=$9, updated_at=NOW()
-                 WHERE id_usuario=$10`,
-                [nombre, apellido, email, id_perfil, alias_asesor || null,
+                 SET nombre=$1, apellido=$2, username=$3, email=$4, id_perfil=$5,
+                     alias_asesor=$6, estado=$7,
+                     dni=$8, celular=$9, foto_perfil=$10, updated_at=NOW()
+                 WHERE id_usuario=$11`,
+                [nombre, apellido, username?.trim(), email, id_perfil, alias_asesor || null,
                  estado ?? 1,
                  dni || null, celular || null, foto_perfil || null, id]
             );
@@ -315,13 +369,20 @@ export const reactivarUsuario = async (req, res) => {
              FROM usuarios u JOIN perfiles p ON p.id_perfil = u.id_perfil
              WHERE u.id_usuario = $1`, [req.usuario.id]
         );
-        const ejecutorEsAdmin = ejecutorRes.rows[0]?.perfil_nombre?.toLowerCase() === 'administrador';
+        const ejecutorPerfil       = ejecutorRes.rows[0]?.perfil_nombre?.toLowerCase();
+        const ejecutorEsAdmin      = ejecutorPerfil === 'administrador';
+        const ejecutorEsSuperAdmin = ejecutorPerfil === 'superadministrador';
 
-        // Solo administradores pueden reactivar a cualquier usuario
-        // Un no-admin no puede reactivar a otro usuario del mismo perfil ni superior
-        if (!ejecutorEsAdmin) {
+        if (!ejecutorEsAdmin && !ejecutorEsSuperAdmin) {
             return res.status(403).json({
                 message: 'Solo los administradores pueden reactivar usuarios'
+            });
+        }
+
+        // Admin no puede reactivar a un superAdmin
+        if (perfil_nombre?.toLowerCase() === 'superadministrador' && !ejecutorEsSuperAdmin) {
+            return res.status(403).json({
+                message: 'No tienes permisos para reactivar a un SuperAdministrador'
             });
         }
 
@@ -385,18 +446,28 @@ export const deleteUsuario = async (req, res) => {
         const { target_perfil_id, target_perfil_nombre,
                 ejecutor_perfil_id, ejecutor_perfil_nombre } = resultado.rows[0];
 
+        const targetEsAdmin      = target_perfil_nombre?.toLowerCase() === 'administrador';
+        const targetEsSuperAdmin = target_perfil_nombre?.toLowerCase() === 'superadministrador';
+        const ejecutorEsSuperAdmin = ejecutor_perfil_nombre?.toLowerCase() === 'superadministrador';
+
+        // SuperAdmin no puede ser eliminado por nadie
+        if (targetEsSuperAdmin) {
+            return res.status(403).json({
+                message: 'No tienes permisos para eliminar a un SuperAdministrador'
+            });
+        }
+
+        // Administrador solo puede ser eliminado por el superAdmin
+        if (targetEsAdmin && !ejecutorEsSuperAdmin) {
+            return res.status(403).json({
+                message: 'No tienes permisos para eliminar a un Administrador'
+            });
+        }
+
         // Mismos perfiles no pueden eliminarse entre sí
         if (target_perfil_id === ejecutor_perfil_id) {
             return res.status(403).json({
                 message: `Los usuarios con perfil "${target_perfil_nombre}" no pueden eliminarse entre sí`
-            });
-        }
-
-        // Perfil de menor jerarquía no puede eliminar al de mayor jerarquía
-        // (Administrador siempre está protegido ante cualquier perfil distinto)
-        if (target_perfil_nombre?.toLowerCase() === 'administrador') {
-            return res.status(403).json({
-                message: `No tienes permisos para eliminar a un Administrador`
             });
         }
 

@@ -50,14 +50,32 @@ const normRuta = r => r?.toLowerCase().replace(/^\//, '').trim() ?? '';
 // Topbar y Sidebar toggle
 document.getElementById('topbarUser').textContent = USUARIO.nombre || 'Usuario';
 
+function isMobile() { return window.innerWidth <= 768; }
+
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebarOverlay').classList.remove('visible');
+}
+
 document.getElementById('toggleSidebar').addEventListener('click', () => {
-  document.getElementById('sidebar').classList.toggle('collapsed');
+  if (isMobile()) {
+    const isOpen = document.getElementById('sidebar').classList.toggle('mobile-open');
+    document.getElementById('sidebarOverlay').classList.toggle('visible', isOpen);
+  } else {
+    document.getElementById('sidebar').classList.toggle('collapsed');
+  }
 });
 
-document.getElementById('btnLogout').addEventListener('click', () => {
+document.getElementById('sidebarOverlay').addEventListener('click', closeMobileSidebar);
+
+
+function doLogout() {
   localStorage.clear();
   window.location.replace('/');
-});
+}
+
+document.getElementById('btnLogout').addEventListener('click', doLogout);
+document.getElementById('btnLogoutMobile').addEventListener('click', doLogout);
 
 // ── TEMA OSCURO / CLARO ──
 function _syncThemeButton(theme) {
@@ -99,6 +117,11 @@ async function api(method, path, body) {
     },
     body: body ? JSON.stringify(body) : undefined
   });
+  if (res.status === 401) {
+    localStorage.clear();
+    window.location.replace('/');
+    return;
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Error');
   return data;
@@ -231,7 +254,9 @@ function buildCollapsibleSection(title, key) {
   group.className = 'nav-group' + (isCollapsed ? ' nav-group-collapsed' : '');
 
   header.addEventListener('click', () => {
-    if (document.getElementById('sidebar').classList.contains('collapsed')) return;
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar.classList.contains('collapsed')) return;
+    if (window.innerWidth <= 1024 && !sidebar.classList.contains('mobile-open')) return;
     const nowCollapsed = group.classList.toggle('nav-group-collapsed');
     header.classList.toggle('sec-collapsed', nowCollapsed);
     localStorage.setItem(storageKey, nowCollapsed ? '1' : '0');
@@ -267,7 +292,7 @@ function buildHomeCards() {
   cards.forEach(d => {
     if (!MIS_OPCIONES.some(o => normRuta(o.ruta) === d.ruta)) return;
     const col = document.createElement('div');
-    col.className = 'col-md-4 col-lg-3';
+    col.className = 'col-6 col-md-4 col-lg-3';
     col.innerHTML = `<div class="stat-card" onclick="goTo('${d.ruta}')">
       <div class="stat-icon" style="background:${d.color}"><i class="bi ${d.icon}"></i></div>
       <div><div class="stat-value" id="${d.countId}">—</div><div class="stat-label">${d.label}</div></div>
@@ -282,6 +307,7 @@ function goTo(view) {
     alert('Sin permisos');
     return;
   }
+  if (isMobile()) closeMobileSidebar();
   document.querySelectorAll('.nav-item[data-view]').forEach(e => e.classList.remove('active'));
   document.querySelector(`[data-view="${view}"]`)?.classList.add('active');
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));

@@ -3,12 +3,22 @@ import { pool } from '../config/bd.js';
 // GET /api/perfiles
 export const getPerfiles = async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT id_perfil, nombre, descripcion, estado, created_at
-            FROM perfiles
-            WHERE estado != 2
-            ORDER BY created_at DESC
-        `);
+        const ejecutorRes = await pool.query(
+            `SELECT p.nombre AS perfil_nombre
+             FROM usuarios u JOIN perfiles p ON p.id_perfil = u.id_perfil
+             WHERE u.id_usuario = $1`, [req.usuario.id]
+        );
+        const ejecutorEsSuperAdmin =
+            ejecutorRes.rows[0]?.perfil_nombre?.toLowerCase() === 'superadministrador';
+
+        const result = await pool.query(
+            `SELECT id_perfil, nombre, descripcion, estado, created_at
+             FROM perfiles
+             WHERE estado != 2
+               AND ($1::boolean = TRUE OR LOWER(nombre) != 'superadministrador')
+             ORDER BY created_at DESC`,
+            [ejecutorEsSuperAdmin]
+        );
         res.json(result.rows);
     } catch (err) {
         console.error(err);
@@ -55,15 +65,28 @@ export const updatePerfil = async (req, res) => {
 
         const { target_nombre, ejecutor_perfil_id, ejecutor_perfil_nombre } = info.rows[0];
 
-        // Nadie puede editar el perfil Administrador salvo otro Administrador
-        if (target_nombre.toLowerCase() === 'administrador' &&
-            ejecutor_perfil_nombre.toLowerCase() !== 'administrador') {
+        const targetEsSuperAdmin   = target_nombre?.toLowerCase() === 'superadministrador';
+        const ejecutorEsSuperAdmin = ejecutor_perfil_nombre?.toLowerCase() === 'superadministrador';
+        const ejecutorEsAdmin      = ejecutor_perfil_nombre?.toLowerCase() === 'administrador';
+
+        // Solo superAdmin puede editar el perfil superAdministrador
+        if (targetEsSuperAdmin && !ejecutorEsSuperAdmin) {
+            return res.status(403).json({ message: 'No tienes permisos para editar el perfil SuperAdministrador' });
+        }
+
+        // Solo admin o superAdmin puede editar el perfil Administrador
+        if (target_nombre.toLowerCase() === 'administrador' && !ejecutorEsAdmin && !ejecutorEsSuperAdmin) {
             return res.status(403).json({ message: 'No tienes permisos para editar el perfil Administrador' });
         }
 
         // Nadie puede editar su propio perfil activo
         if (Number(id) === ejecutor_perfil_id) {
             return res.status(403).json({ message: 'No puedes editar tu propio perfil activo' });
+        }
+
+        // El perfil superAdministrador no puede cambiar su nombre
+        if (targetEsSuperAdmin && nombre?.toLowerCase() !== 'superadministrador') {
+            return res.status(403).json({ message: 'No se puede cambiar el nombre del perfil SuperAdministrador' });
         }
 
         // El perfil Administrador no puede cambiar su nombre
@@ -105,6 +128,11 @@ export const deletePerfil = async (req, res) => {
         if (!info.rows.length) return res.status(404).json({ message: 'Perfil no encontrado' });
 
         const { target_nombre, ejecutor_perfil_id } = info.rows[0];
+
+        // No se puede eliminar el perfil superAdministrador
+        if (target_nombre.toLowerCase() === 'superadministrador') {
+            return res.status(403).json({ message: 'El perfil SuperAdministrador no puede ser eliminado' });
+        }
 
         // No se puede eliminar el perfil Administrador
         if (target_nombre.toLowerCase() === 'administrador') {
