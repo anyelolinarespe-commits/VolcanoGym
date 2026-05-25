@@ -459,6 +459,40 @@ function confirmarEliminarCliente(idCliente, nombre) {
   document.getElementById('modalElimCl').classList.add('open');
 }
 
+// ── MAYOR/MENOR DE EDAD ───────────────────────────────────────────────────────
+function onClienteMayorEdadChange() {
+  const esMenor = document.getElementById('clienteMayorEdad')?.value === 'no';
+  const aviso   = document.getElementById('clTutorAviso');
+  const badge   = document.getElementById('clContacto1Badge');
+  const subtitle = document.getElementById('clContactosSubtitle');
+  const desc    = document.getElementById('clContactosDesc');
+  const card    = document.getElementById('clContacto1Card');
+
+  if (esMenor) {
+    if (aviso)    aviso.style.display    = 'block';
+    if (subtitle) subtitle.textContent   = '(máx. 2) — Contacto 1 OBLIGATORIO';
+    if (desc)     desc.textContent       = 'Contacto 1: tutor que suscribe el contrato (todos los campos requeridos).';
+    if (badge)    badge.innerHTML        = '<i class="bi bi-1-circle-fill"></i> Contacto 1 — Tutor <span style="background:#e53935;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-left:4px">REQUERIDO</span>';
+    if (card)     card.style.borderColor = '#ff9800';
+  } else {
+    if (aviso)    aviso.style.display    = 'none';
+    if (subtitle) subtitle.textContent   = '(opcional, máx. 2)';
+    if (desc)     desc.textContent       = 'Si ingresa un teléfono, el nombre y parentesco son obligatorios.';
+    if (badge)    badge.innerHTML        = '<i class="bi bi-1-circle-fill"></i> Contacto 1';
+    if (card)     card.style.borderColor = '';
+  }
+}
+
+// Auto-detectar menor por fecha de nacimiento
+function onClienteFechaNacChange() {
+  const fnac = document.getElementById('clienteFechaNac').value;
+  if (!fnac) return;
+  const edad = Math.floor((Date.now() - new Date(fnac).getTime()) / (365.25 * 24 * 3600 * 1000));
+  const sel  = document.getElementById('clienteMayorEdad');
+  if (sel) sel.value = edad < 18 ? 'no' : 'si';
+  onClienteMayorEdadChange();
+}
+
 // ── RESET FORMULARIO ──────────────────────────────────────────────────────────
 function resetClienteForm() {
   ['clienteId','clienteNombre','clienteApellido','clienteDni',
@@ -634,6 +668,14 @@ async function saveCliente() {
       showAlert('alertCliente', `El celular ${celular} ya está registrado para ${celularExistente.nombre} ${celularExistente.apellido}`);
       return;
     }
+  }
+
+  // Cláusula 1a: si es menor de edad, Contacto 1 (tutor) es obligatorio
+  const esMenor = document.getElementById('clienteMayorEdad')?.value === 'no';
+  if (esMenor) {
+    if (!ce1Nom) { showAlert('alertCliente', 'Cláusula 1a: el nombre del tutor (Contacto 1) es obligatorio para menores de edad.'); return; }
+    if (!ce1Par) { showAlert('alertCliente', 'Cláusula 1a: el parentesco del tutor (Contacto 1) es obligatorio para menores de edad.'); return; }
+    if (!ce1Tel) { showAlert('alertCliente', 'Cláusula 1a: el teléfono del tutor (Contacto 1) es obligatorio para menores de edad.'); return; }
   }
 
   if (ce1Tel && !ce1Par) { showAlert('alertCliente', 'Contacto 1: el parentesco es obligatorio'); return; }

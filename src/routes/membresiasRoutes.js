@@ -1,28 +1,75 @@
-import { Router } from 'express';
+// src/routes/membresiasRoutes.js
+
+import express from 'express';
+import { verificarToken } from '../middlewares/verificarToken.js';
 import {
+    // ── Endpoints existentes ──────────────────────────────────────────────────
     getMembresias,
     getMembresiasStats,
     getMembresiasByCliente,
     getCuotasByMembresia,
-    getHistorialByMembresia,
     createMembresia,
+    pagarCuota,
+    getHistorialByMembresia,
     updateMembresia,
     deleteMembresia,
-    pagarCuota
+    consultarDNI,
+    crearMembresia,
+    listarMembresias,
+    detalleMembresia
 } from '../controllers/membresiasController.js';
-import { verificarToken } from '../middlewares/verificarToken.js';
 
-const router = Router();
+const router = express.Router();
+
 router.use(verificarToken);
 
-router.get('/',                    getMembresias);
-router.get('/stats',               getMembresiasStats);
-router.get('/cliente/:id',         getMembresiasByCliente);
-router.get('/:id/cuotas',          getCuotasByMembresia);
-router.get('/:id/historial',       getHistorialByMembresia);   // ← NUEVO
-router.post('/',                   createMembresia);
-router.post('/:id/pagar-cuota',    pagarCuota);
-router.put('/:id',                 updateMembresia);
-router.delete('/:id',              deleteMembresia);
+// ── Rutas específicas (deben ir antes de /:id) ────────────────────────────────
+
+// GET /api/membresias/stats
+router.get('/stats', getMembresiasStats);
+
+// GET /api/membresias/dni/:dni  → consulta RENIEC / BD
+router.get('/dni/:dni', consultarDNI);
+
+// GET /api/membresias/cliente/:id
+router.get('/cliente/:id', getMembresiasByCliente);
+
+// ── Raíz ─────────────────────────────────────────────────────────────────────
+
+// GET /api/membresias
+//   · Con ?pagina= → listarMembresias (paginado, responde { ok, datos, total })
+//   · Sin ?pagina= → getMembresias   (array completo, formato legacy)
+router.get('/', (req, res) => {
+    if (req.query.pagina !== undefined) return listarMembresias(req, res);
+    return getMembresias(req, res);
+});
+
+// POST /api/membresias
+//   · Con id_cliente en body → createMembresia (flujo cuotas existente)
+//   · Con dni / cliente_existente_id  → crearMembresia (flujo DNI integrado)
+router.post('/', (req, res) => {
+    if (req.body.id_cliente !== undefined) return createMembresia(req, res);
+    return crearMembresia(req, res);
+});
+
+// ── Rutas parametrizadas (/:id/... antes de /:id) ─────────────────────────────
+
+// GET  /api/membresias/:id/cuotas
+router.get('/:id/cuotas', getCuotasByMembresia);
+
+// GET  /api/membresias/:id/historial
+router.get('/:id/historial', getHistorialByMembresia);
+
+// POST /api/membresias/:id/pagar-cuota
+router.post('/:id/pagar-cuota', pagarCuota);
+
+// GET  /api/membresias/:id
+router.get('/:id', detalleMembresia);
+
+// PUT  /api/membresias/:id
+router.put('/:id', updateMembresia);
+
+// DELETE /api/membresias/:id
+router.delete('/:id', deleteMembresia);
 
 export default router;

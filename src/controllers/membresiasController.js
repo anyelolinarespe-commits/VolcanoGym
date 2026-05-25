@@ -1,4 +1,5 @@
 import { pool } from '../config/bd.js';
+import { v4 as uuidv4 } from 'uuid';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -587,3 +588,335 @@ export const deleteMembresia = async (req, res) => {
         client.release();
     }
 };
+
+// ─── CONSULTA DNI PERÚ ────────────────────────────────────────────────────────
+export const consultarDNI = async (req, res) => {
+  const { dni } = req.params;
+ 
+  if (!dni || !/^\d{8}$/.test(dni)) {
+    return res.status(400).json({ ok: false, mensaje: 'DNI inválido. Debe tener exactamente 8 dígitos.' });
+  }
+ 
+  try {
+    // 1. Verificar si el cliente ya existe en nuestra BD
+    const existente = await pool.query(
+      `SELECT id_cliente, dni, nombre, apellido, telefono, celular, fecha_nacimiento, activo
+       FROM cliente WHERE dni = $1 LIMIT 1`,
+      [dni]
+    );
+ 
+    if (existente.rows.length > 0) {
+      return res.json({
+        ok: true,
+        fuente: 'base_de_datos',
+        cliente: existente.rows[0],
+        ya_existe: true
+      });
+    }
+ 
+    // 2. Cliente nuevo — consultar Decolecta API (RENIEC)
+    const decolectaToken = process.env.DECOLECTA_TOKEN;
+    if (!decolectaToken) {
+      return res.status(500).json({ ok: false, mensaje: 'Token de API RENIEC no configurado.' });
+    }
+
+    const respuesta = await fetch(`https://api.decolecta.com/v1/reniec/dni?numero=${dni}`, {
+      headers: {
+        'Authorization': `Bearer ${decolectaToken}`,
+        'Content-Type': 'application/json'
+      },
+      signal: AbortSignal.timeout(8000)
+    });
+
+    if (!respuesta.ok) {
+      if (respuesta.status === 404)
+        return res.status(404).json({ ok: false, mensaje: 'DNI no encontrado en RENIEC.' });
+      if (respuesta.status === 401)
+        return res.status(401).json({ ok: false, mensaje: 'Token de API DNI inválido o expirado.' });
+      return res.status(respuesta.status).json({ ok: false, mensaje: 'Error al consultar el DNI.' });
+    }
+
+    const datos = await respuesta.json();
+    // Respuesta Decolecta: { first_name, first_last_name, second_last_name, full_name, document_number }
+    if (!datos || !datos.first_name) {
+      return res.status(404).json({ ok: false, mensaje: 'No se encontró información para este DNI en RENIEC.' });
+    }
+
+    return res.json({
+      ok: true,
+      fuente: 'api_reniec',
+      datos_dni: {
+        nombre: datos.first_name,
+        apellido: [datos.first_last_name, datos.second_last_name].filter(Boolean).join(' ').trim(),
+        dni
+      },
+      ya_existe: false
+    });
+
+  } catch (error) {
+    if (error.name === 'TimeoutError')
+      return res.status(504).json({ ok: false, mensaje: 'La API de DNI tardó demasiado. Intente de nuevo.' });
+    console.error('Error consultarDNI:', error.message);
+    return res.status(500).json({ ok: false, mensaje: 'Error al consultar el DNI.' });
+  }
+};
+ 
+// ─── CREAR MEMBRESÍA INTEGRADA (cliente nuevo o existente) ────────────────────
+export const crearMembresia = async (req, res) => {
+  const {
+    // Datos del cliente
+    dni,
+    nombre,
+    apellido,
+    telefono,
+    celular,
+    fecha_nacimiento,
+    cliente_existente_id,   // Si el cliente ya existe, enviar su ID
+    // Datos de la membresía
+    id_plan,
+    fecha_inicio,
+    // Datos del pago
+    monto_pagado,
+    metodo_pago,
+    observacion_pago
+  } = req.body;
+ 
+  const id_usuario_reg = req.usuario.id;
+ 
+  // Validaciones básicas
+  if (!id_plan || !fecha_inicio || !monto_pagado || !metodo_pago) {
+    return res.status(400).json({ ok: false, mensaje: 'Faltan datos obligatorios del plan o pago.' });
+  }
+ 
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    let id_cliente_final;
+ 
+    // ── PASO 1: Resolver cliente ──────────────────────────────────────────────
+    if (cliente_existente_id) {
+      // Cliente ya registrado — solo verificar que existe
+      const check = await client.query(
+        'SELECT id_cliente FROM cliente WHERE id_cliente = $1',
+        [cliente_existente_id]
+      );
+      if (check.rows.length === 0) {
+        throw new Error('Cliente no encontrado.');
+      }
+      id_cliente_final = cliente_existente_id;
+ 
+    } else {
+      // Cliente nuevo — validar y crear
+      if (!dni || !nombre || !apellido) {
+        throw new Error('DNI, nombre y apellido son obligatorios para crear un cliente nuevo.');
+      }
+      if (!/^\d{8}$/.test(dni)) {
+        throw new Error('DNI inválido.');
+      }
+ 
+      // Verificar duplicado de DNI
+      const dniExistente = await client.query(
+        'SELECT id_cliente FROM cliente WHERE dni = $1',
+        [dni]
+      );
+      if (dniExistente.rows.length > 0) {
+        throw new Error('Ya existe un cliente con ese DNI.');
+      }
+ 
+      const qr_code = uuidv4();
+      const nuevo = await client.query(
+        `INSERT INTO cliente
+           (id_usuario_reg, dni, nombre, apellido, telefono, celular,
+            fecha_nacimiento, qr_code, creado_por)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         RETURNING id_cliente`,
+        [
+          id_usuario_reg,
+          dni.trim(),
+          nombre.trim(),
+          apellido.trim(),
+          telefono?.trim() || null,
+          celular?.trim() || null,
+          fecha_nacimiento || null,
+          qr_code,
+          id_usuario_reg
+        ]
+      );
+      id_cliente_final = nuevo.rows[0].id_cliente;
+    }
+ 
+    // ── PASO 2: Obtener datos del plan ────────────────────────────────────────
+    const planRes = await client.query(
+      `SELECT id_plan, nombre, duracion_meses, duracion_unidad, precio
+       FROM plan_membresia
+       WHERE id_plan = $1 AND activo = TRUE`,
+      [id_plan]
+    );
+    if (planRes.rows.length === 0) {
+      throw new Error('Plan de membresía no encontrado o inactivo.');
+    }
+    const plan = planRes.rows[0];
+
+    // ── PASO 3: Calcular fecha de vencimiento ─────────────────────────────────
+    const fecha_fin_str = calcFechaFin(fecha_inicio, plan.duracion_meses, plan.duracion_unidad || 'meses');
+    const montoNum = parseFloat(monto_pagado);
+
+    // ── PASO 4: Crear la membresía ────────────────────────────────────────────
+    const membRes = await client.query(
+      `INSERT INTO membresia
+         (id_cliente, id_plan, id_usuario_reg, fecha_inicio, fecha_fin,
+          tipo_ingreso, estado, monto_total, saldo_pendiente, observaciones)
+       VALUES ($1,$2,$3,$4,$5,'nuevo','activa',$6,0,$7)
+       RETURNING id_membresia`,
+      [id_cliente_final, id_plan, id_usuario_reg, fecha_inicio, fecha_fin_str,
+       montoNum, observacion_pago?.trim() || null]
+    );
+    const id_membresia = membRes.rows[0].id_membresia;
+
+    // ── PASO 5: Registrar el pago ─────────────────────────────────────────────
+    await client.query(
+      `INSERT INTO pago
+         (id_membresia, id_usuario_reg, num_cuota, monto,
+          fecha_pago, fecha_programada, fecha_limite,
+          metodo_pago, num_comprobante, estado_cuota)
+       VALUES ($1,$2,1,$3,CURRENT_DATE,$4,$4,$5,$6,'pagado')`,
+      [
+        id_membresia, id_usuario_reg, montoNum,
+        fecha_inicio, metodo_pago,
+        `MEM-${Date.now()}`
+      ]
+    );
+ 
+    await client.query('COMMIT');
+ 
+    return res.status(201).json({
+      ok: true,
+      mensaje: 'Membresía creada exitosamente.',
+      id_membresia,
+      id_cliente: id_cliente_final,
+      plan: plan.nombre,
+      fecha_inicio,
+      fecha_fin: fecha_fin_str
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error crearMembresia:', error.message);
+    const esValidacion = [
+      'DNI inválido', 'Ya existe', 'obligatorio', 'no encontrado', 'inactivo'
+    ].some(m => error.message.includes(m));
+    return res.status(esValidacion ? 400 : 500).json({
+      ok: false,
+      mensaje: error.message || 'Error interno al crear la membresía.'
+    });
+  } finally {
+    client.release();
+  }
+};
+ 
+// ─── LISTAR MEMBRESÍAS ────────────────────────────────────────────────────────
+export const listarMembresias = async (req, res) => {
+  const { estado, buscar, pagina = 1, por_pagina = 20 } = req.query;
+  const offset = (parseInt(pagina) - 1) * parseInt(por_pagina);
+ 
+  let condiciones = ['1=1'];
+  let params = [];
+  let idx = 1;
+ 
+  if (estado) {
+    condiciones.push(`m.estado = $${idx++}`);
+    params.push(estado);
+  }
+  if (buscar) {
+    condiciones.push(`(c.nombre ILIKE $${idx} OR c.apellido ILIKE $${idx} OR c.dni ILIKE $${idx})`);
+    params.push(`%${buscar}%`);
+    idx++;
+  }
+ 
+  const where = condiciones.join(' AND ');
+ 
+  try {
+    const [datos, total] = await Promise.all([
+      pool.query(
+        `SELECT
+           m.id_membresia,
+           m.estado,
+           m.fecha_inicio,
+           m.fecha_fin,
+           c.id_cliente,
+           c.nombre || ' ' || c.apellido AS cliente_nombre,
+           c.dni,
+           p.nombre AS plan_nombre,
+           p.precio AS plan_precio,
+           (SELECT COALESCE(SUM(pg.monto),0) FROM pago pg WHERE pg.id_membresia = m.id_membresia AND pg.estado_cuota = 'pagado') AS total_pagado
+         FROM membresia m
+         JOIN cliente c ON c.id_cliente = m.id_cliente
+         JOIN plan_membresia p ON p.id_plan = m.id_plan
+         WHERE ${where}
+         ORDER BY m.created_at DESC
+         LIMIT $${idx} OFFSET $${idx + 1}`,
+        [...params, parseInt(por_pagina), offset]
+      ),
+      pool.query(
+        `SELECT COUNT(*) FROM membresia m
+         JOIN cliente c ON c.id_cliente = m.id_cliente
+         WHERE ${where}`,
+        params
+      )
+    ]);
+ 
+    return res.json({
+      ok: true,
+      datos: datos.rows,
+      total: parseInt(total.rows[0].count),
+      pagina: parseInt(pagina),
+      por_pagina: parseInt(por_pagina)
+    });
+  } catch (error) {
+    console.error('Error listarMembresias:', error.message);
+    return res.status(500).json({ ok: false, mensaje: 'Error al listar membresías.' });
+  }
+};
+ 
+// ─── DETALLE DE MEMBRESÍA ─────────────────────────────────────────────────────
+export const detalleMembresia = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT
+         m.*,
+         c.nombre || ' ' || c.apellido AS cliente_nombre,
+         c.dni, c.telefono, c.celular, c.foto_perfil,
+         p.nombre AS plan_nombre, p.precio AS plan_precio, p.duracion_meses,
+         JSON_AGG(
+           JSON_BUILD_OBJECT(
+             'id_pago', pg.id_pago,
+             'monto', pg.monto,
+             'metodo_pago', pg.metodo_pago,
+             'fecha', pg.created_at,
+             'estado_cuota', pg.estado_cuota
+           ) ORDER BY pg.created_at DESC
+         ) FILTER (WHERE pg.id_pago IS NOT NULL) AS pagos
+       FROM membresia m
+       JOIN cliente c ON c.id_cliente = m.id_cliente
+       JOIN plan_membresia p ON p.id_plan = m.id_plan
+       LEFT JOIN pago pg ON pg.id_membresia = m.id_membresia
+       WHERE m.id_membresia = $1
+       GROUP BY m.id_membresia, c.nombre, c.apellido, c.dni,
+                c.telefono, c.celular, c.foto_perfil,
+                p.nombre, p.precio, p.duracion_meses`,
+      [id]
+    );
+ 
+    if (result.rows.length === 0) {
+      return res.status(404).json({ ok: false, mensaje: 'Membresía no encontrada.' });
+    }
+ 
+    return res.json({ ok: true, datos: result.rows[0] });
+  } catch (error) {
+    console.error('Error detalleMembresia:', error.message);
+    return res.status(500).json({ ok: false, mensaje: 'Error al obtener la membresía.' });
+  }
+};
+ 

@@ -1154,3 +1154,874 @@ async function saveMembresia() {
         loadClientes();
     } catch (e) { showAlert('alertMembresia', e.message); }
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MÓDULO: Flujo DNI integrado — 4 pasos (Nueva membresía con consulta RENIEC)
+// ══════════════════════════════════════════════════════════════════════════════
+// src/public/js/membresias.js
+// Módulo de membresías — integración DNI + cliente + plan + pago en un solo flujo
+
+(function () {
+  'use strict';
+
+  // ─── Estado del módulo ────────────────────────────────────────────────────
+  const estado = {
+    paso: 1,           // 1=DNI, 2=Datos cliente, 3=Plan, 4=Pago, 5=Confirmación
+    clienteId: null,   // null = nuevo, número = existente
+    clienteNuevo: true,
+    dniDatos: null,
+    planSeleccionado: null,
+    planes: [],
+    membresias: [],
+    pagina: 1,
+    filtroEstado: '',
+    filtroBuscar: ''
+  };
+
+  // ─── Inicialización ───────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    inicializarTabla();
+    cargarMembresias();
+    cargarPlanes();
+    vincularEventos();
+  });
+
+  function vincularEventos() {
+    // Botón abrir modal
+    document.getElementById('btn-nueva-membresia')?.addEventListener('click', abrirModal);
+
+    // Cerrar modal
+    document.getElementById('memb-modal-overlay')?.addEventListener('click', (e) => {
+      if (e.target.id === 'memb-modal-overlay') cerrarModal();
+    });
+    document.getElementById('btn-cerrar-memb-modal')?.addEventListener('click', cerrarModal);
+
+    // Búsqueda de DNI
+    document.getElementById('memb-dni-input')?.addEventListener('input', (e) => {
+      const v = e.target.value.replace(/\D/g, '').slice(0, 8);
+      e.target.value = v;
+      document.getElementById('btn-buscar-dni').disabled = v.length !== 8;
+    });
+    document.getElementById('btn-buscar-dni')?.addEventListener('click', buscarDNI);
+    document.getElementById('memb-dni-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.value.length === 8) buscarDNI();
+    });
+
+    // Selección de plan
+    document.getElementById('memb-planes-grid')?.addEventListener('click', (e) => {
+      const card = e.target.closest('.memb-plan-card');
+      if (card) seleccionarPlan(card.dataset.id);
+    });
+
+    // Método de pago
+    document.querySelectorAll('.memb-metodo-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.memb-metodo-btn').forEach(b => b.classList.remove('activo'));
+        btn.classList.add('activo');
+        document.getElementById('memb-metodo-pago').value = btn.dataset.metodo;
+      });
+    });
+
+    // Navegación entre pasos
+    document.getElementById('btn-paso-2')?.addEventListener('click', irPaso2);
+    document.getElementById('btn-paso-3')?.addEventListener('click', irPaso3);
+    document.getElementById('btn-paso-4')?.addEventListener('click', irPaso4);
+    document.getElementById('btn-confirmar')?.addEventListener('click', confirmarMembresia);
+    document.getElementById('btn-volver-1')?.addEventListener('click', () => irPaso(1));
+    document.getElementById('btn-volver-2')?.addEventListener('click', () => irPaso(2));
+    document.getElementById('btn-volver-3')?.addEventListener('click', () => irPaso(3));
+    document.getElementById('btn-finalizar')?.addEventListener('click', cerrarModal);
+
+    // Filtros de tabla
+    document.getElementById('filtro-estado')?.addEventListener('change', (e) => {
+      estado.filtroEstado = e.target.value;
+      estado.pagina = 1;
+      cargarMembresias();
+    });
+    document.getElementById('filtro-buscar')?.addEventListener('input', debounce((e) => {
+      estado.filtroBuscar = e.target.value;
+      estado.pagina = 1;
+      cargarMembresias();
+    }, 400));
+  }
+
+  // ─── Modal ────────────────────────────────────────────────────────────────
+  function abrirModal() {
+    resetearModal();
+    document.getElementById('memb-modal-overlay').classList.add('visible');
+    document.getElementById('memb-dni-input').focus();
+  }
+
+  function cerrarModal() {
+    document.getElementById('memb-modal-overlay').classList.remove('visible');
+    cargarMembresias();
+  }
+
+  function resetearModal() {
+    estado.paso = 1;
+    estado.clienteId = null;
+    estado.clienteNuevo = true;
+    estado.dniDatos = null;
+    estado.planSeleccionado = null;
+
+    // Limpiar campos
+    ['memb-dni-input', 'memb-nombre', 'memb-apellido',
+     'memb-celular', 'memb-fecha-nac', 'memb-monto-total', 'memb-pago1', 'memb-observacion',
+     'memb-ce1-nombre', 'memb-ce1-parentesco', 'memb-ce1-telefono',
+     'memb-ce2-nombre', 'memb-ce2-parentesco', 'memb-ce2-telefono'
+    ].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+
+    // Reset mayor/menor
+    const mayorEdad = document.getElementById('memb-mayor-edad');
+    if (mayorEdad) mayorEdad.value = 'si';
+    wiz_onMayorEdadChange();
+
+    document.getElementById('btn-buscar-dni').disabled = true;
+    document.querySelectorAll('.memb-plan-card').forEach(c => c.classList.remove('seleccionado'));
+    document.querySelectorAll('.memb-metodo-btn').forEach(b => b.classList.remove('activo'));
+    document.getElementById('memb-metodo-pago').value = '';
+
+    const fraccionWrap = document.getElementById('memb-fraccion-wrap');
+    if (fraccionWrap) fraccionWrap.style.display = 'none';
+    const resumenCuotas = document.getElementById('memb-resumen-cuotas');
+    if (resumenCuotas) resumenCuotas.style.display = 'none';
+    const numCuotasEl = document.getElementById('memb-num-cuotas');
+    if (numCuotasEl) { numCuotasEl.innerHTML = '<option value="1">1 cuota (pago único)</option>'; }
+
+    // Fecha de inicio = hoy
+    const hoy = new Date().toISOString().split('T')[0];
+    const fi = document.getElementById('memb-fecha-inicio');
+    if (fi) { fi.value = hoy; fi.min = hoy; }
+
+    mostrarEstadoDNI('idle');
+    irPaso(1);
+  }
+
+  function irPaso(n) {
+    estado.paso = n;
+    for (let i = 1; i <= 5; i++) {
+      const el = document.getElementById(`memb-paso-${i}`);
+      if (el) el.classList.toggle('activo', i === n);
+    }
+    // Actualizar indicador de pasos
+    document.querySelectorAll('.memb-paso-indicador').forEach((el, idx) => {
+      el.classList.toggle('completado', idx + 1 < n);
+      el.classList.toggle('actual', idx + 1 === n);
+    });
+  }
+
+  // ─── Paso 1: Búsqueda DNI ─────────────────────────────────────────────────
+  async function buscarDNI() {
+    const dni = document.getElementById('memb-dni-input').value.trim();
+    if (dni.length !== 8) return;
+
+    mostrarEstadoDNI('cargando');
+    document.getElementById('btn-buscar-dni').disabled = true;
+
+    try {
+      const token = localStorage.getItem('token');
+
+      // Llama al backend propio que internamente consulta miapi.cloud
+      // El backend primero busca en BD local y luego en la API si no existe
+      const resp = await fetch(`/api/membresias/dni/${dni}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await resp.json();
+
+      if (!data.ok) {
+        mostrarEstadoDNI('error', data.mensaje || 'No se encontró el DNI.');
+        return;
+      }
+
+      estado.dniDatos = data;
+
+      if (data.ya_existe) {
+        // Cliente registrado en BD — cargar datos y saltar a paso 3 (plan)
+        const c = data.cliente;
+        estado.clienteId = c.id_cliente;
+        estado.clienteNuevo = false;
+        rellenarDatosCliente(c.nombre, c.apellido, c.telefono, c.celular, c.fecha_nacimiento);
+        mostrarEstadoDNI('encontrado', `${c.nombre} ${c.apellido} — ya registrado, selecciona el plan`);
+        setTimeout(() => irPaso(3), 900);
+      } else {
+        // Cliente nuevo desde miapi.cloud — pre-rellenar nombre y apellido
+        const d = data.datos_dni;   // { nombre, apellido, dni }
+        estado.clienteNuevo = true;
+        estado.clienteId = null;
+        rellenarDatosCliente(d.nombre, d.apellido, '', '', '');
+        mostrarEstadoDNI('nuevo', `Datos de RENIEC: ${d.nombre} ${d.apellido}`);
+        setTimeout(() => irPaso(2), 700);
+      }
+    } catch (err) {
+      console.error('buscarDNI error:', err);
+      mostrarEstadoDNI('error', 'Error de conexión. Intente de nuevo.');
+    } finally {
+      document.getElementById('btn-buscar-dni').disabled = false;
+    }
+  }
+
+  function rellenarDatosCliente(nombre, apellido, telefono, celular, fechaNac) {
+    document.getElementById('memb-nombre').value   = nombre   || '';
+    document.getElementById('memb-apellido').value = apellido || '';
+    document.getElementById('memb-celular').value  = celular  || '';
+    const fnac = document.getElementById('memb-fecha-nac');
+    if (fnac) {
+      fnac.value = fechaNac ? fechaNac.split('T')[0] : '';
+      wiz_onFechaNacChange();
+    }
+  }
+
+  function mostrarEstadoDNI(tipo, mensaje = '') {
+    const contenedor = document.getElementById('memb-dni-estado');
+    contenedor.className = `memb-dni-estado memb-dni-${tipo}`;
+
+    const iconos = {
+      idle: '', cargando: '⏳', encontrado: '✅', nuevo: '🆕', error: '❌'
+    };
+    contenedor.innerHTML = tipo === 'idle' ? '' :
+      `<span class="dni-icono">${iconos[tipo]}</span> <span>${mensaje}</span>`;
+  }
+
+  // ─── Paso 2: Datos del cliente ────────────────────────────────────────────
+  function irPaso2() {
+    irPaso(2);
+  }
+
+  function wiz_onMayorEdadChange() {
+    const esMenor  = document.getElementById('memb-mayor-edad')?.value === 'no';
+    const aviso    = document.getElementById('memb-tutor-aviso');
+    const badge    = document.getElementById('memb-contacto1-badge');
+    const subtitle = document.getElementById('memb-contactos-subtitle');
+    const card     = document.getElementById('memb-contacto1-card');
+    const req1     = document.getElementById('memb-ce1-req');
+    const telReq1  = document.getElementById('memb-ce1-tel-req');
+
+    if (esMenor) {
+      if (aviso)    aviso.style.display    = 'block';
+      if (subtitle) subtitle.textContent   = '(máx. 2) — Contacto 1 OBLIGATORIO';
+      if (badge)    badge.innerHTML        = '<i class="bi bi-1-circle-fill me-1"></i> Contacto 1 — Tutor <span style="background:#e53935;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-left:4px">REQUERIDO</span>';
+      if (card)     card.style.borderColor = '#ff9800';
+      if (req1)     req1.innerHTML         = '<span class="memb-req">*</span>';
+      if (telReq1)  telReq1.innerHTML      = '<span class="memb-req">*</span>';
+    } else {
+      if (aviso)    aviso.style.display    = 'none';
+      if (subtitle) subtitle.textContent   = '(opcional, máx. 2)';
+      if (badge)    badge.innerHTML        = '<i class="bi bi-1-circle-fill me-1"></i> Contacto 1';
+      if (card)     card.style.borderColor = '#e8eaf0';
+      if (req1)     req1.innerHTML         = '';
+      if (telReq1)  telReq1.innerHTML      = '';
+    }
+  }
+
+  function wiz_onFechaNacChange() {
+    const fnac = document.getElementById('memb-fecha-nac').value;
+    if (!fnac) return;
+    const edad = Math.floor((Date.now() - new Date(fnac).getTime()) / (365.25 * 24 * 3600 * 1000));
+    const sel  = document.getElementById('memb-mayor-edad');
+    if (sel) sel.value = edad < 18 ? 'no' : 'si';
+    wiz_onMayorEdadChange();
+  }
+
+  function irPaso3() {
+    const nombre   = document.getElementById('memb-nombre').value.trim();
+    const apellido = document.getElementById('memb-apellido').value.trim();
+    if (!nombre || !apellido) {
+      mostrarError('memb-paso2-error', 'Nombre y apellido son obligatorios.');
+      return;
+    }
+
+    // Cláusula 1a: si es menor, tutor obligatorio
+    const esMenor  = document.getElementById('memb-mayor-edad')?.value === 'no';
+    const ce1Nom   = document.getElementById('memb-ce1-nombre')?.value.trim();
+    const ce1Par   = document.getElementById('memb-ce1-parentesco')?.value.trim();
+    const ce1Tel   = document.getElementById('memb-ce1-telefono')?.value.trim();
+    if (esMenor) {
+      if (!ce1Nom) { mostrarError('memb-paso2-error', 'Cláusula 1a: ingresa el nombre del tutor en Contacto 1.'); return; }
+      if (!ce1Par) { mostrarError('memb-paso2-error', 'Cláusula 1a: ingresa el parentesco del tutor en Contacto 1.'); return; }
+      if (!ce1Tel) { mostrarError('memb-paso2-error', 'Cláusula 1a: ingresa el teléfono del tutor en Contacto 1.'); return; }
+    }
+
+    // Validaciones normales de contactos
+    const ce2Tel = document.getElementById('memb-ce2-telefono')?.value.trim();
+    const ce2Nom = document.getElementById('memb-ce2-nombre')?.value.trim();
+    const ce2Par = document.getElementById('memb-ce2-parentesco')?.value.trim();
+    if (ce1Tel && !ce1Par) { mostrarError('memb-paso2-error', 'Contacto 1: el parentesco es obligatorio.'); return; }
+    if (ce1Tel && !ce1Nom) { mostrarError('memb-paso2-error', 'Contacto 1: el nombre es obligatorio.'); return; }
+    if (ce2Tel && !ce2Par) { mostrarError('memb-paso2-error', 'Contacto 2: el parentesco es obligatorio.'); return; }
+    if (ce2Tel && !ce2Nom) { mostrarError('memb-paso2-error', 'Contacto 2: el nombre es obligatorio.'); return; }
+
+    limpiarError('memb-paso2-error');
+    irPaso(3);
+  }
+
+  // ─── Paso 3: Selección de plan ────────────────────────────────────────────
+  async function cargarPlanes() {
+    try {
+      const token = localStorage.getItem('token');
+      const resp = await fetch('/api/planes/activos', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const planes = await resp.json();
+      if (Array.isArray(planes)) {
+        estado.planes = planes;
+        renderizarPlanes(planes);
+      }
+    } catch (err) {
+      console.error('Error cargando planes:', err);
+    }
+  }
+
+  function renderizarPlanes(planes) {
+    const grid = document.getElementById('memb-planes-grid');
+    if (!grid) return;
+
+    if (!planes || planes.length === 0) {
+      grid.innerHTML = '<p class="sin-datos">No hay planes disponibles.</p>';
+      return;
+    }
+
+    const etiqUnidad = { dias: 'día(s)', meses: 'mes(es)', anos: 'año(s)' };
+    grid.innerHTML = planes.map(p => `
+      <div class="memb-plan-card"
+           data-id="${p.id_plan}"
+           data-precio="${p.precio}"
+           data-nombre="${p.nombre}"
+           data-meses="${p.duracion_meses}"
+           data-unidad="${p.duracion_unidad || 'meses'}"
+           data-fraccion="${p.permite_fraccion || false}"
+           data-max-cuotas="${p.max_cuotas || 1}"
+           data-min-cuota="${p.monto_minimo_cuota || 0}"
+           data-dias-entre="${p.dias_entre_cuotas || 30}"
+           data-dias-limite="${p.dias_limite_fraccion || 20}"
+           data-apl-interes="${p.aplica_interes || false}"
+           data-tasa-interes="${p.tasa_interes || 0}"
+           data-tipo-interes="${p.tipo_interes || 'porcentaje'}">
+        <div class="memb-plan-card-nombre">${p.nombre}</div>
+        <div class="memb-plan-card-duracion">${p.duracion_meses} ${etiqUnidad[p.duracion_unidad || 'meses']}</div>
+        <div class="memb-plan-card-precio">S/ ${parseFloat(p.precio).toFixed(2)}</div>
+        ${p.permite_fraccion && p.max_cuotas > 1 ? `<div class="memb-plan-card-desc" style="color:#1976d2;font-weight:600">Hasta ${p.max_cuotas} cuotas</div>` : ''}
+        ${p.descripcion ? `<div class="memb-plan-card-desc">${p.descripcion}</div>` : ''}
+      </div>
+    `).join('');
+  }
+
+  function seleccionarPlan(idPlan) {
+    document.querySelectorAll('.memb-plan-card').forEach(c => c.classList.remove('seleccionado'));
+    const card = document.querySelector(`.memb-plan-card[data-id="${idPlan}"]`);
+    if (!card) return;
+    card.classList.add('seleccionado');
+    estado.planSeleccionado = {
+      id:          idPlan,
+      nombre:      card.dataset.nombre,
+      precio:      parseFloat(card.dataset.precio),
+      meses:       parseInt(card.dataset.meses),
+      unidad:      card.dataset.unidad || 'meses',
+      fraccion:    card.dataset.fraccion === 'true',
+      maxCuotas:   parseInt(card.dataset.maxCuotas) || 1,
+      minCuota:    parseFloat(card.dataset.minCuota) || 0,
+      diasEntre:   parseInt(card.dataset.diasEntre) || 30,
+      diasLimite:  parseInt(card.dataset.diasLimite) || 20,
+      aplInteres:  card.dataset.aplInteres === 'true',
+      tasaInteres: parseFloat(card.dataset.tasaInteres) || 0,
+      tipoInteres: card.dataset.tipoInteres || 'porcentaje'
+    };
+  }
+
+  function irPaso4() {
+    if (!estado.planSeleccionado) {
+      mostrarError('memb-paso3-error', 'Selecciona un plan para continuar.');
+      return;
+    }
+    limpiarError('memb-paso3-error');
+    wiz_inicializarPago();
+    irPaso(4);
+  }
+
+  // ─── Paso 4: lógica de pago con fraccionamiento ───────────────────────────
+
+  function wiz_inicializarPago() {
+    const plan = estado.planSeleccionado;
+
+    // Monto total bloqueado = precio del plan
+    const montoTotalEl = document.getElementById('memb-monto-total');
+    montoTotalEl.value = plan.precio.toFixed(2);
+
+    // Pago inicial: si fraccionamiento disponible, editable; si no, bloqueado
+    const pago1El = document.getElementById('memb-pago1');
+    const helpEl  = document.getElementById('memb-pago1-help');
+    if (plan.fraccion && plan.maxCuotas > 1) {
+      pago1El.readOnly         = false;
+      pago1El.style.background = '#fff';
+      pago1El.style.cursor     = 'text';
+      pago1El.value            = plan.precio.toFixed(2);
+      helpEl.textContent = 'Lo que paga hoy. Reduce el monto para fraccionar en cuotas.';
+    } else {
+      pago1El.readOnly         = true;
+      pago1El.style.background = '#f0f0f0';
+      pago1El.style.cursor     = 'not-allowed';
+      pago1El.value            = plan.precio.toFixed(2);
+      helpEl.textContent = 'Pago único: se abona el monto completo.';
+    }
+    helpEl.style.color = '#9199ab';
+
+    // Selector de cuotas
+    const fraccionWrap = document.getElementById('memb-fraccion-wrap');
+    if (plan.fraccion && plan.maxCuotas > 1) {
+      fraccionWrap.style.display = 'block';
+      wiz_poblarCuotas(plan.maxCuotas);
+      document.getElementById('memb-num-cuotas').value = '1';
+    } else {
+      fraccionWrap.style.display = 'none';
+    }
+
+    // Resumen cliente+plan
+    wiz_actualizarResumenPlan();
+    // Resumen calendario (oculto hasta que haya >1 cuota)
+    wiz_actualizarResumenCuotas();
+  }
+
+  function wiz_actualizarResumenPlan() {
+    const plan       = estado.planSeleccionado;
+    const fi         = document.getElementById('memb-fecha-inicio').value;
+    const fechaFin   = wiz_calcFechaFin(fi, plan?.meses || 0, plan?.unidad || 'meses');
+    const nombre     = document.getElementById('memb-nombre').value;
+    const apellido   = document.getElementById('memb-apellido').value;
+    const dni        = document.getElementById('memb-dni-input').value;
+    const r          = document.getElementById('memb-resumen-pago');
+    if (!r) return;
+    r.innerHTML = `
+      <div class="memb-resumen-item"><span>Cliente</span><strong>${nombre} ${apellido}</strong></div>
+      <div class="memb-resumen-item"><span>DNI</span><strong>${dni}</strong></div>
+      <div class="memb-resumen-item"><span>Plan</span><strong>${plan?.nombre || '—'}</strong></div>
+      <div class="memb-resumen-item"><span>Inicio</span><strong>${fi || '—'}</strong></div>
+      <div class="memb-resumen-item"><span>Vence</span><strong>${fechaFin}</strong></div>
+      <div class="memb-resumen-item memb-resumen-total"><span>Total</span><strong>S/ ${plan?.precio.toFixed(2) || '—'}</strong></div>
+    `;
+  }
+
+  function wiz_calcFechaFin(fi, valor, unidad) {
+    if (!fi || !valor) return '—';
+    const d = new Date(fi + 'T12:00:00');
+    if (unidad === 'dias')      d.setDate(d.getDate() + valor);
+    else if (unidad === 'anos') d.setFullYear(d.getFullYear() + valor);
+    else                        d.setMonth(d.getMonth() + valor);
+    return d.toISOString().split('T')[0];
+  }
+
+  function wiz_poblarCuotas(max) {
+    const sel = document.getElementById('memb-num-cuotas');
+    sel.innerHTML = '';
+    for (let i = 1; i <= max; i++) {
+      const o = document.createElement('option');
+      o.value = i;
+      o.textContent = i === 1 ? '1 cuota (pago único)' : `${i} cuotas`;
+      sel.appendChild(o);
+    }
+  }
+
+  // Llamado por oninput del pago1
+  function wiz_autoSetNumCuotas() {
+    const plan = estado.planSeleccionado;
+    if (!plan || !plan.fraccion || plan.maxCuotas <= 1) return;
+    const monto  = plan.precio;
+    const pago1  = parseFloat(document.getElementById('memb-pago1').value) || 0;
+    const sel    = document.getElementById('memb-num-cuotas');
+    if (pago1 >= monto) {
+      sel.value = '1';
+    } else if (parseInt(sel.value) <= 1) {
+      sel.value = String(plan.maxCuotas);
+    }
+    wiz_actualizarResumenCuotas();
+    wiz_actualizarMinimoHint();
+  }
+
+  // Llamado por onchange del selector de cuotas
+  function wiz_onNumCuotasChange() {
+    const plan  = estado.planSeleccionado;
+    const numC  = parseInt(document.getElementById('memb-num-cuotas').value) || 1;
+    const monto = plan?.precio || 0;
+    const pago1El = document.getElementById('memb-pago1');
+    if (numC > 1) {
+      const sugerido = plan.minCuota > 0 ? plan.minCuota : parseFloat((monto / numC).toFixed(2));
+      if (!pago1El.value || parseFloat(pago1El.value) >= monto) {
+        pago1El.value = Math.min(sugerido, monto - 0.01).toFixed(2);
+      }
+    } else {
+      pago1El.value = monto.toFixed(2);
+    }
+    wiz_validarMinimos();
+    wiz_actualizarResumenCuotas();
+    wiz_actualizarMinimoHint();
+  }
+
+  function wiz_validarMinimos() {
+    const plan   = estado.planSeleccionado;
+    const helpEl = document.getElementById('memb-pago1-help');
+    if (!plan || !plan.fraccion) return true;
+    const monto  = plan.precio;
+    const pago1  = parseFloat(document.getElementById('memb-pago1').value) || monto;
+    const numC   = parseInt(document.getElementById('memb-num-cuotas').value) || 1;
+    const minimo = plan.minCuota;
+
+    if (numC <= 1 || minimo <= 0) {
+      helpEl.textContent = 'Lo que paga hoy. El resto se fracciona en cuotas.';
+      helpEl.style.color = '#9199ab';
+      return true;
+    }
+    const saldo      = Math.max(0, monto - pago1);
+    const cuotasRest = numC - 1;
+    const montoCuota = cuotasRest > 0 ? saldo / cuotasRest : 0;
+
+    if (pago1 < minimo) {
+      helpEl.textContent = `⚠ El pago inicial debe ser ≥ S/ ${minimo.toFixed(2)}.`;
+      helpEl.style.color = '#e65100';
+      return false;
+    }
+    if (montoCuota > 0 && montoCuota < minimo) {
+      helpEl.textContent = `⚠ Cuota resultante S/ ${montoCuota.toFixed(2)} < mínimo S/ ${minimo.toFixed(2)}. Ajusta el pago o N° cuotas.`;
+      helpEl.style.color = '#e65100';
+      return false;
+    }
+    helpEl.textContent = 'Lo que paga hoy. El resto se fracciona en cuotas.';
+    helpEl.style.color = '#9199ab';
+    return true;
+  }
+
+  function wiz_actualizarMinimoHint() {
+    const plan  = estado.planSeleccionado;
+    const numC  = parseInt(document.getElementById('memb-num-cuotas')?.value) || 1;
+    const hint  = document.getElementById('memb-minimo-hint');
+    const valEl = document.getElementById('memb-minimo-val');
+    if (!hint || !valEl || !plan || numC <= 1 || plan.minCuota <= 0) {
+      if (hint) hint.style.display = 'none';
+      return;
+    }
+    valEl.textContent = `S/ ${plan.minCuota.toFixed(2)}`;
+    hint.style.display = 'block';
+  }
+
+  function wiz_actualizarResumenCuotas() {
+    const plan    = estado.planSeleccionado;
+    const resumen = document.getElementById('memb-resumen-cuotas');
+    if (!resumen || !plan) return;
+
+    const monto  = plan.precio;
+    const pago1  = parseFloat(document.getElementById('memb-pago1')?.value) || monto;
+    const numC   = parseInt(document.getElementById('memb-num-cuotas')?.value) || 1;
+    const fi     = document.getElementById('memb-fecha-inicio')?.value;
+
+    if (numC <= 1) { resumen.style.display = 'none'; return; }
+
+    const saldo      = Math.max(0, monto - pago1);
+    const cuotasRest = numC - 1;
+    const base       = cuotasRest > 0 ? saldo / cuotasRest : 0;
+    let montoCuota   = base;
+    if (plan.aplInteres && plan.tasaInteres > 0 && cuotasRest > 0) {
+      montoCuota = plan.tipoInteres === 'porcentaje'
+        ? base * (1 + plan.tasaInteres / 100)
+        : base + plan.tasaInteres;
+    }
+    const totalSaldo = montoCuota * cuotasRest;
+
+    let html = `<div style="font-size:12px;font-weight:700;color:#0f3460;margin-bottom:8px">
+      <i class="bi bi-calendar3 me-1"></i>Calendario de pagos</div>`;
+
+    html += wiz_cuotaRow(1, pago1, fi, fi ? wiz_addDias(fi, plan.diasLimite) : null, true);
+
+    if (fi && saldo > 0) {
+      let acum = 0;
+      for (let n = 2; n <= numC; n++) {
+        const fechaP = wiz_addDias(fi, (n - 1) * plan.diasEntre);
+        const fechaL = wiz_addDias(fechaP, plan.diasLimite);
+        const esUlt  = n === numC;
+        const mc     = esUlt ? (totalSaldo - acum).toFixed(2) : montoCuota.toFixed(2);
+        acum += parseFloat(mc);
+        html += wiz_cuotaRow(n, mc, fechaP, fechaL, false);
+      }
+    }
+
+    if (plan.aplInteres && plan.tasaInteres > 0 && cuotasRest > 0) {
+      const label = plan.tipoInteres === 'porcentaje'
+        ? `${plan.tasaInteres}%` : `S/ ${plan.tasaInteres.toFixed(2)}`;
+      html += `<div style="font-size:11px;color:#bf360c;margin-top:6px;padding:6px 8px;background:#fff3e0;border-radius:6px">
+        <i class="bi bi-percent me-1"></i>Incluye ${label} de interés en cuotas diferidas</div>`;
+    }
+
+    resumen.innerHTML = html;
+    resumen.style.display = 'block';
+  }
+
+  function wiz_cuotaRow(n, monto, fechaProg, fechaLim, pagadaAhora) {
+    const rowBg = pagadaAhora ? '#e8f5e9' : '#f8f9fa';
+    const numBg = pagadaAhora ? '#26a69a' : '#bdbdbd';
+    return `
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:${rowBg};border-radius:8px;margin-bottom:4px">
+      <div style="width:24px;height:24px;border-radius:50%;background:${numBg};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${n}</div>
+      <div style="flex:1">
+        <span style="font-weight:700;font-size:13px">S/ ${parseFloat(monto).toFixed(2)}</span>
+        ${pagadaAhora ? ' <span style="font-size:11px;color:#2e7d32;font-weight:600">(hoy)</span>' : ''}
+      </div>
+      ${fechaProg ? `<div style="font-size:11px;color:#666">
+        <i class="bi bi-calendar3 me-1"></i>${wiz_fmtFecha(fechaProg)}
+        ${fechaLim ? `<span style="color:#e65100;font-weight:600"> · lím: ${wiz_fmtFecha(fechaLim)}</span>` : ''}
+      </div>` : ''}
+    </div>`;
+  }
+
+  function wiz_addDias(fechaStr, dias) {
+    const d = new Date(fechaStr + 'T12:00:00');
+    d.setDate(d.getDate() + dias);
+    return d.toISOString().split('T')[0];
+  }
+
+  function wiz_fmtFecha(f) {
+    if (!f) return '—';
+    const d = new Date(f + 'T12:00:00');
+    return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  async function confirmarMembresia() {
+    const metodo  = document.getElementById('memb-metodo-pago').value;
+    const monto   = parseFloat(document.getElementById('memb-monto-total').value) || 0;
+    const pago1   = parseFloat(document.getElementById('memb-pago1').value) || 0;
+    const numC    = parseInt(document.getElementById('memb-num-cuotas')?.value) || 1;
+
+    if (!metodo) { mostrarError('memb-paso4-error', 'Selecciona un método de pago.'); return; }
+    if (pago1 <= 0) { mostrarError('memb-paso4-error', 'Ingresa un monto de pago inicial válido.'); return; }
+    if (pago1 > monto) { mostrarError('memb-paso4-error', 'El pago inicial no puede superar el monto total.'); return; }
+    if (!wiz_validarMinimos()) { mostrarError('memb-paso4-error', document.getElementById('memb-pago1-help').textContent); return; }
+    limpiarError('memb-paso4-error');
+
+    const btn = document.getElementById('btn-confirmar');
+    btn.disabled = true;
+    btn.textContent = 'Procesando…';
+
+    const token = localStorage.getItem('token');
+    const dni   = document.getElementById('memb-dni-input').value;
+
+    try {
+      let idCliente = estado.clienteId;
+
+      // Si es cliente nuevo, crearlo primero
+      if (estado.clienteNuevo) {
+        // Armar contactos de emergencia
+        const ce1Nom = document.getElementById('memb-ce1-nombre')?.value.trim();
+        const ce1Par = document.getElementById('memb-ce1-parentesco')?.value.trim();
+        const ce1Tel = document.getElementById('memb-ce1-telefono')?.value.trim();
+        const ce2Nom = document.getElementById('memb-ce2-nombre')?.value.trim();
+        const ce2Par = document.getElementById('memb-ce2-parentesco')?.value.trim();
+        const ce2Tel = document.getElementById('memb-ce2-telefono')?.value.trim();
+        const contactos_emergencia = [];
+        if (ce1Tel) contactos_emergencia.push({ nombre: ce1Nom, parentesco: ce1Par, telefono: ce1Tel });
+        if (ce2Tel) contactos_emergencia.push({ nombre: ce2Nom, parentesco: ce2Par, telefono: ce2Tel });
+
+        const respCliente = await fetch('/api/clientes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            dni,
+            nombre:                document.getElementById('memb-nombre').value.trim(),
+            apellido:              document.getElementById('memb-apellido').value.trim(),
+            celular:               document.getElementById('memb-celular').value.trim() || null,
+            fecha_nacimiento:      document.getElementById('memb-fecha-nac').value || null,
+            contactos_emergencia
+          })
+        });
+        const dataCliente = await respCliente.json();
+        if (!respCliente.ok) {
+          mostrarError('memb-paso4-error', dataCliente.message || 'Error al registrar el cliente.');
+          return;
+        }
+        idCliente = dataCliente.id_cliente;
+      }
+
+      // Crear membresía con lógica completa de fraccionamiento
+      const resp = await fetch('/api/membresias', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          id_cliente:             Number(idCliente),
+          id_plan:                Number(estado.planSeleccionado.id),
+          fecha_inicio:           document.getElementById('memb-fecha-inicio').value,
+          monto_total:            monto,
+          monto_pagado_ahora:     pago1,
+          num_cuotas_solicitadas: numC,
+          metodo_pago:            metodo,
+          observaciones:          document.getElementById('memb-observacion').value || null
+        })
+      });
+
+      const data = await resp.json();
+
+      if (resp.ok) {
+        wiz_mostrarExito(data);
+        irPaso(5);
+      } else {
+        mostrarError('memb-paso4-error', data.message || 'Error al crear la membresía.');
+      }
+    } catch (err) {
+      mostrarError('memb-paso4-error', 'Error de conexión. Intente de nuevo.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Confirmar y activar membresía';
+    }
+  }
+
+  function wiz_mostrarExito(data) {
+    const c = document.getElementById('memb-exito-contenido');
+    if (!c) return;
+    const cuotas = data.cuotas || [];
+    const pendientes = cuotas.filter(q => q.estado_cuota === 'pendiente').length;
+    c.innerHTML = `
+      <div class="memb-exito-icono">✅</div>
+      <h3>¡Membresía activada!</h3>
+      <div class="memb-exito-detalles">
+        <div class="memb-resumen-item"><span>Membresía #</span><strong>${data.id_membresia}</strong></div>
+        <div class="memb-resumen-item"><span>Plan</span><strong>${data.plan_nombre || data.plan || '—'}</strong></div>
+        <div class="memb-resumen-item"><span>Vigencia</span><strong>${data.fecha_inicio} → ${data.fecha_fin}</strong></div>
+        ${pendientes > 0 ? `<div class="memb-resumen-item"><span>Cuotas pendientes</span><strong>${pendientes}</strong></div>` : ''}
+      </div>
+    `;
+  }
+
+  // ─── Tabla de membresías ──────────────────────────────────────────────────
+  function inicializarTabla() {
+    // Ya el HTML tiene la estructura; solo aseguramos el tbody
+  }
+
+  async function cargarMembresias() {
+    const tbody = document.getElementById('memb-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="7" class="cargando">Cargando…</td></tr>';
+
+    const params = new URLSearchParams({
+      pagina: estado.pagina,
+      por_pagina: 20
+    });
+    if (estado.filtroEstado) params.set('estado', estado.filtroEstado);
+    if (estado.filtroBuscar) params.set('buscar', estado.filtroBuscar);
+
+    try {
+      const token = localStorage.getItem('token');
+      const resp = await fetch(`/api/membresias?${params}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await resp.json();
+
+      if (!data.ok) {
+        tbody.innerHTML = '<tr><td colspan="7" class="error-tabla">Error al cargar datos.</td></tr>';
+        return;
+      }
+
+      estado.membresias = data.datos;
+      renderizarTabla(data.datos);
+      renderizarPaginacion(data.total, data.pagina, data.por_pagina);
+    } catch (err) {
+      tbody.innerHTML = '<tr><td colspan="7" class="error-tabla">Error de conexión.</td></tr>';
+    }
+  }
+
+  function renderizarTabla(membresias) {
+    const tbody = document.getElementById('memb-tbody');
+    if (!tbody) return;
+
+    if (!membresias || membresias.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="sin-datos">No se encontraron membresías.</td></tr>';
+      return;
+    }
+
+    const etiquetaEstado = {
+      activa: '<span class="badge badge-activa">Activa</span>',
+      vencida: '<span class="badge badge-vencida">Vencida</span>',
+      anulada: '<span class="badge badge-anulada">Anulada</span>',
+      congelada: '<span class="badge badge-congelada">Congelada</span>'
+    };
+
+    tbody.innerHTML = membresias.map(m => `
+      <tr>
+        <td>${m.id_membresia}</td>
+        <td>
+          <div class="cliente-celda">
+            <span class="cliente-nombre">${m.cliente_nombre}</span>
+            <span class="cliente-dni">${m.dni}</span>
+          </div>
+        </td>
+        <td>${m.plan_nombre}</td>
+        <td>${m.fecha_inicio}</td>
+        <td>${m.fecha_fin}</td>
+        <td>${etiquetaEstado[m.estado] || m.estado}</td>
+        <td>
+          <button class="btn-accion btn-ver" onclick="verDetalle(${m.id_membresia})" title="Ver detalle">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function renderizarPaginacion(total, pagina, porPagina) {
+    const contenedor = document.getElementById('memb-paginacion');
+    if (!contenedor) return;
+
+    const totalPaginas = Math.ceil(total / porPagina);
+    contenedor.innerHTML = `
+      <span class="pag-info">Mostrando ${Math.min((pagina - 1) * porPagina + 1, total)}–${Math.min(pagina * porPagina, total)} de ${total}</span>
+      <div class="pag-botones">
+        <button ${pagina <= 1 ? 'disabled' : ''} onclick="cambiarPagina(${pagina - 1})">‹ Anterior</button>
+        <span>Pág. ${pagina} / ${totalPaginas}</span>
+        <button ${pagina >= totalPaginas ? 'disabled' : ''} onclick="cambiarPagina(${pagina + 1})">Siguiente ›</button>
+      </div>
+    `;
+  }
+
+  // ─── Utilitarios ──────────────────────────────────────────────────────────
+  function mostrarError(id, mensaje) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = mensaje; el.style.display = 'block'; }
+  }
+
+  function limpiarError(id) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = ''; el.style.display = 'none'; }
+  }
+
+  function debounce(fn, delay) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+  }
+
+  // ─── Exponer globales ─────────────────────────────────────────────────────
+  window.abrirMembModal         = abrirModal;
+  window.wiz_autoSetNumCuotas   = wiz_autoSetNumCuotas;
+  window.wiz_onNumCuotasChange  = wiz_onNumCuotasChange;
+  window.wiz_validarMinimos     = wiz_validarMinimos;
+  window.wiz_onMayorEdadChange  = wiz_onMayorEdadChange;
+  window.wiz_onFechaNacChange   = wiz_onFechaNacChange;
+
+  window.cambiarPagina = function (n) {
+    estado.pagina = n;
+    cargarMembresias();
+  };
+
+  window.verDetalle = async function (id) {
+    const token = localStorage.getItem('token');
+    try {
+      const resp = await fetch(`/api/membresias/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        // Implementar según tu modal de detalle existente
+        console.log('Detalle membresía:', data.datos);
+        alert(`Membresía #${id}\nCliente: ${data.datos.cliente_nombre}\nPlan: ${data.datos.plan_nombre}\nEstado: ${data.datos.estado}`);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+})();

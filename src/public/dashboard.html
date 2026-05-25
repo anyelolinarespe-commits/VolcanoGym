@@ -106,7 +106,7 @@
       <div class="view" id="view-membresias">
         <div class="mod-header">
           <span class="mod-title"><i class="bi bi-card-checklist me-2"></i>Membresías</span>
-          <button class="btn-save" onclick="openModal('membresia')"><i class="bi bi-plus-lg me-1"></i>Nueva
+          <button class="btn-save" onclick="abrirMembModal()"><i class="bi bi-plus-lg me-1"></i>Nueva
             membresía</button>
         </div>
         <p
@@ -682,13 +682,13 @@
         <div class="col-6">
           <div class="cl-field">
             <label class="cl-label">Fecha de nacimiento <span class="opt">(opcional)</span></label>
-            <input class="cl-input" id="clienteFechaNac" type="date">
+            <input class="cl-input" id="clienteFechaNac" type="date" onchange="onClienteFechaNacChange()">
           </div>
         </div>
         <div class="col-6">
           <div class="cl-field">
             <label class="cl-label">¿Mayor de 18 años?</label>
-            <select class="cl-select" id="clienteMayorEdad">
+            <select class="cl-select" id="clienteMayorEdad" onchange="onClienteMayorEdadChange()">
               <option value="si">✅  Sí, mayor de edad</option>
               <option value="no">⚠️  No (requiere tutor)</option>
             </select>
@@ -720,13 +720,20 @@
       <!-- SECCIÓN 3: Contactos de emergencia -->
       <div class="cl-section" style="margin-top:18px">
         <i class="bi bi-telephone-fill" style="color:#e53935"></i> Contactos de emergencia
-        <span style="font-size:9px;font-weight:600;color:#b0b8cc;text-transform:none;letter-spacing:0">(opcional, máx. 2)</span>
+        <span style="font-size:9px;font-weight:600;color:#b0b8cc;text-transform:none;letter-spacing:0" id="clContactosSubtitle">(opcional, máx. 2)</span>
       </div>
-      <p style="font-size:11.5px;color:#9199ab;margin:-4px 0 12px">Si ingresa un teléfono, el nombre y parentesco son obligatorios.</p>
+
+      <!-- Aviso tutor obligatorio (visible solo si es menor) -->
+      <div id="clTutorAviso" style="display:none;margin-bottom:12px;padding:10px 14px;background:#fff3e0;border:1.5px solid #ff9800;border-radius:10px;font-size:12.5px;color:#e65100;font-weight:600">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        Cláusula 1a: El cliente es menor de 18 años. El <strong>Contacto 1 debe ser el adulto tutor</strong> que suscribe el contrato (nombre, parentesco y teléfono obligatorios).
+      </div>
+
+      <p style="font-size:11.5px;color:#9199ab;margin:-4px 0 12px" id="clContactosDesc">Si ingresa un teléfono, el nombre y parentesco son obligatorios.</p>
 
       <!-- Contacto 1 -->
-      <div class="cl-contact-card">
-        <div class="cl-contact-badge"><i class="bi bi-1-circle-fill"></i> Contacto 1</div>
+      <div class="cl-contact-card" id="clContacto1Card">
+        <div class="cl-contact-badge" id="clContacto1Badge"><i class="bi bi-1-circle-fill"></i> Contacto 1</div>
         <div class="row g-2">
           <div class="col-6">
             <div class="cl-field" style="margin-bottom:0">
@@ -1784,6 +1791,456 @@
       </div>
     </div>
   </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       MODAL: Crear membresía — flujo integrado DNI (4 pasos)
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="memb-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="memb-modal-titulo">
+    <div class="memb-modal-cuerpo">
+
+      <!-- Header -->
+      <div class="memb-modal-header">
+        <div>
+          <h3 id="memb-modal-titulo" class="memb-modal-titulo">Nueva Membresía</h3>
+          <div class="memb-pasos-indicador" aria-label="Progreso del formulario">
+            <div class="memb-paso-indicador actual" data-paso="1">
+              <span class="memb-paso-num">1</span>
+              <span class="memb-paso-label">DNI</span>
+            </div>
+            <div class="memb-paso-linea"></div>
+            <div class="memb-paso-indicador" data-paso="2">
+              <span class="memb-paso-num">2</span>
+              <span class="memb-paso-label">Datos</span>
+            </div>
+            <div class="memb-paso-linea"></div>
+            <div class="memb-paso-indicador" data-paso="3">
+              <span class="memb-paso-num">3</span>
+              <span class="memb-paso-label">Plan</span>
+            </div>
+            <div class="memb-paso-linea"></div>
+            <div class="memb-paso-indicador" data-paso="4">
+              <span class="memb-paso-num">4</span>
+              <span class="memb-paso-label">Pago</span>
+            </div>
+          </div>
+        </div>
+        <button id="btn-cerrar-memb-modal" class="memb-btn-cerrar" aria-label="Cerrar modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Paso 1: DNI -->
+      <div id="memb-paso-1" class="memb-paso-contenido activo">
+        <div class="memb-paso-titulo-sec">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          Consultar DNI del cliente
+        </div>
+        <p class="memb-paso-desc">Ingresa el DNI para verificar si el cliente ya está registrado o consultar sus datos en RENIEC.</p>
+        <div class="memb-dni-campo">
+          <input type="text" id="memb-dni-input" placeholder="Ej: 70123456" maxlength="8"
+            inputmode="numeric" pattern="\d{8}" class="memb-input-dni"
+            autocomplete="off" aria-label="Número de DNI" />
+          <button id="btn-buscar-dni" class="memb-btn-buscar-dni" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Buscar
+          </button>
+        </div>
+        <div id="memb-dni-estado" class="memb-dni-estado" role="status" aria-live="polite"></div>
+      </div>
+
+      <!-- Paso 2: Datos del cliente -->
+      <div id="memb-paso-2" class="memb-paso-contenido">
+        <div class="memb-paso-titulo-sec">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Datos del cliente
+        </div>
+
+        <!-- Aviso Cláusula 1a -->
+        <div style="margin-bottom:12px;padding:9px 13px;background:#e8f5e9;border:1.5px solid #a5d6a7;border-radius:9px;font-size:12px;color:#2e7d32">
+          <i class="bi bi-info-circle-fill me-1"></i>
+          <strong>Cláusula 1a:</strong> Si el cliente es menor de 18 años, un adulto con tenencia debe suscribir el contrato.
+        </div>
+
+        <div class="memb-form-grid">
+          <div class="memb-form-grupo">
+            <label for="memb-nombre">Nombre(s) <span class="memb-req">*</span></label>
+            <input type="text" id="memb-nombre" placeholder="Nombres" autocomplete="given-name" />
+          </div>
+          <div class="memb-form-grupo">
+            <label for="memb-apellido">Apellidos <span class="memb-req">*</span></label>
+            <input type="text" id="memb-apellido" placeholder="Apellidos" autocomplete="family-name" />
+          </div>
+          <div class="memb-form-grupo">
+            <label for="memb-celular">Celular</label>
+            <input type="tel" id="memb-celular" placeholder="Ej: 987654321" maxlength="15" />
+          </div>
+          <div class="memb-form-grupo">
+            <label for="memb-fecha-nac">Fecha de nacimiento</label>
+            <input type="date" id="memb-fecha-nac" onchange="wiz_onFechaNacChange()" />
+          </div>
+          <div class="memb-form-grupo memb-form-grupo-full">
+            <label for="memb-mayor-edad">¿Mayor de 18 años? <span class="memb-req">*</span></label>
+            <select id="memb-mayor-edad" onchange="wiz_onMayorEdadChange()"
+              style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px">
+              <option value="si">✅  Sí, mayor de edad</option>
+              <option value="no">⚠️  No (requiere tutor)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Aviso tutor obligatorio (visible solo si es menor) -->
+        <div id="memb-tutor-aviso" style="display:none;margin:10px 0;padding:10px 14px;background:#fff3e0;border:1.5px solid #ff9800;border-radius:10px;font-size:12.5px;color:#e65100;font-weight:600">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          El cliente es menor de 18 años. El <strong>Contacto 1 debe ser el adulto tutor</strong> (nombre, parentesco y teléfono obligatorios).
+        </div>
+
+        <!-- Contactos de emergencia -->
+        <div style="margin-top:14px;font-size:12px;font-weight:700;color:#374151;letter-spacing:.03em;text-transform:uppercase">
+          <i class="bi bi-telephone-fill me-1" style="color:#e53935"></i>
+          Contactos de emergencia
+          <span id="memb-contactos-subtitle" style="font-size:10px;font-weight:600;color:#9199ab;text-transform:none;margin-left:4px">(opcional, máx. 2)</span>
+        </div>
+        <p style="font-size:11.5px;color:#9199ab;margin:4px 0 10px">Si ingresa un teléfono, el nombre y parentesco son obligatorios.</p>
+
+        <!-- Contacto 1 -->
+        <div style="background:#f7f8fc;border:1.5px solid #e8eaf0;border-radius:10px;padding:12px;margin-bottom:8px" id="memb-contacto1-card">
+          <div style="font-size:11px;font-weight:700;color:#1976d2;margin-bottom:8px" id="memb-contacto1-badge">
+            <i class="bi bi-1-circle-fill me-1"></i> Contacto 1
+          </div>
+          <div class="memb-form-grid">
+            <div class="memb-form-grupo">
+              <label style="font-size:11px">Nombre <span id="memb-ce1-req"></span></label>
+              <input type="text" id="memb-ce1-nombre" placeholder="Nombre completo" autocomplete="off" />
+            </div>
+            <div class="memb-form-grupo">
+              <label style="font-size:11px">Parentesco <span class="memb-req">*</span></label>
+              <input type="text" id="memb-ce1-parentesco" placeholder="Ej: Madre, Padre, Tutor" autocomplete="off" />
+            </div>
+          </div>
+          <div class="memb-form-grupo" style="margin-top:6px">
+            <label style="font-size:11px">Teléfono <span id="memb-ce1-tel-req"></span></label>
+            <input type="tel" id="memb-ce1-telefono" placeholder="9XXXXXXXX" maxlength="15" autocomplete="off" />
+          </div>
+        </div>
+
+        <!-- Contacto 2 -->
+        <div style="background:#f7f8fc;border:1.5px solid #fce4ec;border-radius:10px;padding:12px">
+          <div style="font-size:11px;font-weight:700;color:#c62828;margin-bottom:8px">
+            <i class="bi bi-2-circle-fill me-1"></i> Contacto 2
+            <span style="font-size:10px;font-weight:400;color:#9199ab">(opcional)</span>
+          </div>
+          <div class="memb-form-grid">
+            <div class="memb-form-grupo">
+              <label style="font-size:11px">Nombre</label>
+              <input type="text" id="memb-ce2-nombre" placeholder="Nombre completo" autocomplete="off" />
+            </div>
+            <div class="memb-form-grupo">
+              <label style="font-size:11px">Parentesco <span class="memb-req">*</span></label>
+              <input type="text" id="memb-ce2-parentesco" placeholder="Ej: Esposo/a, Tío/a" autocomplete="off" />
+            </div>
+          </div>
+          <div class="memb-form-grupo" style="margin-top:6px">
+            <label style="font-size:11px">Teléfono</label>
+            <input type="tel" id="memb-ce2-telefono" placeholder="9XXXXXXXX" maxlength="15" autocomplete="off" />
+          </div>
+        </div>
+
+        <div id="memb-paso2-error" class="memb-error-campo" style="display:none;margin-top:8px" role="alert"></div>
+        <div class="memb-paso-acciones">
+          <button class="memb-btn-secundario" id="btn-volver-1">← Volver</button>
+          <button class="memb-btn-primario" id="btn-paso-3">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- Paso 3: Plan -->
+      <div id="memb-paso-3" class="memb-paso-contenido">
+        <div class="memb-paso-titulo-sec">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          Seleccionar plan de membresía
+        </div>
+        <p class="memb-paso-desc">Elige el plan que el cliente ha escogido.</p>
+        <div id="memb-planes-grid" class="memb-planes-grid">
+          <div class="memb-planes-cargando">Cargando planes…</div>
+        </div>
+        <div class="memb-form-grupo" style="margin-top:1rem;">
+          <label for="memb-fecha-inicio">Fecha de inicio <span class="memb-req">*</span></label>
+          <input type="date" id="memb-fecha-inicio" />
+        </div>
+        <div id="memb-paso3-error" class="memb-error-campo" style="display:none;" role="alert"></div>
+        <div class="memb-paso-acciones">
+          <button class="memb-btn-secundario" id="btn-volver-2">← Volver</button>
+          <button class="memb-btn-primario" id="btn-paso-4">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- Paso 4: Pago -->
+      <div id="memb-paso-4" class="memb-paso-contenido">
+        <div class="memb-paso-titulo-sec">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Registro de pago
+        </div>
+
+        <!-- Resumen cliente + plan -->
+        <div id="memb-resumen-pago" class="memb-resumen-pago"></div>
+
+        <!-- Montos -->
+        <div class="memb-form-grid" style="margin-top:12px">
+          <div class="memb-form-grupo">
+            <label for="memb-monto-total">Monto total (S/) <span class="memb-req">*</span></label>
+            <input type="number" id="memb-monto-total" min="0" step="0.01" placeholder="0.00" readonly
+              style="background:#f0f0f0;cursor:not-allowed" />
+          </div>
+          <div class="memb-form-grupo">
+            <label for="memb-pago1">Pago inicial — cuota 1 (S/) <span class="memb-req">*</span></label>
+            <input type="number" id="memb-pago1" min="0" step="0.01" placeholder="0.00"
+              oninput="wiz_autoSetNumCuotas(); wiz_validarMinimos()" />
+            <div id="memb-pago1-help" style="font-size:11.5px;color:#9199ab;margin-top:3px">Lo que paga hoy. El resto se fracciona.</div>
+          </div>
+        </div>
+
+        <!-- Fraccionamiento (se muestra solo si el plan lo permite) -->
+        <div id="memb-fraccion-wrap" style="display:none;margin-top:4px">
+          <label class="memb-label" style="font-size:12px;font-weight:600;color:#555">N° de cuotas</label>
+          <select id="memb-num-cuotas" style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;margin-top:4px"
+            onchange="wiz_onNumCuotasChange()">
+            <option value="1">1 cuota (pago único)</option>
+          </select>
+          <div id="memb-minimo-hint" style="display:none;font-size:12px;font-weight:600;color:#2e7d32;margin-top:5px">
+            <i class="bi bi-currency-dollar"></i> Monto mínimo por cuota: <span id="memb-minimo-val">S/ 0.00</span>
+          </div>
+        </div>
+
+        <!-- Resumen calendario de cuotas -->
+        <div id="memb-resumen-cuotas" style="margin-top:10px"></div>
+
+        <!-- Método de pago -->
+        <div class="memb-metodos-pago" style="margin-top:12px">
+          <p class="memb-metodo-titulo">Método de pago (cuota 1)</p>
+          <div class="memb-metodos-grid">
+            <button class="memb-metodo-btn" data-metodo="efectivo" type="button">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
+              Efectivo
+            </button>
+            <button class="memb-metodo-btn" data-metodo="yape" type="button">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+              Yape
+            </button>
+            <button class="memb-metodo-btn" data-metodo="plin" type="button">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+              Plin
+            </button>
+            <button class="memb-metodo-btn" data-metodo="transferencia" type="button">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16l-4-4 4-4"/><path d="M3 12h14"/><path d="M17 8l4 4-4 4"/><path d="M21 12H7"/></svg>
+              Transferencia
+            </button>
+          </div>
+        </div>
+
+        <div class="memb-form-grupo" style="margin-top:10px">
+          <label for="memb-observacion">Observación</label>
+          <input type="text" id="memb-observacion" placeholder="Opcional" maxlength="255" />
+        </div>
+
+        <input type="hidden" id="memb-metodo-pago" />
+        <div id="memb-paso4-error" class="memb-error-campo" style="display:none;" role="alert"></div>
+        <div class="memb-paso-acciones">
+          <button class="memb-btn-secundario" id="btn-volver-3">← Volver</button>
+          <button class="memb-btn-confirmar" id="btn-confirmar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Confirmar y activar membresía
+          </button>
+        </div>
+      </div>
+
+      <!-- Paso 5: Éxito -->
+      <div id="memb-paso-5" class="memb-paso-contenido memb-paso-exito">
+        <div id="memb-exito-contenido" class="memb-exito-contenido"></div>
+        <button class="memb-btn-primario" id="btn-finalizar">Finalizar</button>
+      </div>
+
+    </div>
+  </div>
+
+  <style>
+  /* ── Modal overlay ──────────────────────────────────────────────────────── */
+  #memb-modal-overlay {
+    --mc-primario:       #1a56db;
+    --mc-primario-hover: #1648c0;
+    --mc-success:        #057a55;
+    --mc-danger:         #e02424;
+    --mc-borde:          #e5e7eb;
+    --mc-fondo-suave:    #f9fafb;
+    --mc-texto:          #111827;
+    --mc-texto-suave:    #6b7280;
+    --mc-radio:          8px;
+    --mc-radio-lg:       12px;
+    display: none;
+    position: fixed; inset: 0; z-index: 1100;
+    background: rgba(0,0,0,.45);
+    align-items: center; justify-content: center;
+    padding: 1rem;
+  }
+  #memb-modal-overlay.visible { display: flex; }
+
+  /* ── Cuerpo del modal ───────────────────────────────────────────────────── */
+  .memb-modal-cuerpo {
+    background: #fff; border-radius: var(--mc-radio-lg);
+    box-shadow: 0 4px 20px rgba(0,0,0,.14);
+    width: 100%; max-width: 560px;
+    max-height: 90vh; overflow-y: auto;
+    display: flex; flex-direction: column;
+  }
+  .memb-modal-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 1rem; padding: 1.25rem 1.5rem 1rem;
+    border-bottom: 1px solid var(--mc-borde);
+    position: sticky; top: 0; background: #fff; z-index: 1;
+  }
+  .memb-modal-titulo { font-size: 1.125rem; font-weight: 600; margin: 0 0 .75rem; color: var(--mc-texto); }
+  .memb-btn-cerrar { background: none; border: none; cursor: pointer; color: var(--mc-texto-suave); padding: 4px; border-radius: 6px; flex-shrink: 0; }
+  .memb-btn-cerrar:hover { background: var(--mc-fondo-suave); color: var(--mc-texto); }
+
+  /* ── Indicador de pasos ─────────────────────────────────────────────────── */
+  .memb-pasos-indicador { display: flex; align-items: center; }
+  .memb-paso-indicador  { display: flex; align-items: center; gap: 5px; }
+  .memb-paso-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--mc-borde); color: var(--mc-texto-suave);
+    font-size: .75rem; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .2s, color .2s;
+  }
+  .memb-paso-label { font-size: .75rem; color: var(--mc-texto-suave); }
+  .memb-paso-indicador.actual    .memb-paso-num { background: var(--mc-primario); color: #fff; }
+  .memb-paso-indicador.actual    .memb-paso-label { color: var(--mc-primario); font-weight: 600; }
+  .memb-paso-indicador.completado .memb-paso-num { background: var(--mc-success); color: #fff; }
+  .memb-paso-linea { width: 24px; height: 1px; background: var(--mc-borde); margin: 0 4px; }
+
+  /* ── Contenido de pasos ─────────────────────────────────────────────────── */
+  .memb-paso-contenido { display: none; padding: 1.25rem 1.5rem; }
+  .memb-paso-contenido.activo { display: block; }
+  .memb-paso-titulo-sec { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: .5rem; color: var(--mc-texto); }
+  .memb-paso-desc { font-size: .875rem; color: var(--mc-texto-suave); margin: 0 0 1.25rem; }
+  .memb-paso-acciones { display: flex; gap: .75rem; justify-content: flex-end; margin-top: 1.5rem; flex-wrap: wrap; }
+
+  /* ── Botones del modal ──────────────────────────────────────────────────── */
+  .memb-btn-primario {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 18px; border-radius: var(--mc-radio); border: none;
+    background: var(--mc-primario); color: #fff;
+    font-size: .875rem; font-weight: 500; cursor: pointer; transition: background .15s;
+  }
+  .memb-btn-primario:hover { background: var(--mc-primario-hover); }
+  .memb-btn-secundario {
+    padding: 8px 16px; border-radius: var(--mc-radio);
+    border: 1px solid var(--mc-borde); background: #fff;
+    color: var(--mc-texto); font-size: .875rem; cursor: pointer; transition: background .15s;
+  }
+  .memb-btn-secundario:hover { background: var(--mc-fondo-suave); }
+  .memb-btn-confirmar {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 24px; border-radius: var(--mc-radio); border: none;
+    background: var(--mc-success); color: #fff;
+    font-size: .9375rem; font-weight: 600; cursor: pointer; transition: filter .15s;
+  }
+  .memb-btn-confirmar:hover   { filter: brightness(1.1); }
+  .memb-btn-confirmar:disabled { opacity: .6; cursor: not-allowed; }
+
+  /* ── DNI ────────────────────────────────────────────────────────────────── */
+  .memb-dni-campo { display: flex; gap: 8px; margin-bottom: 1rem; }
+  .memb-input-dni {
+    flex: 1; padding: 10px 14px; font-size: 1.5rem; font-weight: 600;
+    border: 2px solid var(--mc-borde); border-radius: var(--mc-radio);
+    text-align: center; letter-spacing: .2em; transition: border-color .15s;
+  }
+  .memb-input-dni:focus { outline: none; border-color: var(--mc-primario); }
+  .memb-btn-buscar-dni {
+    padding: 10px 16px; border-radius: var(--mc-radio); border: none;
+    background: var(--mc-primario); color: #fff;
+    font-size: .875rem; font-weight: 500; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; transition: background .15s;
+  }
+  .memb-btn-buscar-dni:hover:not(:disabled) { background: var(--mc-primario-hover); }
+  .memb-btn-buscar-dni:disabled { opacity: .45; cursor: not-allowed; }
+  .memb-dni-estado {
+    padding: .6rem 1rem; border-radius: var(--mc-radio);
+    font-size: .875rem; display: flex; align-items: center; gap: 8px; min-height: 2rem;
+  }
+  .memb-dni-cargando  { background: #eff6ff; color: #1e40af; }
+  .memb-dni-encontrado { background: #d1fae5; color: #065f46; }
+  .memb-dni-nuevo     { background: #fef3c7; color: #92400e; }
+  .memb-dni-error     { background: #fee2e2; color: #991b1b; }
+
+  /* ── Formulario ─────────────────────────────────────────────────────────── */
+  .memb-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .memb-form-grupo { display: flex; flex-direction: column; gap: 5px; }
+  .memb-form-grupo-full { grid-column: 1 / -1; }
+  .memb-form-grupo label { font-size: .8125rem; font-weight: 500; color: var(--mc-texto); }
+  .memb-form-grupo input, .memb-form-grupo select {
+    padding: 8px 12px; border: 1px solid var(--mc-borde);
+    border-radius: var(--mc-radio); font-size: .875rem; color: var(--mc-texto);
+    transition: border-color .15s;
+  }
+  .memb-form-grupo input:focus, .memb-form-grupo select:focus { outline: none; border-color: var(--mc-primario); }
+  .memb-req { color: var(--mc-danger); }
+  .memb-error-campo {
+    background: #fee2e2; color: var(--mc-danger);
+    border-radius: var(--mc-radio); padding: .5rem .875rem; font-size: .8125rem;
+  }
+
+  /* ── Planes ─────────────────────────────────────────────────────────────── */
+  .memb-planes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: .5rem; }
+  .memb-plan-card {
+    border: 2px solid var(--mc-borde); border-radius: var(--mc-radio-lg);
+    padding: 14px 12px; cursor: pointer; text-align: center;
+    transition: border-color .15s, box-shadow .15s; background: #fff;
+  }
+  .memb-plan-card:hover { border-color: var(--mc-primario); box-shadow: 0 2px 8px rgba(26,86,219,.12); }
+  .memb-plan-card.seleccionado { border-color: var(--mc-primario); background: #eff6ff; box-shadow: 0 0 0 3px rgba(26,86,219,.15); }
+  .memb-plan-card-nombre { font-weight: 700; font-size: .9375rem; margin-bottom: 4px; }
+  .memb-plan-card-duracion { font-size: .8125rem; color: var(--mc-texto-suave); margin-bottom: 8px; }
+  .memb-plan-card-precio { font-size: 1.25rem; font-weight: 700; color: var(--mc-primario); }
+  .memb-plan-card-desc { font-size: .75rem; color: var(--mc-texto-suave); margin-top: 6px; }
+  .memb-planes-cargando { color: var(--mc-texto-suave); font-size: .875rem; padding: 1rem; }
+
+  /* ── Métodos de pago ────────────────────────────────────────────────────── */
+  .memb-metodos-pago { margin-bottom: 1rem; }
+  .memb-metodo-titulo { font-size: .8125rem; font-weight: 500; margin: 0 0 .625rem; }
+  .memb-metodos-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+  .memb-metodo-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border: 1.5px solid var(--mc-borde);
+    border-radius: var(--mc-radio); background: #fff; cursor: pointer;
+    font-size: .875rem; font-weight: 500; color: var(--mc-texto);
+    transition: border-color .15s, background .15s;
+  }
+  .memb-metodo-btn:hover  { border-color: var(--mc-primario); background: #eff6ff; }
+  .memb-metodo-btn.activo { border-color: var(--mc-primario); background: #eff6ff; color: var(--mc-primario); }
+
+  /* ── Resumen ────────────────────────────────────────────────────────────── */
+  .memb-resumen-pago {
+    background: var(--mc-fondo-suave); border: 1px solid var(--mc-borde);
+    border-radius: var(--mc-radio); padding: .875rem 1rem; margin-bottom: 1rem;
+  }
+  .memb-resumen-item { display: flex; justify-content: space-between; padding: 4px 0; font-size: .875rem; }
+  .memb-resumen-item span { color: var(--mc-texto-suave); }
+  .memb-resumen-total { border-top: 1px solid var(--mc-borde); margin-top: 6px; padding-top: 8px; font-size: 1rem; }
+  .memb-resumen-total strong { color: var(--mc-primario); font-size: 1.125rem; }
+
+  /* ── Éxito ──────────────────────────────────────────────────────────────── */
+  .memb-paso-exito { text-align: center; }
+  .memb-exito-contenido { padding: 1.5rem 0; }
+  .memb-exito-icono { font-size: 3rem; margin-bottom: .75rem; }
+  .memb-exito-contenido h3 { font-size: 1.25rem; font-weight: 700; margin: 0 0 1rem; color: var(--mc-success); }
+  .memb-exito-detalles { max-width: 300px; margin: 0 auto 1.5rem; text-align: left; }
+
+  /* ── Responsive ─────────────────────────────────────────────────────────── */
+  @media (max-width: 540px) {
+    .memb-form-grid { grid-template-columns: 1fr; }
+    .memb-modal-cuerpo { max-height: 100vh; border-radius: 0; }
+    .memb-pasos-indicador .memb-paso-label { display: none; }
+  }
+  </style>
 
   <script src="js/dashboard-core.js"></script>
   <script src="js/clientes.js"></script>
