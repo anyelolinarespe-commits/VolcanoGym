@@ -468,7 +468,7 @@ export const pagarCuota = async (req, res) => {
             await client.query(
                 `UPDATE pago
                  SET fecha_programada = CURRENT_DATE,
-                     fecha_limite     = CURRENT_DATE + $1
+                     fecha_limite     = CURRENT_DATE + $1::integer
                  WHERE id_membresia = $2
                    AND estado_cuota IN ('pendiente','vencido')
                    AND num_cuota = (

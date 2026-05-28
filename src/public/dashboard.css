@@ -527,8 +527,14 @@ body[data-theme="dark"] .perm-header { border-bottom-color: #2e2e2e; }
 body[data-theme="dark"] .perm-header span { color: #888888; }
 
 /* Alertas en modo oscuro */
-body[data-theme="dark"] .alert-msg.error   { background: #2d1515; color: #f87171; }
+body[data-theme="dark"] .alert-msg.error   { background: #3a1a1a; color: #f87171; }
 body[data-theme="dark"] .alert-msg.success { background: #0d2318; color: #4ade80; }
+
+/* Form inline pagar cuota */
+.form-pago-titulo { color: #0f3460; }
+body[data-theme="dark"] .form-pago-titulo { color: #e0e0e0; }
+body[data-theme="dark"] #formPagoCuota { border-color: #333333 !important; }
+body[data-theme="dark"] #formPagoCuota .form-label { color: #aaaaaa; }
 
 /* Panel registro rápido de asistencias */
 body[data-theme="dark"] .asist-quick-panel {
@@ -781,4 +787,29 @@ body[data-theme="dark"] .btn-logout-mobile:hover { background: #2d1515; border-c
   #content { padding: 10px; }
   .stat-value { font-size: 22px; }
   .memb-avatar { width: 36px; height: 36px; font-size: 13px; }
+}
+/* ══ FOTOS DE PRODUCTO ═══════════════════════════════════════════════════════ */
+#fotoDropZone {
+  transition: border-color .2s, background .2s, transform .2s;
+  user-select: none;
+}
+#fotoDropZone:hover {
+  border-color: var(--accent, #ff7043);
+  background: #fff8f5 !important;
+}
+body[data-theme="dark"] #fotoDropZone {
+  background: #1a1a2e !important;
+  border-color: #333;
+  color: #aaa;
+}
+body[data-theme="dark"] #fotoDropZone:hover {
+  border-color: var(--accent, #ff7043);
+  background: #1e1e3a !important;
+}
+/* Tarjetas de fotos en galería */
+#fotosGaleria img {
+  transition: opacity .2s;
+}
+#fotosGaleria img:hover {
+  opacity: .85;
 }

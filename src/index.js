@@ -16,6 +16,8 @@ import categoriasRoutes      from './routes/categoriasRoutes.js';
 import productosRoutes       from './routes/productosRoutes.js';
 import presentacionesRoutes  from './routes/presentacionesRoutes.js';
 import asistenciasRoutes     from './routes/asistenciasRoutes.js';
+import inventarioRoutes from './routes/inventarioRoutes.js';
+import fotosRoutes from './routes/fotosRoutes.js';
 
 dotenv.config();
 
@@ -40,6 +42,8 @@ app.use('/api/categorias',     categoriasRoutes);
 app.use('/api/productos',      productosRoutes);
 app.use('/api/presentaciones', presentacionesRoutes);
 app.use('/api/asistencias',   asistenciasRoutes);
+app.use('/api/inventario', inventarioRoutes);
+app.use('/api/productos', fotosRoutes);
 
 // Páginas
 app.get('/',          (req, res) => res.sendFile(__dirname + '/public/login.html'));
