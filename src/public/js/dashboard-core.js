@@ -40,6 +40,7 @@ const MODULOS_CONFIG = {
   'categorias':     { icon: 'bi-tag',            label: 'Categorías',     seccion: 'Tienda',           color: '#26a69a' },
   'presentaciones': { icon: 'bi-box2',           label: 'Presentaciones', seccion: 'Tienda',           color: '#00897b' }, // ← NUEVO
   'productos':      { icon: 'bi-box-seam',       label: 'Productos',      seccion: 'Tienda',           color: '#ff7043' },
+  'inventario':     { icon: 'bi-clipboard-data', label: 'Inventario',     seccion: 'Tienda',           color: '#1565c0' },
   'perfiles':       { icon: 'bi-shield-check',   label: 'Perfiles',       seccion: 'Administración',   color: '#e94560' },
   'usuarios':       { icon: 'bi-people',         label: 'Usuarios',       seccion: 'Administración',   color: '#0f3460' },
 };
@@ -165,6 +166,7 @@ function openModal(tipo) {
   if (tipo === 'categoria')     { resetCategoriaForm();    document.getElementById('modalCategoria').classList.add('open'); }
   if (tipo === 'producto')      { resetProductoForm();     cargarCategoriasSelect(); document.getElementById('modalProducto').classList.add('open'); }
   if (tipo === 'presentacion')  { resetPresentacionForm(); document.getElementById('modalPresentacion').classList.add('open'); } // ← NUEVO
+  if (tipo === 'actStock')      { /* se abre desde abrirActualizarStock() */ }
 }
 
 // Cerrar modales al hacer click fuera
@@ -286,6 +288,7 @@ function buildHomeCards() {
     { ruta: 'categorias',     color: '#26a69a', icon: 'bi-tag',            label: 'Categorías',     countId: 'countCategorias'     },
     { ruta: 'presentaciones', color: '#00897b', icon: 'bi-box2',           label: 'Presentaciones', countId: 'countPresentaciones' }, // ← NUEVO
     { ruta: 'productos',      color: '#ff7043', icon: 'bi-box-seam',       label: 'Productos',      countId: 'countProductos'      },
+    { ruta: 'inventario',     color: '#1565c0', icon: 'bi-clipboard-data', label: 'Inventario',     countId: 'countInventario'     },
     { ruta: 'perfiles',       color: '#e94560', icon: 'bi-shield-check',   label: 'Perfiles',       countId: 'countPerfiles'       },
     { ruta: 'usuarios',       color: '#0f3460', icon: 'bi-people',         label: 'Usuarios',       countId: 'countUsuarios'       },
   ];
@@ -321,6 +324,7 @@ function goTo(view) {
   if (view === 'categorias')     loadCategorias();
   if (view === 'presentaciones') loadPresentaciones();  // ← NUEVO
   if (view === 'productos')      loadProductos();
+  if (view === 'inventario')     loadInventario();
   if (view === 'asistencias')    loadAsistencias();
 }
 
@@ -345,6 +349,7 @@ function goTo(view) {
     categorias:     async () => { dataCategorias    = await api('GET', '/api/categorias');          const el = document.getElementById('countCategorias');     if (el) el.textContent = dataCategorias.filter(c => c.estado === 1).length; },
     presentaciones: async () => { dataPresentaciones= await api('GET', '/api/presentaciones');     const el = document.getElementById('countPresentaciones'); if (el) el.textContent = dataPresentaciones.filter(p => p.estado === 1).length; }, // ← NUEVO
     productos:      async () => { const s           = await api('GET', '/api/productos/stats');    const el = document.getElementById('countProductos');      if (el) el.textContent = s.activos; },
+    inventario:     async () => { const d           = await api('GET', '/api/inventario');         const el = document.getElementById('countInventario');     if (el) el.textContent = d.kpis.stock_critico + ' críticos'; },
     asistencias:    async () => { const s           = await api('GET', '/api/asistencias/stats'); const el = document.getElementById('countAsistencias');    if (el) el.textContent = s.hoy; },
   };
 

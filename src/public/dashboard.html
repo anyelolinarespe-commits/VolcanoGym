@@ -253,7 +253,7 @@
       <div class="view" id="view-presentaciones">
         <div class="mod-header">
           <span class="mod-title"><i class="bi bi-box2 me-2"></i>Gestión de Presentaciones</span>
-          <button class="btn-save" onclick="nuevaPresentacion()">
+          <button class="btn-save" onclick="openModal('presentacion')">
             <i class="bi bi-plus-lg me-1"></i>Nueva Presentación
           </button>
         </div>
@@ -317,15 +317,50 @@
                   <th>NOMBRE</th>
                   <th>CATEGORÍA</th>
                   <th>PRECIO COSTO</th>
-                  <th>PRECIO VENTA</th>
-                  <th>STOCK</th>
-                  <th>UNIDAD</th>
+                  <th>PRECIO</th>
+                  <th>OFERTA</th>
+                  <th>STOCK MÍN.</th>
                   <th>ESTADO</th>
                   <th>ACCIONES</th>
                 </tr>
               </thead>
               <tbody id="tbodyProductos">
                 <tr class="loading-row"><td colspan="9">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ INVENTARIO ══════════════════════════════════════════════════════ -->
+      <div class="view" id="view-inventario">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-archive me-2"></i>Inventario</span>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-pill"><span class="sp-num sp-activos" id="inv-total">—</span> productos</div>
+          <div class="stat-pill"><span class="sp-num" style="color:#c62828" id="inv-critico">—</span> stock crítico</div>
+          <div class="stat-pill"><span class="sp-num" style="color:#2e7d32" id="inv-optimo">—</span> stock óptimo</div>
+          <div class="stat-pill"><span class="sp-num" style="color:#1565c0" id="inv-valor">—</span> valor total</div>
+        </div>
+
+        <div class="table-card">
+          <div style="overflow-x:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>PRODUCTO</th>
+                  <th style="text-align:center">STOCK</th>
+                  <th style="text-align:center">STOCK MÍN.</th>
+                  <th style="text-align:center">ESTADO</th>
+                  <th style="text-align:right">VALOR</th>
+                  <th>ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyInventario">
+                <tr class="loading-row"><td colspan="7">Cargando...</td></tr>
               </tbody>
             </table>
           </div>
@@ -1647,138 +1682,302 @@
     </div>
   </div>
 
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MODAL PRODUCTO — Nuevo / Editar
+       Tabs: Datos Generales | Presentaciones y Precios | Fotos
+  ════════════════════════════════════════════════════════════════════════ -->
   <div class="modal-overlay" id="modalProducto">
-    <div class="modal-box" style="width:580px;max-height:90vh">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <div class="modal-title" id="modalProductoTitle" style="margin-bottom:0">Nuevo Producto</div>
+    <div class="modal-box" style="width:640px;max-height:92vh;overflow:hidden;display:flex;flex-direction:column">
+
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 0;flex-shrink:0">
+        <div class="modal-title" id="modalProductoTitle" style="margin-bottom:0;font-size:18px">Nuevo Producto</div>
         <button onclick="closeModal('modalProducto')"
-          style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">✕</button>
+          style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1">&#10005;</button>
       </div>
-  
-      <div style="display:flex;gap:0;border-bottom:2px solid #eee;margin-bottom:18px">
+
+      <!-- Tabs -->
+      <div style="display:flex;gap:0;border-bottom:2px solid #eee;padding:0 24px;margin-top:14px;flex-shrink:0">
         <button id="tabBtn-datos"
           class="tab-active"
           onclick="activarTabProducto('datos')"
-          style="padding:9px 20px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;border-bottom:2px solid transparent;transition:all .15s">
+          style="padding:10px 18px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;border-bottom:2px solid transparent;transition:all .15s;margin-bottom:-2px">
           <i class="bi bi-clipboard-data me-1"></i>Datos Generales
         </button>
         <button id="tabBtn-presentaciones-producto"
-          id="tabPresentacionesProducto"
           onclick="activarTabProducto('presentaciones-producto')"
-          style="padding:9px 20px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;border-bottom:2px solid transparent;transition:all .15s;display:none">
-          <i class="bi bi-box2 me-1"></i>Presentaciones y Precios
+          style="padding:10px 18px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;border-bottom:2px solid transparent;transition:all .15s;margin-bottom:-2px;display:none">
+          <i class="bi bi-box2 me-1"></i>Presentaciones
+        </button>
+        <button id="tabBtn-fotos-producto"
+          onclick="activarTabProducto('fotos-producto')"
+          style="padding:10px 18px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;border-bottom:2px solid transparent;transition:all .15s;margin-bottom:-2px;display:none">
+          <i class="bi bi-images me-1"></i>Fotos
         </button>
       </div>
-  
-      <div class="alert-msg" id="alertProducto"></div>
+
+      <div class="alert-msg" id="alertProducto" style="margin:10px 24px 0"></div>
       <input type="hidden" id="productoId">
       <input type="hidden" id="ppProductoId">
-  
-      <div id="tabPane-datos">
-        <div class="mb-2">
-          <div class="form-label">Categoría *</div>
-          <select class="form-control" id="productoCategoriaSelect">
-            <option value="">Seleccionar categoría...</option>
-          </select>
-        </div>
-        <div class="mb-2">
-          <div class="form-label">Nombre del producto *</div>
-          <input class="form-control" id="productoNombre" placeholder="Ej: Creatine 500 g">
-        </div>
-        <div class="mb-2">
-          <div class="form-label">Descripción</div>
-          <textarea class="form-control" id="productoDescripcion" rows="2"
-            placeholder="Descripción opcional..."></textarea>
-        </div>
+
+      <!-- TAB: DATOS GENERALES -->
+      <div id="tabPane-datos" style="overflow-y:auto;padding:16px 24px 0;flex:1">
+
         <div class="row g-2 mb-2">
-          <div class="col-6">
-            <div class="form-label">Precio Costo (S/)</div>
-            <input class="form-control" id="productoPrecioCosto" type="number" step="0.01" placeholder="0.00">
-          </div>
-          <div class="col-6">
-            <div class="form-label">Precio Venta (S/) *</div>
-            <input class="form-control" id="productoPrecioVenta" type="number" step="0.01" placeholder="0.00">
-          </div>
-        </div>
-        <div class="row g-2 mb-2">
-          <div class="col-4">
-            <div class="form-label">Stock actual</div>
-            <input class="form-control" id="productoStock" type="number" min="0" value="0">
+          <div class="col-8">
+            <div class="form-label">Nombre *</div>
+            <input class="form-control" id="productoNombre" placeholder="Ej: Amoxicilina 500mg">
           </div>
           <div class="col-4">
-            <div class="form-label">Stock mínimo</div>
-            <input class="form-control" id="productoStockMin" type="number" min="0" value="3">
-          </div>
-          <div class="col-4">
-            <div class="form-label">Unidad</div>
-            <select class="form-control" id="productoUnidad">
-              <option value="unidad">Unidad</option>
-              <option value="caja">Caja</option>
-              <option value="frasco">Frasco</option>
-              <option value="blister">Blíster</option>
-              <option value="sobre">Sobre</option>
-              <option value="ampolla">Ampolla</option>
-              <option value="tubo">Tubo</option>
-              <option value="litro">Litro</option>
-              <option value="kg">Kg</option>
+            <div class="form-label">Categoria *</div>
+            <select class="form-control" id="productoCategoriaSelect">
+              <option value="">-- Seleccionar Categoria --</option>
             </select>
           </div>
         </div>
-        <div class="mb-2" id="productoEstadoGroup" style="display:none">
-          <div class="form-label">Estado</div>
-          <select class="form-control" id="productoEstado">
-            <option value="1">Activo</option>
-            <option value="0">Inactivo</option>
-          </select>
+
+        <div class="mb-2">
+          <div class="form-label">Descripcion</div>
+          <textarea class="form-control" id="productoDescripcion" rows="2"
+            placeholder="Descripcion opcional..."></textarea>
         </div>
-        <div class="modal-footer">
+
+        <div class="row g-2 mb-2">
+          <div class="col-4">
+            <div class="form-label">Marca</div>
+            <input class="form-control" id="productoMarca" placeholder="Ej: Bayer">
+          </div>
+          <div class="col-4">
+            <div class="form-label">Modelo</div>
+            <input class="form-control" id="productoModelo" placeholder="">
+          </div>
+          <div class="col-4">
+            <div class="form-label">SKU</div>
+            <input class="form-control" id="productoSku" placeholder="Codigo interno">
+          </div>
+        </div>
+
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <div class="form-label">Codigo Barras</div>
+            <div style="position:relative">
+              <input class="form-control" id="productoCodigoBarras" type="number"
+                placeholder="Solo numeros" style="padding-right:36px">
+              <i class="bi bi-upc-scan" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#bbb;font-size:16px"></i>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="form-label">Categoria asignada</div>
+            <div id="categoriaPresentacionesInfo"
+              style="font-size:12px;color:#26a69a;background:#f1faf9;border-radius:6px;padding:6px 10px;min-height:35px;display:flex;align-items:center">
+              Selecciona una categoria para ver las presentaciones disponibles
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Precios de la Presentación Principal ───────────────────────── -->
+        <!-- En EDICIÓN: readonly, se sincronizan con producto_presentacion    -->
+        <!-- En CREACIÓN: editables, se guardan al agregar la primera present. -->
+        <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin-bottom:10px;border:1px solid #e8e8e8">
+          <div style="font-size:11px;font-weight:700;color:#9199ab;letter-spacing:.5px;margin-bottom:8px">
+            <i class="bi bi-tag me-1"></i>PRECIOS
+            <span id="preciosRefLabel" style="font-weight:400;color:#bbb;margin-left:6px">
+              — de la presentación principal
+            </span>
+          </div>
+          <div class="row g-2">
+            <div class="col-4">
+              <div class="form-label">Precio Costo (S/)</div>
+              <input class="form-control" id="productoPrecioCosto" type="number" step="0.01"
+                placeholder="0.00" value="0" oninput="onPrecioChange()">
+            </div>
+            <div class="col-4">
+              <div class="form-label">Precio Venta (S/) *</div>
+              <input class="form-control" id="productoPrecioVenta" type="number" step="0.01"
+                placeholder="0.00" oninput="onPrecioChange()">
+            </div>
+            <div class="col-4">
+              <div class="form-label">Oferta (%)</div>
+              <input class="form-control" id="productoOferta" type="number" step="0.01"
+                min="0" max="100" value="0"
+                oninput="calcularPrecioOferta(this.value)">
+            </div>
+          </div>
+          <!-- Preview precio con oferta -->
+          <div id="precioOfertaPreview" style="display:none;margin-top:8px;font-size:12px;color:#2e7d32;background:#e8f5e9;border-radius:6px;padding:6px 10px">
+            <i class="bi bi-percent me-1"></i>
+            Precio final con oferta: <strong id="precioOfertaValor">—</strong>
+          </div>
+          <!-- Ganancia calculada en tiempo real -->
+          <div id="gananciaPreview" style="margin-top:6px;font-size:12px;color:#1565c0;display:none">
+            <i class="bi bi-graph-up me-1"></i>
+            Ganancia: <strong id="gananciaValor">—</strong>
+            <span id="gananciaPct" style="color:#888;margin-left:4px"></span>
+          </div>
+          <!-- Aviso en modo edición -->
+          <div id="preciosEditAviso" style="display:none;margin-top:8px;font-size:11px;color:#e65100;background:#fff3e0;border-radius:6px;padding:5px 10px">
+            <i class="bi bi-info-circle me-1"></i>
+            Editando los precios de <strong id="preciosPresentacionNombre">—</strong>.
+            Los cambios se aplicarán al guardar.
+          </div>
+        </div>
+
+        <!-- ── Presentación Principal + Stock Mín ─────────────────────────── -->
+        <div class="row g-2 mb-2">
+          <div class="col-5">
+            <div class="form-label">Presentación Principal</div>
+            <select class="form-control" id="productoPresentacionPrincipalRef"
+              onchange="onPresentacionPrincipalChange(this.value)">
+              <option value="">-- Seleccionar --</option>
+            </select>
+          </div>
+          <div class="col-3">
+            <div class="form-label">Stock Mín.</div>
+            <input class="form-control" id="productoStockMin" type="number" min="0" value="5">
+          </div>
+          <div class="col-4" id="productoEstadoGroup" style="display:none">
+            <div class="form-label">Estado</div>
+            <select class="form-control" id="productoEstado">
+              <option value="1">Activo</option>
+              <option value="0">Inactivo</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ── Datos adicionales ───────────────────────────────────────────── -->
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <div class="form-label">Peso (kg)</div>
+            <input class="form-control" id="productoPeso" type="number" step="0.001" placeholder="">
+          </div>
+          <div class="col-6">
+            <div class="form-label">Dimensiones (cm)</div>
+            <input class="form-control" id="productoDimensiones" placeholder="L x A x P">
+          </div>
+        </div>
+
+        <div class="row g-2 mb-2">
+          <div class="col-4">
+            <div class="form-label">Garantía (meses)</div>
+            <input class="form-control" id="productoGarantia" type="number" min="0" value="0">
+          </div>
+        </div>
+
+        <div class="modal-footer" style="margin:0 -24px;padding:14px 24px;border-top:1px solid #eee">
           <button class="btn-cancel" onclick="closeModal('modalProducto')">Cancelar</button>
-          <button class="btn-save" onclick="saveProducto()">
+          <button class="btn-save" id="btnGuardarProducto" onclick="saveProducto()">
             <i class="bi bi-check2 me-1"></i>Guardar producto
           </button>
         </div>
-      </div><div id="tabPane-presentaciones-producto" style="display:none">
-        <p style="font-size:13px;color:#666;margin-bottom:14px">
-          Agrega las presentaciones disponibles para este producto con sus respectivos precios.
-        </p>
-        <div class="alert-msg" id="alertPreciosPresentacion"></div>
-  
-        <div id="ppListado" style="margin-bottom:18px;border-radius:10px;overflow:hidden;border:1px solid #eee">
-          <div style="text-align:center;padding:20px;color:#bbb">Sin presentaciones aún</div>
+      </div>
+
+      <!-- TAB: PRESENTACIONES -->
+      <div id="tabPane-presentaciones-producto" style="display:none;overflow-y:auto;padding:16px 24px 0;flex:1">
+
+        <div style="margin-bottom:12px">
+          <div style="font-weight:700;font-size:13px;color:#1a1a2e">PRESENTACIONES Y PRECIOS</div>
+          <div style="font-size:12px;color:#888">Agrega diferentes presentaciones (CAJA, BLISTER, POTE, etc.) con sus respectivos precios</div>
         </div>
-  
-        <div style="background:#f8f9fa;border-radius:10px;padding:14px">
+
+        <div class="alert-msg" id="alertPreciosPresentacion" style="margin-bottom:10px"></div>
+
+        <div id="ppListado" style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:1px solid #eee">
+          <div style="text-align:center;padding:24px;color:#bbb">Sin presentaciones aun</div>
+        </div>
+
+        <!-- Formulario inline agregar / editar -->
+        <div id="ppFormWrapper" style="background:#f8f9fa;border-radius:10px;padding:14px;border:2px solid #e0f2f1">
           <div style="font-weight:700;font-size:13px;color:#1a1a2e;margin-bottom:10px">
-            <i class="bi bi-plus-circle me-1" style="color:#26a69a"></i>Agregar nueva presentación
+            <i class="bi bi-plus-circle me-1" style="color:#26a69a"></i>
+            <span id="ppFormTitle">AGREGAR NUEVA PRESENTACION</span>
           </div>
-          <div class="row g-2">
+          <input type="hidden" id="ppEditId">
+          <div class="row g-2 mb-2">
             <div class="col-5">
-              <div class="form-label">Presentación</div>
+              <div class="form-label">Presentacion</div>
               <select class="form-control" id="ppPresentacionSelect">
                 <option value="">-- Seleccionar --</option>
               </select>
             </div>
             <div class="col-3">
-              <div class="form-label">Precio Costo (S/)</div>
-              <input class="form-control" id="ppNuevoCosto" type="number" step="0.01" placeholder="0.00">
+              <div class="form-label">Precio Costo</div>
+              <input class="form-control" id="ppNuevoCosto" type="number" step="0.01" placeholder="0.00" value="">
             </div>
-            <div class="col-3">
-              <div class="form-label">Precio Venta (S/) *</div>
+            <div class="col-4">
+              <div class="form-label">Precio Venta *</div>
               <input class="form-control" id="ppNuevoVenta" type="number" step="0.01" placeholder="0.00">
             </div>
-            <div class="col-1 d-flex align-items-end">
-              <button class="btn-save" onclick="agregarPresentacionProducto()"
-                style="padding:9px 12px;white-space:nowrap">
-                <i class="bi bi-plus-lg"></i>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#444">
+              <input type="checkbox" id="ppEsPrincipal" style="width:15px;height:15px;accent-color:#ff7043">
+              Marcar como presentacion principal
+            </label>
+            <div style="display:flex;gap:8px">
+              <button id="ppBtnCancelarEdit" class="btn-cancel"
+                onclick="cancelarEditPP()" style="display:none;padding:8px 16px">
+                Cancelar edicion
+              </button>
+              <button id="ppBtnGuardar" class="btn-save"
+                onclick="guardarPresentacionProducto()" style="padding:9px 20px">
+                <i class="bi bi-plus-lg me-1" id="ppBtnIcon"></i>
+                <span id="ppBtnLabel">Agregar Presentacion</span>
               </button>
             </div>
           </div>
         </div>
-  
-        <div class="modal-footer" style="margin-top:16px">
+
+        <div class="modal-footer" style="margin:16px -24px 0;padding:14px 24px;border-top:1px solid #eee">
+          <button class="btn-cancel" onclick="closeModal('modalProducto')">Cancelar</button>
+          <button class="btn-save" onclick="saveProducto()">
+            <i class="bi bi-check2 me-1"></i>Guardar
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB: FOTOS -->
+      <div id="tabPane-fotos-producto" style="display:none;overflow-y:auto;padding:16px 24px 0;flex:1">
+
+        <div class="alert-msg" id="alertFotos" style="margin-bottom:10px"></div>
+
+        <div id="fotoDropZone"
+          style="border:2px dashed #ddd;border-radius:12px;padding:24px;
+                 text-align:center;cursor:pointer;transition:all .2s;
+                 background:#fafafa;margin-bottom:12px">
+          <i class="bi bi-cloud-upload" style="font-size:36px;color:#bbb;display:block;margin-bottom:8px"></i>
+          <div style="font-weight:600;color:#555;margin-bottom:4px">
+            Arrastra una imagen aqui o haz clic para seleccionar
+          </div>
+          <div style="font-size:12px;color:#aaa">JPEG, PNG, WEBP o GIF - max. 5 MB</div>
+          <input type="file" id="fotoInput" accept="image/jpeg,image/png,image/webp,image/gif"
+            style="display:none" onchange="handleFotoInputChange(this)">
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <button id="btnSubirFoto" class="btn-save"
+            style="padding:9px 20px"
+            onclick="document.getElementById('fotoInput').click()">
+            <i class="bi bi-upload me-1"></i>Subir foto
+          </button>
+        </div>
+
+        <div style="font-size:11px;font-weight:800;letter-spacing:1px;color:#9199ab;margin-bottom:8px">
+          <i class="bi bi-images me-1"></i> GALERIA DE FOTOS
+          <span style="font-weight:400;color:#bbb;margin-left:8px">(star = marcar como principal · las fotos se guardan en servidor)</span>
+        </div>
+        <div id="fotosGaleria">
+          <div style="text-align:center;padding:20px;color:#bbb">
+            <i class="bi bi-image" style="font-size:32px;display:block;margin-bottom:8px"></i>
+            Sin fotos aun
+          </div>
+        </div>
+
+        <div class="modal-footer" style="margin:16px -24px 0;padding:14px 24px;border-top:1px solid #eee">
           <button class="btn-cancel" onclick="closeModal('modalProducto')">Cerrar</button>
         </div>
-      </div></div>
+      </div>
+
+    </div>
   </div>
 
   <div class="modal-overlay" id="modalConfirm">
@@ -1788,6 +1987,79 @@
       <div class="modal-footer">
         <button class="btn-cancel" onclick="closeModal('modalConfirm')">Cancelar</button>
         <button class="btn-save" style="background:#c62828" id="confirmBtn">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: VER INVENTARIO ══════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="modalVerInventario">
+    <div class="modal-box" style="width:720px;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="modal-title" id="verInvProductoNombre" style="margin-bottom:0">Inventario</div>
+        <button onclick="closeModal('modalVerInventario')"
+          style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1">&#10005;</button>
+      </div>
+      <div id="verInvBody">
+        <div style="text-align:center;padding:30px;color:#bbb">Cargando datos...</div>
+      </div>
+      <div class="modal-footer" style="margin-top:16px">
+        <button class="btn-cancel" onclick="closeModal('modalVerInventario')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: ACTUALIZAR STOCK ════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="modalActualizarStock">
+    <div class="modal-box" style="width:640px;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div class="modal-title" id="actStockProductoNombre" style="margin-bottom:0">Actualizar Stock</div>
+        <button onclick="closeModal('modalActualizarStock')"
+          style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1">&#10005;</button>
+      </div>
+
+      <input type="hidden" id="actStockProductoId">
+
+      <!-- KPIs rápidos -->
+      <div style="display:flex;gap:12px;margin-bottom:16px">
+        <div style="background:#e3f2fd;border-radius:8px;padding:10px 16px;flex:1;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:#1565c0" id="actStockTotal">—</div>
+          <div style="font-size:11px;color:#1565c0">Stock Total</div>
+        </div>
+        <div style="background:#fff3e0;border-radius:8px;padding:10px 16px;flex:1;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:#e65100" id="actStockMinimo">—</div>
+          <div style="font-size:11px;color:#e65100">Stock Mínimo</div>
+        </div>
+      </div>
+
+      <div class="alert-msg" id="alertActStock"></div>
+
+      <!-- Campos globales opcionales -->
+      <div class="row g-2 mb-3">
+        <div class="col-6">
+          <div class="form-label">Boleta / Referencia</div>
+          <input class="form-control" id="actStockBoleta" placeholder="Ej: B001-0042">
+        </div>
+        <div class="col-6">
+          <div class="form-label">Observación</div>
+          <input class="form-control" id="actStockObservacion" placeholder="Opcional...">
+        </div>
+      </div>
+
+      <!-- Tarjetas por presentación -->
+      <div id="actStockPresentaciones">
+        <div style="text-align:center;padding:20px;color:#bbb">Cargando...</div>
+      </div>
+
+      <!-- Historial -->
+      <div style="margin-top:20px">
+        <div style="font-size:11px;font-weight:800;letter-spacing:1px;color:#9199ab;margin-bottom:10px">
+          <i class="bi bi-clock-history me-1"></i> HISTORIAL DE MOVIMIENTOS
+        </div>
+        <div id="actStockHistorial"></div>
+      </div>
+
+      <div class="modal-footer" style="margin-top:16px">
+        <button class="btn-cancel" onclick="closeModal('modalActualizarStock')">Cerrar</button>
       </div>
     </div>
   </div>
@@ -2251,6 +2523,8 @@
   <script src="js/categorias.js"></script>
   <script src="js/presentaciones.js"></script>
   <script src="js/productos.js"></script>
+  <script src="js/fotos.js"></script>
+  <script src="js/inventario.js"></script>
   <script src="js/asistencias.js"></script>
 </body>
 

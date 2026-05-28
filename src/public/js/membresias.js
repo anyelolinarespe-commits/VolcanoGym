@@ -435,7 +435,7 @@ function abrirFormPagoCuota(idPago, monto) {
     const form = document.getElementById('formPagoCuota');
     form.style.display = 'block';
     form.innerHTML = `
-    <div style="font-weight:700;margin-bottom:12px;color:#0f3460">
+    <div class="form-pago-titulo" style="font-weight:700;margin-bottom:12px;">
         <i class="bi bi-cash-stack me-2" style="color:#26a69a"></i>Registrar pago — Cuota
     </div>
     <div class="alert-msg" id="alertPagoCuota"></div>
