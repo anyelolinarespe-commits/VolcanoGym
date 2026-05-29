@@ -32,14 +32,14 @@ function renderPresentaciones(data) {
     <tr>
       <td>${p.id_presentacion}</td>
       <td><strong>${p.nombre}</strong></td>
-      <td style="color:#666">${p.descripcion || '—'}</td>
+      <td style="color:var(--color-text-secondary)">${p.descripcion || '—'}</td>
       <td>
         <span class="badge-estado ${p.estado === 1 ? 'badge-activo' : 'badge-inactivo'}">
           ${p.estado === 1 ? 'ACTIVO' : 'INACTIVO'}
         </span>
       </td>
       <td style="display:flex;gap:6px">
-        <button class="btn-icon" title="Editar" onclick="editPresentacion(${p.id_presentacion})">
+        <button class="btn-icon edit" title="Editar" onclick="editPresentacion(${p.id_presentacion})">
           <i class="bi bi-pencil"></i>
         </button>
         <button class="btn-icon danger" title="Eliminar"
@@ -127,11 +127,11 @@ function renderPreciosPresentacion(data) {
     <table style="width:100%;border-collapse:collapse">
       <thead>
         <tr style="background:#f0f4ff">
-          <th style="padding:10px 12px;text-align:left;font-size:11px;color:#555;font-weight:700;border-bottom:2px solid #e0e0ff">PRESENTACIÓN</th>
-          <th style="padding:10px 12px;text-align:right;font-size:11px;color:#555;font-weight:700;border-bottom:2px solid #e0e0ff">P. COSTO</th>
-          <th style="padding:10px 12px;text-align:right;font-size:11px;color:#555;font-weight:700;border-bottom:2px solid #e0e0ff">P. VENTA</th>
-          <th style="padding:10px 12px;text-align:right;font-size:11px;color:#555;font-weight:700;border-bottom:2px solid #e0e0ff">GANANCIA</th>
-          <th style="padding:10px 12px;text-align:center;font-size:11px;color:#555;font-weight:700;border-bottom:2px solid #e0e0ff">ACCIONES</th>
+          <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700;border-bottom:2px solid #e0e0ff">PRESENTACIÓN</th>
+          <th style="padding:10px 12px;text-align:right;font-size:11px;color:var(--color-text-secondary);font-weight:700;border-bottom:2px solid #e0e0ff">P. COSTO</th>
+          <th style="padding:10px 12px;text-align:right;font-size:11px;color:var(--color-text-secondary);font-weight:700;border-bottom:2px solid #e0e0ff">P. VENTA</th>
+          <th style="padding:10px 12px;text-align:right;font-size:11px;color:var(--color-text-secondary);font-weight:700;border-bottom:2px solid #e0e0ff">GANANCIA</th>
+          <th style="padding:10px 12px;text-align:center;font-size:11px;color:var(--color-text-secondary);font-weight:700;border-bottom:2px solid #e0e0ff">ACCIONES</th>
         </tr>
       </thead>
       <tbody>
@@ -149,12 +149,12 @@ function renderPreciosPresentacion(data) {
             <td style="padding:12px">
               <strong>${pp.presentacion}</strong>${principalBadge}
             </td>
-            <td style="padding:12px;text-align:right;color:#666">S/ ${parseFloat(pp.precio_costo).toFixed(2)}</td>
+            <td style="padding:12px;text-align:right;color:var(--color-text-secondary)">S/ ${parseFloat(pp.precio_costo).toFixed(2)}</td>
             <td style="padding:12px;text-align:right;font-weight:700">S/ ${parseFloat(pp.precio_venta).toFixed(2)}</td>
             <td style="padding:12px;text-align:right">${gananciaHtml}</td>
             <td style="padding:12px;text-align:center">
               <div style="display:flex;gap:6px;justify-content:center">
-                <button class="btn-icon" title="Editar"
+                <button class="btn-icon edit" title="Editar"
                   onclick="iniciarEditPP(${pp.id}, ${pp.id_presentacion}, '${pp.presentacion.replace(/'/g,"\\'")}', ${pp.precio_costo}, ${pp.precio_venta}, ${pp.stock_minimo}, ${pp.es_principal})">
                   <i class="bi bi-pencil"></i>
                 </button>

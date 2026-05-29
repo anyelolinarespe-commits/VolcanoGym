@@ -31,23 +31,31 @@ function renderCategorias(data) {
     return;
   }
  
-  tbody.innerHTML = data.map(c => `
+  tbody.innerHTML = data.map(c => {
+    const pct = parseFloat(c.porcentaje_descuento ?? 0);
+    const descuentoBadge = pct > 0
+      ? `<span style="background:var(--color-warning-bg);color:var(--color-warning);padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600">-${pct % 1 === 0 ? pct : pct.toFixed(2)}%</span>`
+      : `<span style="color:var(--color-text-muted);font-size:12px">—</span>`;
+    return `
     <tr>
       <td>${c.id_categoria}</td>
       <td><strong>${c.nombre}</strong></td>
-      <td style="color:#666">${c.descripcion || '—'}</td>
-      <td>
+      <td style="color:var(--color-text-secondary)">${c.descripcion || '—'}</td>
+      <td style="text-align:center">${descuentoBadge}</td>
+      <td style="text-align:center">
         <span class="badge-estado ${c.estado === 1 ? 'badge-activo' : 'badge-inactivo'}">
           ${c.estado === 1 ? 'ACTIVO' : 'INACTIVO'}
         </span>
       </td>
-      <td style="display:flex;gap:6px">
-        <button class="btn-icon" title="Editar" onclick="editCategoria(${c.id_categoria})">
-          <i class="bi bi-pencil"></i>
-        </button>
+      <td>
+        <div style="display:flex;gap:6px;justify-content:center">
+          <button class="btn-icon edit" title="Editar" onclick="editCategoria(${c.id_categoria})">
+            <i class="bi bi-pencil"></i>
+          </button>
+        </div>
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 }
  
 /**
@@ -56,15 +64,16 @@ function renderCategorias(data) {
 function nuevaCategoria() {
   // Limpiar el ID oculto (indica que es un POST)
   document.getElementById('categoriaId').value = '';
-  
+
   // Resetear el formulario
   document.getElementById('categoriaNombre').value = '';
   document.getElementById('categoriaDescripcion').value = '';
-  
+  document.getElementById('categoriaDescuento').value = '0';
+
   // Por defecto, las nuevas categorías son activas (ocultamos el selector de estado)
   const estadoGroup = document.getElementById('categoriaEstadoGroup');
   if (estadoGroup) estadoGroup.style.display = 'none';
-  
+
   // Configurar visual del modal
   document.getElementById('modalCategoriaTitle').textContent = 'Nueva Categoría';
   document.getElementById('alertCategoria').className = 'alert-msg';
@@ -85,6 +94,7 @@ function editCategoria(id) {
   document.getElementById('categoriaId').value = id;
   document.getElementById('categoriaNombre').value = cat.nombre;
   document.getElementById('categoriaDescripcion').value = cat.descripcion || '';
+  document.getElementById('categoriaDescuento').value = parseFloat(cat.porcentaje_descuento ?? 0);
   
   const selectEstado = document.getElementById('categoriaEstado');
   if (selectEstado) selectEstado.value = cat.estado;
@@ -106,21 +116,23 @@ function editCategoria(id) {
  * Guarda o actualiza la categoría mediante la API
  */
 async function saveCategoria() {
-  const id = document.getElementById('categoriaId').value;
-  const nombre = document.getElementById('categoriaNombre').value.trim();
-  const descripcion = document.getElementById('categoriaDescripcion').value.trim();
-  const estado = document.getElementById('categoriaEstado').value;
- 
+  const id             = document.getElementById('categoriaId').value;
+  const nombre         = document.getElementById('categoriaNombre').value.trim();
+  const descripcion    = document.getElementById('categoriaDescripcion').value.trim();
+  const estado         = document.getElementById('categoriaEstado').value;
+  const porcentaje_descuento = parseFloat(document.getElementById('categoriaDescuento').value || 0);
+
   if (!nombre) {
     showAlert('alertCategoria', 'El nombre es requerido');
     return;
   }
- 
+
   try {
-    const payload = { 
-      nombre, 
-      descripcion, 
-      estado: Number(estado) 
+    const payload = {
+      nombre,
+      descripcion,
+      porcentaje_descuento,
+      estado: Number(estado)
     };
  
     if (id) {
@@ -128,7 +140,7 @@ async function saveCategoria() {
       await api('PUT', `/api/categorias/${id}`, payload);
     } else {
       // Si no hay ID, es creación (POST)
-      await api('POST', '/api/categorias', { nombre, descripcion });
+      await api('POST', '/api/categorias', { nombre, descripcion, porcentaje_descuento });
     }
  
     closeModal('modalCategoria');
@@ -142,14 +154,11 @@ async function saveCategoria() {
     showAlert('alertCategoria', e.message);
   }
 }
-/**
- * Alias requerido por openModal() en dashboard-core.js
- * Limpia el formulario y prepara el modal para nueva categoría
- */
 function resetCategoriaForm() {
   document.getElementById('categoriaId').value = '';
   document.getElementById('categoriaNombre').value = '';
   document.getElementById('categoriaDescripcion').value = '';
+  document.getElementById('categoriaDescuento').value = '0';
   document.getElementById('alertCategoria').className = 'alert-msg';
   document.getElementById('modalCategoriaTitle').textContent = 'Nueva Categoría';
   const estadoGroup = document.getElementById('categoriaEstadoGroup');

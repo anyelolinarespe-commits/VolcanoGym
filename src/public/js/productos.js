@@ -6,6 +6,7 @@
 
 let dataProductos            = [];
 let _filtroProductoEstado    = 'todos';
+let _filtroCategoria         = null;   // null = todas las categorías
 let _idProductoActivo        = null;
 // id de producto_presentacion de la presentación principal (para sync de precios)
 let _idPPPrincipalActivo     = null;
@@ -13,7 +14,7 @@ let _idPPPrincipalActivo     = null;
 // ── CARGAR ────────────────────────────────────────────
 async function loadProductos() {
   document.getElementById('tbodyProductos').innerHTML =
-    '<tr class="loading-row"><td colspan="8">Cargando...</td></tr>';
+    '<tr class="loading-row"><td colspan="9">Cargando...</td></tr>';
   try {
     const [productos, stats] = await Promise.all([
       api('GET', '/api/productos'),
@@ -41,25 +42,121 @@ function filtroProducto(f, el) {
   _filtroProductoEstado = f;
   document.querySelectorAll('.chip-prod').forEach(c => c.classList.remove('active'));
   if (el) el.classList.add('active');
+  _aplicarFiltrosProductos();
+}
+
+// Aplica los tres filtros combinados: chip de estado + categoría + búsqueda de texto
+function _aplicarFiltrosProductos() {
+  const q = (document.getElementById('searchProductos')?.value || '').toLowerCase().trim();
 
   let data = dataProductos;
-  if (f === 'activos')    data = data.filter(p => p.estado === 1);
-  if (f === 'inactivos')  data = data.filter(p => p.estado === 0);
-  if (f === 'stock_bajo') data = data.filter(p =>
+  if (_filtroProductoEstado === 'activos')    data = data.filter(p => p.estado === 1);
+  if (_filtroProductoEstado === 'inactivos')  data = data.filter(p => p.estado === 0);
+  if (_filtroProductoEstado === 'stock_bajo') data = data.filter(p =>
     parseInt(p.stock_total) <= parseInt(p.stock_minimo) && p.estado === 1
   );
+  if (_filtroCategoria !== null) {
+    data = data.filter(p => p.id_categoria === _filtroCategoria);
+  }
+
   renderProductos(data);
+
+  if (q) {
+    document.querySelectorAll('#tbodyProductos tr').forEach(tr => {
+      tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  }
+}
+
+// ── COMBOBOX CATEGORÍA ────────────────────────────────
+function _comboCatPoblar(filtroTexto = '') {
+  const list = document.getElementById('comboCatList');
+  if (!list) return;
+  const cats = (typeof dataCategorias !== 'undefined' && dataCategorias.length)
+    ? dataCategorias.filter(c => c.estado === 1)
+    : [];
+  const q = filtroTexto.toLowerCase();
+
+  const todasHtml = `<li class="combo-cat-item combo-cat-todas${_filtroCategoria === null ? ' selected' : ''}"
+    onmousedown="event.preventDefault();_comboCatSeleccionar(null,'')">
+    <i class="bi bi-grid me-1"></i>Todas las categorías
+  </li>`;
+
+  const filtradas = q ? cats.filter(c => c.nombre.toLowerCase().includes(q)) : cats;
+
+  const itemsHtml = filtradas.length
+    ? filtradas.map(c => `<li class="combo-cat-item${_filtroCategoria === c.id_categoria ? ' selected' : ''}"
+        onmousedown="event.preventDefault();_comboCatSeleccionar(${c.id_categoria},'${c.nombre.replace(/'/g, "\\'")}')">
+        ${c.nombre}
+      </li>`).join('')
+    : `<li class="combo-cat-vacio">Sin resultados</li>`;
+
+  list.innerHTML = todasHtml + itemsHtml;
+  list.classList.add('open');
+}
+
+function _comboCatAbrir() {
+  // Al hacer foco, borramos el texto para que el usuario pueda buscar
+  const input = document.getElementById('comboCatInput');
+  input.value = '';
+  _comboCatPoblar('');
+}
+
+function _comboCatFiltrar() {
+  const q = document.getElementById('comboCatInput').value;
+  _comboCatPoblar(q);
+}
+
+function _comboCatBlur() {
+  // Pequeño delay para que el onmousedown de los ítems se ejecute antes de cerrar
+  setTimeout(() => {
+    document.getElementById('comboCatList')?.classList.remove('open');
+    // Restaurar texto al nombre de la categoría seleccionada
+    const input = document.getElementById('comboCatInput');
+    if (_filtroCategoria !== null && typeof dataCategorias !== 'undefined') {
+      const cat = dataCategorias.find(c => c.id_categoria === _filtroCategoria);
+      input.value = cat ? cat.nombre : '';
+    } else {
+      input.value = '';
+    }
+  }, 150);
+}
+
+function _comboCatToggle() {
+  const list = document.getElementById('comboCatList');
+  if (list?.classList.contains('open')) {
+    list.classList.remove('open');
+  } else {
+    document.getElementById('comboCatInput').focus();
+  }
+}
+
+function _comboCatSeleccionar(id, nombre) {
+  _filtroCategoria = id;
+  const input   = document.getElementById('comboCatInput');
+  const clearBtn = document.getElementById('comboCatClear');
+  input.value   = nombre;
+  input.placeholder = id === null ? 'Todas las categorías' : '';
+  if (clearBtn) clearBtn.style.display = id !== null ? 'flex' : 'none';
+  document.getElementById('comboCatList')?.classList.remove('open');
+  _aplicarFiltrosProductos();
+}
+
+function _comboCatLimpiar() {
+  _comboCatSeleccionar(null, '');
+  document.getElementById('comboCatInput').blur();
 }
 
 // ── RENDER TABLA ──────────────────────────────────────
 function renderProductos(data) {
   const tbody = document.getElementById('tbodyProductos');
   if (!data.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Sin productos</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="9">Sin productos</td></tr>';
     return;
   }
 
-  const esAdmin = (USUARIO.perfil || '').toLowerCase() === 'administrador';
+  const _p = (USUARIO.perfil || '').toLowerCase();
+  const esAdmin = _p === 'administrador' || _p === 'superadministrador';
 
   tbody.innerHTML = data.map(p => {
     const stockTotal = parseInt(p.stock_total ?? 0);
@@ -69,88 +166,100 @@ function renderProductos(data) {
     // Precio costo de presentación principal
     const precioCostoNum  = parseFloat(p.precio_costo_principal ?? 0);
     const precioVentaNum  = parseFloat(p.precio_venta_principal ?? 0);
-    const ofertaPct       = parseFloat(p.porcentaje_oferta ?? 0);
+    const ofertaPct       = parseFloat(p.porcentaje_oferta     ?? 0);
+    const catPct          = parseFloat(p.descuento_categoria   ?? 0);
 
-    // Precio final con oferta aplicada
-    const precioFinal = ofertaPct > 0
-      ? precioVentaNum * (1 - ofertaPct / 100)
+    // "El mayor gana": se aplica el descuento más alto
+    const efectivoPct   = Math.max(ofertaPct, catPct);
+    const desdeCategoria = catPct > ofertaPct; // true = ganó el descuento de categoría
+
+    // Precio final con el descuento efectivo
+    const precioFinal = efectivoPct > 0
+      ? precioVentaNum * (1 - efectivoPct / 100)
       : precioVentaNum;
 
     // Columna precio costo (solo admin)
     const costoHtml = esAdmin
-      ? `<td style="font-size:12px;color:#666">${precioCostoNum > 0 ? `S/ ${precioCostoNum.toFixed(2)}` : '—'}</td>`
-      : '<td style="color:#ccc">—</td>';
+      ? `<td style="font-size:12px;color:var(--color-text-secondary);text-align:right">${precioCostoNum > 0 ? `S/ ${precioCostoNum.toFixed(2)}` : '—'}</td>`
+      : '<td style="color:#ccc;text-align:right">—</td>';
 
-    // Columna precio con oferta
+    // Columna precio con descuento efectivo
     let precioHtml = '—';
     if (precioVentaNum > 0) {
-      if (ofertaPct > 0) {
+      if (efectivoPct > 0) {
         precioHtml = `
-          <div style="text-decoration:line-through;color:#aaa;font-size:11px">S/ ${precioVentaNum.toFixed(2)}</div>
+          <div style="text-decoration:line-through;color:var(--color-text-muted);font-size:11px">S/ ${precioVentaNum.toFixed(2)}</div>
           <div style="color:#c62828;font-weight:700">S/ ${precioFinal.toFixed(2)}</div>`;
       } else {
         precioHtml = `<strong>S/ ${precioVentaNum.toFixed(2)}</strong>`;
       }
     }
 
-    // Badge oferta
-    const ofertaBadge = ofertaPct > 0
-      ? `<span style="font-size:11px;background:#26a69a;color:#fff;padding:2px 8px;border-radius:20px;font-weight:700">${ofertaPct.toFixed(2)}%</span>`
-      : '<span style="color:#aaa;font-size:12px">—</span>';
+    // Badge oferta: verde = descuento propio, naranja = heredado de categoría
+    const _fmtPct = v => v % 1 === 0 ? v : v.toFixed(2);
+    let ofertaBadge;
+    if (efectivoPct <= 0) {
+      ofertaBadge = '<span style="color:var(--color-text-muted);font-size:12px">—</span>';
+    } else if (desdeCategoria) {
+      ofertaBadge = `<span style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;font-size:11px;background:var(--color-warning-bg);color:var(--color-warning);padding:2px 8px;border-radius:20px;font-weight:700" title="Descuento de categoría '${p.categoria}'">${_fmtPct(catPct)}% <span style="font-size:9px;opacity:.75">(cat.)</span></span>`;
+    } else {
+      ofertaBadge = `<span style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;font-size:11px;background:var(--color-teal-bg);color:var(--color-teal);padding:2px 8px;border-radius:20px;font-weight:700" title="Descuento propio del producto">${_fmtPct(ofertaPct)}% <span style="font-size:9px;opacity:.75">(prod.)</span></span>`;
+    }
 
     // Badge presentaciones
     const presCount = Array.isArray(p.presentaciones) ? p.presentaciones.length : 0;
     const presBadge = presCount > 0
-      ? `<span style="font-size:10px;background:#e3f2fd;color:#1565c0;padding:2px 7px;border-radius:10px;margin-left:6px">
+      ? `<span style="font-size:10px;background:var(--color-info-bg);color:var(--color-info);padding:2px 7px;border-radius:10px;margin-left:6px">
            ${presCount} pres.
          </span>`
-      : '<span style="font-size:10px;background:#fff3e0;color:#e65100;padding:2px 7px;border-radius:10px;margin-left:6px">Sin pres.</span>';
+      : '<span style="font-size:10px;background:var(--color-warning-bg);color:var(--color-warning);padding:2px 7px;border-radius:10px;margin-left:6px">Sin pres.</span>';
 
     // Ganancia (solo admin)
     let gananciaHtml = '';
     if (esAdmin && precioCostoNum > 0 && precioFinal > 0) {
       const ganancia = precioFinal - precioCostoNum;
       const ganPct   = (ganancia / precioCostoNum * 100).toFixed(1);
-      gananciaHtml   = `<div style="font-size:10px;color:${ganancia >= 0 ? '#2e7d32' : '#c62828'}">
-        ${ganancia >= 0 ? '+' : ''}S/ ${ganancia.toFixed(2)} (${ganPct}%)
-      </div>`;
+      gananciaHtml   = `<div style="font-size:10px;color:${ganancia >= 0 ? '#2e7d32' : '#c62828'};white-space:nowrap">${ganancia >= 0 ? '+' : ''}S/ ${ganancia.toFixed(2)} (${ganPct}%)</div>`;
     }
 
     return `<tr>
-      <td style="font-size:12px;color:#999">${p.id_producto}</td>
-      <td>
-        <strong style="color:#0f3460;cursor:pointer" onclick="editProducto(${p.id_producto})">${p.nombre}</strong>
-        ${presBadge}
-        ${p.descripcion ? `<div style="font-size:11px;color:#aaa">${p.descripcion.slice(0,45)}${p.descripcion.length>45?'…':''}</div>` : ''}
-        ${p.marca ? `<div style="font-size:11px;color:#bbb">Marca: ${p.marca}</div>` : ''}
+      <td style="font-size:12px;color:var(--color-text-muted);text-align:center">${p.id_producto}</td>
+      <td style="max-width:200px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:nowrap;overflow:hidden">
+          <strong style="color:var(--color-secondary);cursor:pointer;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0" onclick="editProducto(${p.id_producto})">${p.nombre}</strong>
+          ${presBadge}
+        </div>
+        ${(p.descripcion || p.marca) ? `<div style="font-size:10px;color:var(--color-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px">${p.descripcion ? p.descripcion.slice(0,32)+(p.descripcion.length>32?'…':'') : ''}${p.descripcion && p.marca ? ' · ' : ''}${p.marca ? p.marca : ''}</div>` : ''}
       </td>
-      <td><span class="badge-perfil">${p.categoria}</span></td>
+      <td><span class="badge-perfil" style="white-space:nowrap">${p.categoria}</span></td>
       ${costoHtml}
-      <td>${precioHtml}${gananciaHtml}</td>
+      <td style="text-align:right">${precioHtml}${gananciaHtml}</td>
       <td style="text-align:center">${ofertaBadge}</td>
-      <td style="text-align:center">
+      <td style="text-align:center;white-space:nowrap">
         <span style="${stockColor}">${stockTotal}</span>
-        <div style="font-size:10px;color:#aaa">mín ${p.stock_minimo}</div>
-        ${stockBajo ? '<span style="font-size:10px;background:#ffebee;color:#c62828;padding:1px 5px;border-radius:8px">⚠ Bajo</span>' : ''}
+        <span style="font-size:10px;color:var(--color-text-muted)"> / ${p.stock_minimo}</span>
+        ${stockBajo ? '<div style="font-size:10px;background:var(--color-danger-bg);color:var(--color-danger);padding:0 5px;border-radius:8px;margin-top:2px;display:inline-block">⚠ Bajo</div>' : ''}
       </td>
-      <td>
+      <td style="text-align:center">
         <span class="badge-estado ${p.estado === 1 ? 'badge-activo' : 'badge-inactivo'}">
           ${p.estado === 1 ? 'ACTIVO' : 'INACTIVO'}
         </span>
       </td>
-      <td style="display:flex;gap:5px;flex-wrap:wrap">
-        <button class="btn-icon" title="Editar producto" onclick="editProducto(${p.id_producto})">
-          <i class="bi bi-pencil"></i>
-        </button>
-        <button class="btn-icon" title="Ver inventario"
-          onclick="verInventarioProducto(${p.id_producto})"
-          style="background:#e3f2fd;color:#1565c0">
-          <i class="bi bi-eye"></i>
-        </button>
-        <button class="btn-icon danger" title="Eliminar"
-          onclick="confirmDelete('producto', ${p.id_producto}, '${p.nombre.replace(/'/g,"\\'")}')">
-          <i class="bi bi-trash"></i>
-        </button>
+      <td>
+        <div style="display:flex;gap:5px;align-items:center;justify-content:center">
+          <button class="btn-icon edit" title="Editar producto" onclick="editProducto(${p.id_producto})">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <button class="btn-icon" title="Ver inventario"
+            onclick="verInventarioProducto(${p.id_producto})"
+            style="background:var(--color-info-bg);color:var(--color-info)">
+            <i class="bi bi-eye"></i>
+          </button>
+          <button class="btn-icon danger" title="Eliminar"
+            onclick="confirmDelete('producto', ${p.id_producto}, '${p.nombre.replace(/'/g,"\\'")}')">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
       </td>
     </tr>`;
   }).join('');
@@ -230,7 +339,7 @@ async function onCategoriaProductoChange(idCategoria) {
       infoEl.innerHTML = '<span style="color:#e65100">⚠ Esta categoría no tiene presentaciones asignadas. Configúralas en el módulo Presentaciones.</span>';
     } else {
       infoEl.innerHTML = `<span style="color:#2e7d32">✓ ${pres.length} presentación${pres.length>1?'es':''} disponible${pres.length>1?'s':''}:</span>
-        <span style="color:#555;margin-left:4px">${pres.map(p=>p.nombre).join(', ')}</span>`;
+        <span style="color:var(--color-text-secondary);margin-left:4px">${pres.map(p=>p.nombre).join(', ')}</span>`;
     }
     await cargarPresentacionesPrincipalRef(idCategoria);
   } catch (e) {
@@ -461,7 +570,7 @@ async function saveProducto() {
   const oferta        = document.getElementById('productoOferta')?.value               || 0;
   const peso_kg       = document.getElementById('productoPeso')?.value                 || null;
   const dimensiones   = document.getElementById('productoDimensiones')?.value.trim()   || null;
-  const garantia      = document.getElementById('productoGarantia')?.value             || 0;
+  const garantia             = document.getElementById('productoGarantia')?.value             || 0;
 
   // Precios ingresados en el tab datos (de la presentación principal)
   const precioCosto = parseFloat(document.getElementById('productoPrecioCosto')?.value ?? 0);
@@ -484,9 +593,9 @@ async function saveProducto() {
       porcentaje_oferta: Number(oferta ?? 0),
       peso_kg:           peso_kg ? Number(peso_kg) : null,
       dimensiones,
-      garantia_meses:    Number(garantia ?? 0),
-      stock_minimo:      Number(stock_minimo ?? 5),
-      estado:            Number(estado ?? 1)
+      garantia_meses:          Number(garantia ?? 0),
+      stock_minimo:            Number(stock_minimo ?? 5),
+      estado:                  Number(estado ?? 1)
     };
 
     if (id) {

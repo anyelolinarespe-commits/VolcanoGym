@@ -813,3 +813,61 @@ body[data-theme="dark"] #fotoDropZone:hover {
 #fotosGaleria img:hover {
   opacity: .85;
 }
+/* ── COMBO CATEGORÍA (filtro productos) ───────────────────────────────── */
+.combo-cat { position: relative; min-width: 200px; }
+.combo-cat-wrap {
+  display: flex; align-items: center;
+  border: 1px solid #e0e0e0; border-radius: 8px;
+  padding: 0 10px; background: #fff; gap: 6px; height: 34px;
+  cursor: text; transition: border-color .15s;
+}
+.combo-cat-wrap:focus-within { border-color: var(--accent); }
+.combo-cat-icon { color: #aaa; font-size: 13px; flex-shrink: 0; pointer-events: none; }
+.combo-cat-wrap input {
+  border: none !important; padding: 0 !important;
+  flex: 1; min-width: 0; font-size: 13px; outline: none;
+  background: transparent; width: auto !important; color: inherit;
+}
+.combo-cat-arrow {
+  color: #aaa; font-size: 11px; flex-shrink: 0;
+  cursor: pointer; padding: 2px; transition: transform .15s;
+}
+.combo-cat-wrap:focus-within .combo-cat-arrow { transform: rotate(180deg); }
+.combo-cat-clear {
+  color: #aaa; font-size: 13px; cursor: pointer;
+  display: none; align-items: center; flex-shrink: 0;
+  padding: 2px; border-radius: 4px;
+}
+.combo-cat-clear:hover { color: #e94560; }
+.combo-cat-list {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.1); z-index: 1000;
+  max-height: 220px; overflow-y: auto;
+  list-style: none; margin: 0; padding: 4px 0;
+  display: none;
+}
+.combo-cat-list.open { display: block; }
+.combo-cat-item {
+  padding: 8px 14px; font-size: 13px; cursor: pointer;
+  color: #333; transition: background .1s; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.combo-cat-item:hover { background: #f5f7fc; }
+.combo-cat-item.selected { color: var(--accent); font-weight: 600; }
+.combo-cat-todas { color: #888; border-bottom: 1px solid #f0f0f0; font-style: italic; }
+.combo-cat-vacio { color: #bbb; font-size: 12px; text-align: center; padding: 10px; cursor: default; }
+
+/* dark mode */
+body[data-theme="dark"] .combo-cat-wrap { background: #1a1a1a; border-color: #2e2e2e; }
+body[data-theme="dark"] .combo-cat-icon,
+body[data-theme="dark"] .combo-cat-arrow { color: #555; }
+body[data-theme="dark"] .combo-cat-list { background: #1a1a1a; border-color: #2e2e2e; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+body[data-theme="dark"] .combo-cat-item { color: #ccc; }
+body[data-theme="dark"] .combo-cat-item:hover { background: #111; }
+body[data-theme="dark"] .combo-cat-todas { border-bottom-color: #2e2e2e; }
+
+/* responsive */
+@media (max-width: 600px) {
+  .combo-cat { min-width: 100%; }
+}

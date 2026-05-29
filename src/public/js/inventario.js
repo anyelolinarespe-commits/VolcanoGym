@@ -50,18 +50,18 @@ function renderInventario(data) {
          </span>`;
 
     return `<tr style="${esCritico ? 'background:#fff8f8' : ''}">
-      <td style="font-size:12px;color:#999">#${p.id_producto}</td>
+      <td style="font-size:12px;color:var(--color-text-muted)">#${p.id_producto}</td>
       <td>
-        <strong style="color:#0f3460;cursor:pointer"
+        <strong style="color:var(--color-secondary);cursor:pointer"
           onclick="verInventarioProducto(${p.id_producto})">${p.producto}</strong>
-        <div style="font-size:11px;color:#aaa">${p.categoria}</div>
+        <div style="font-size:11px;color:var(--color-text-muted)">${p.categoria}</div>
       </td>
       <td style="text-align:center">
         <span style="${stockColor}">${p.stock_total}</span>
       </td>
-      <td style="text-align:center;color:#888">${p.stock_minimo}</td>
+      <td style="text-align:center;color:var(--color-text-muted)">${p.stock_minimo}</td>
       <td style="text-align:center">${badgeHtml}</td>
-      <td style="text-align:right;font-weight:600;color:#0f3460">
+      <td style="text-align:right;font-weight:600;color:var(--color-secondary)">
         S/ ${parseFloat(p.valor_total_inventario).toFixed(2)}
       </td>
       <td style="display:flex;gap:5px">
@@ -138,12 +138,12 @@ async function verInventarioProducto(idProducto) {
         <table style="width:100%;border-collapse:collapse">
           <thead>
             <tr style="background:#f0f4ff">
-              <th style="padding:10px 14px;text-align:left;font-size:12px;color:#555;font-weight:700">PRESENTACIÓN</th>
-              <th style="padding:10px 14px;text-align:center;font-size:12px;color:#555;font-weight:700">STOCK</th>
-              <th style="padding:10px 14px;text-align:right;font-size:12px;color:#555;font-weight:700">P. COSTO</th>
-              <th style="padding:10px 14px;text-align:right;font-size:12px;color:#555;font-weight:700">P. VENTA</th>
-              <th style="padding:10px 14px;text-align:center;font-size:12px;color:#555;font-weight:700">MARGEN</th>
-              <th style="padding:10px 14px;text-align:center;font-size:12px;color:#555;font-weight:700">ESTADO</th>
+              <th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--color-text-secondary);font-weight:700">PRESENTACIÓN</th>
+              <th style="padding:10px 14px;text-align:center;font-size:12px;color:var(--color-text-secondary);font-weight:700">STOCK</th>
+              <th style="padding:10px 14px;text-align:right;font-size:12px;color:var(--color-text-secondary);font-weight:700">P. COSTO</th>
+              <th style="padding:10px 14px;text-align:right;font-size:12px;color:var(--color-text-secondary);font-weight:700">P. VENTA</th>
+              <th style="padding:10px 14px;text-align:center;font-size:12px;color:var(--color-text-secondary);font-weight:700">MARGEN</th>
+              <th style="padding:10px 14px;text-align:center;font-size:12px;color:var(--color-text-secondary);font-weight:700">ESTADO</th>
             </tr>
           </thead>
           <tbody>
@@ -160,7 +160,7 @@ async function verInventarioProducto(idProducto) {
                     : ''}
                 </td>
                 <td style="padding:12px 14px;text-align:center;font-size:18px;font-weight:700;color:${estadoColor}">${pr.stock_actual}</td>
-                <td style="padding:12px 14px;text-align:right;color:#666">S/ ${parseFloat(pr.precio_costo).toFixed(2)}</td>
+                <td style="padding:12px 14px;text-align:right;color:var(--color-text-secondary)">S/ ${parseFloat(pr.precio_costo).toFixed(2)}</td>
                 <td style="padding:12px 14px;text-align:right;font-weight:700">S/ ${parseFloat(pr.precio_venta).toFixed(2)}</td>
                 <td style="padding:12px 14px;text-align:center;font-weight:600;color:#2e7d32">${pr.margen_porcentaje}%</td>
                 <td style="padding:12px 14px;text-align:center">
@@ -194,7 +194,7 @@ async function verInventarioProducto(idProducto) {
       </div>
 
       ${uv.length > 0 ? `
-      <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--color-text-secondary);margin-bottom:8px">
         <i class="bi bi-clock-history me-1"></i>Últimas Ventas
       </div>
       <div style="border:1px solid #eee;border-radius:10px;overflow:hidden">
@@ -203,8 +203,8 @@ async function verInventarioProducto(idProducto) {
           return `<div style="padding:10px 14px;border-bottom:1px solid #f5f5f5;display:flex;justify-content:space-between;align-items:center">
             <div>
               <strong style="font-size:13px">${v.cliente}</strong>
-              ${v.presentacion ? `<span style="font-size:10px;background:#e3f2fd;color:#1565c0;padding:2px 6px;border-radius:6px;margin-left:6px">${v.presentacion}</span>` : ''}
-              <div style="font-size:11px;color:#999">${v.cantidad} unid. × S/ ${parseFloat(v.precio_unitario).toFixed(2)} — ${new Date(v.created_at).toLocaleDateString('es-PE')}</div>
+              ${v.presentacion ? `<span style="font-size:10px;background:var(--color-info-bg);color:var(--color-info);padding:2px 6px;border-radius:6px;margin-left:6px">${v.presentacion}</span>` : ''}
+              <div style="font-size:11px;color:var(--color-text-muted)">${v.cantidad} unid. × S/ ${parseFloat(v.precio_unitario).toFixed(2)} — ${new Date(v.created_at).toLocaleDateString('es-PE')}</div>
             </div>
             <div style="text-align:right">
               <div style="font-weight:700;color:${esGanancia ? '#2e7d32' : '#c62828'}">
@@ -278,7 +278,7 @@ function renderActualizarStockPresentaciones(presentaciones) {
             ${pr.es_principal
               ? '<span style="font-size:10px;background:#fff3e0;color:#e65100;padding:2px 6px;border-radius:6px;margin-left:6px">PRINCIPAL</span>'
               : ''}
-            <div style="font-size:12px;color:#888">Precio: S/ ${parseFloat(pr.precio_venta).toFixed(2)}</div>
+            <div style="font-size:12px;color:var(--color-text-muted)">Precio: S/ ${parseFloat(pr.precio_venta).toFixed(2)}</div>
           </div>
           <div style="text-align:right">
             <div style="font-size:28px;font-weight:800;color:${estadoColor}">${pr.stock_actual}</div>
@@ -291,7 +291,7 @@ function renderActualizarStockPresentaciones(presentaciones) {
         <!-- FORMULARIO ACTUALIZAR -->
         <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">
           <div>
-            <div style="font-size:11px;color:#666;margin-bottom:4px;font-weight:600">Operación</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:4px;font-weight:600">Operación</div>
             <select class="form-control" id="tipo_${pr.id_pp}" style="font-size:13px">
               <option value="ingreso">Ingreso</option>
               <option value="ajuste">Ajuste</option>
@@ -299,7 +299,7 @@ function renderActualizarStockPresentaciones(presentaciones) {
             </select>
           </div>
           <div>
-            <div style="font-size:11px;color:#666;margin-bottom:4px;font-weight:600">Cantidad</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:4px;font-weight:600">Cantidad</div>
             <input type="number" class="form-control" id="cant_${pr.id_pp}"
               min="1" placeholder="0" style="font-size:13px">
           </div>
@@ -328,20 +328,20 @@ function renderActualizarStockHistorial(historial) {
     <table style="width:100%;border-collapse:collapse">
       <thead>
         <tr style="background:#f0f4ff">
-          <th style="padding:8px 12px;text-align:left;font-size:11px;color:#555;font-weight:700">FECHA</th>
-          <th style="padding:8px 12px;text-align:left;font-size:11px;color:#555;font-weight:700">PRESENTACIÓN</th>
-          <th style="padding:8px 12px;text-align:center;font-size:11px;color:#555;font-weight:700">ANTES</th>
-          <th style="padding:8px 12px;text-align:center;font-size:11px;color:#555;font-weight:700">DESPUÉS</th>
-          <th style="padding:8px 12px;text-align:left;font-size:11px;color:#555;font-weight:700">BOLETA</th>
-          <th style="padding:8px 12px;text-align:left;font-size:11px;color:#555;font-weight:700">OBSERVACIÓN</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">FECHA</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">PRESENTACIÓN</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--color-text-secondary);font-weight:700">ANTES</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--color-text-secondary);font-weight:700">DESPUÉS</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">BOLETA</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">OBSERVACIÓN</th>
         </tr>
       </thead>
       <tbody>
         ${historial.map(h => `
           <tr style="border-bottom:1px solid #f5f5f5">
-            <td style="padding:8px 12px;font-size:12px;color:#555">
+            <td style="padding:8px 12px;font-size:12px;color:var(--color-text-secondary)">
               ${new Date(h.fecha).toLocaleDateString('es-PE')}<br>
-              <span style="color:#aaa">${new Date(h.fecha).toLocaleTimeString('es-PE', {hour:'2-digit',minute:'2-digit'})}</span>
+              <span style="color:var(--color-text-muted)">${new Date(h.fecha).toLocaleTimeString('es-PE', {hour:'2-digit',minute:'2-digit'})}</span>
             </td>
             <td style="padding:8px 12px">
               <div style="font-size:12px">${h.presentacion}</div>
@@ -349,13 +349,22 @@ function renderActualizarStockHistorial(historial) {
                 ${h.tipo.toUpperCase()}
               </span>
             </td>
-            <td style="padding:8px 12px;text-align:center;font-size:13px;color:#888">${h.stock_antes}</td>
+            <td style="padding:8px 12px;text-align:center;font-size:13px;color:var(--color-text-muted)">${h.stock_antes}</td>
             <td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:700;color:${h.cantidad > 0 ? '#2e7d32' : '#c62828'}">${h.stock_despues}</td>
-            <td style="padding:8px 12px;font-size:12px;color:#666">${h.boleta_ref || '—'}</td>
-            <td style="padding:8px 12px;font-size:12px;color:#666">${h.observacion || '—'}</td>
+            <td style="padding:8px 12px;font-size:12px;color:var(--color-text-secondary)">${h.boleta_ref || '—'}</td>
+            <td style="padding:8px 12px;font-size:12px;color:var(--color-text-secondary)">${h.observacion || '—'}</td>
           </tr>`).join('')}
       </tbody>
     </table>`;
+}
+
+// Limitar filas visibles según el selector "Mostrar X registros"
+function limitarFilasInventario(limit) {
+  limit = parseInt(limit || 10);
+  const rows = document.querySelectorAll('#tbodyInventario tr:not(.loading-row):not(.empty-row)');
+  rows.forEach((tr, i) => {
+    tr.style.display = i < limit ? '' : 'none';
+  });
 }
 
 async function guardarMovimiento(idPp, stockActual) {

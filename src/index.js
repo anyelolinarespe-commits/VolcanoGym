@@ -43,7 +43,7 @@ app.use('/api/productos',      productosRoutes);
 app.use('/api/presentaciones', presentacionesRoutes);
 app.use('/api/asistencias',   asistenciasRoutes);
 app.use('/api/inventario', inventarioRoutes);
-app.use('/api/productos', fotosRoutes);
+app.use('/api/productos/:id/fotos', fotosRoutes);
 
 // Páginas
 app.get('/',          (req, res) => res.sendFile(__dirname + '/public/login.html'));

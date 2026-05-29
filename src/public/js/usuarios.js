@@ -52,7 +52,7 @@ function renderUsuarios(data) {
       <td style="display:flex;gap:6px">
         ${bloqEdit
         ? `<button class="btn-icon" disabled style="opacity:.35"><i class="bi bi-pencil"></i></button>`
-        : `<button class="btn-icon" onclick="editUsuario(${u.id_usuario})"><i class="bi bi-pencil"></i></button>`}
+        : `<button class="btn-icon edit" onclick="editUsuario(${u.id_usuario})"><i class="bi bi-pencil"></i></button>`}
         ${bloqDel
         ? `<button class="btn-icon danger" disabled style="opacity:.35"><i class="bi bi-lock"></i></button>`
         : `<button class="btn-icon danger" onclick="confirmDelete('usuario',${u.id_usuario},'${u.nombre}')"><i class="bi bi-trash"></i></button>`}

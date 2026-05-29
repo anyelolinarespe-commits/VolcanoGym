@@ -286,9 +286,9 @@ function buildHomeCards() {
     { ruta: 'planes',         color: '#7c4dff', icon: 'bi-grid-3x3-gap',   label: 'Planes',         countId: 'countPlanes'         },
     { ruta: 'asistencias',    color: '#26a69a', icon: 'bi-calendar-check', label: 'Asistencias',    countId: 'countAsistencias'    },
     { ruta: 'categorias',     color: '#26a69a', icon: 'bi-tag',            label: 'Categorías',     countId: 'countCategorias'     },
-    { ruta: 'presentaciones', color: '#00897b', icon: 'bi-box2',           label: 'Presentaciones', countId: 'countPresentaciones' }, // ← NUEVO
-    { ruta: 'productos',      color: '#ff7043', icon: 'bi-box-seam',       label: 'Productos',      countId: 'countProductos'      },
     { ruta: 'inventario',     color: '#1565c0', icon: 'bi-clipboard-data', label: 'Inventario',     countId: 'countInventario'     },
+    { ruta: 'presentaciones', color: '#00897b', icon: 'bi-box2',           label: 'Presentaciones', countId: 'countPresentaciones' },
+    { ruta: 'productos',      color: '#ff7043', icon: 'bi-box-seam',       label: 'Productos',      countId: 'countProductos'      },
     { ruta: 'perfiles',       color: '#e94560', icon: 'bi-shield-check',   label: 'Perfiles',       countId: 'countPerfiles'       },
     { ruta: 'usuarios',       color: '#0f3460', icon: 'bi-people',         label: 'Usuarios',       countId: 'countUsuarios'       },
   ];

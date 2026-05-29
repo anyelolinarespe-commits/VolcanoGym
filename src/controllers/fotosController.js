@@ -8,7 +8,7 @@ const __dirname  = path.dirname(__filename);
 
 // Directorio físico donde se guardan las fotos
 // Ajusta según tu estructura: normalmente /public/uploads/productos/
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'public', 'uploads', 'productos');
+const UPLOAD_DIR = path.join(__dirname, '..', 'public', 'uploads', 'productos');
 
 // Asegurar que el directorio exista al arrancar
 if (!fs.existsSync(UPLOAD_DIR)) {
@@ -202,7 +202,7 @@ export const deleteFoto = async (req, res) => {
         await client.query('COMMIT');
 
         // Borrar archivo físico del disco
-        const rutaFisica = path.join(__dirname, '..', '..', 'public', url_foto);
+        const rutaFisica = path.join(__dirname, '..', 'public', url_foto);
         fs.unlink(rutaFisica, (err) => {
             if (err) console.warn('No se pudo borrar el archivo:', rutaFisica);
         });

@@ -43,6 +43,7 @@ export const getProductos = async (req, res) => {
                 p.created_at,
                 c.id_categoria,
                 c.nombre                            AS categoria,
+                c.porcentaje_descuento              AS descuento_categoria,
 
                 -- Stock total = suma de todas las presentaciones activas
                 COALESCE((
@@ -282,19 +283,19 @@ export const updateProducto = async (req, res) => {
     try {
         const result = await pool.query(
             `UPDATE producto SET
-                id_categoria       = $1,
-                nombre             = $2,
-                descripcion        = $3,
-                marca              = $4,
-                modelo             = $5,
-                sku                = $6,
-                codigo_barras      = $7,
-                porcentaje_oferta  = $8,
-                peso_kg            = $9,
-                dimensiones        = $10,
-                garantia_meses     = $11,
-                stock_minimo       = $12,
-                estado             = $13
+                id_categoria            = $1,
+                nombre                  = $2,
+                descripcion             = $3,
+                marca                   = $4,
+                modelo                  = $5,
+                sku                     = $6,
+                codigo_barras           = $7,
+                porcentaje_oferta       = $8,
+                peso_kg                 = $9,
+                dimensiones             = $10,
+                garantia_meses          = $11,
+                stock_minimo            = $12,
+                estado                  = $13
              WHERE id_producto = $14 AND estado != 2
              RETURNING *`,
             [

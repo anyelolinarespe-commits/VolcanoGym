@@ -16,7 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
 // ── DIRECTORIO DE SUBIDA ───────────────────────────────
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'public', 'uploads', 'productos');
+const UPLOAD_DIR = path.join(__dirname, '..', 'public', 'uploads', 'productos');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 // ── CONFIGURACIÓN MULTER ───────────────────────────────

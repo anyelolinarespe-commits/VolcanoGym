@@ -239,12 +239,13 @@
                 <th>#</th>
                 <th>NOMBRE</th>
                 <th>DESCRIPCIÓN</th>
-                <th>ESTADO</th>
-                <th>ACCIONES</th>
+                <th style="text-align:center">DESCUENTO</th>
+                <th style="text-align:center">ESTADO</th>
+                <th style="text-align:center">ACCIONES</th>
               </tr>
             </thead>
             <tbody id="tbodyCategorias">
-              <tr class="loading-row"><td colspan="5">Cargando...</td></tr>
+              <tr class="loading-row"><td colspan="6">Cargando...</td></tr>
             </tbody>
           </table>
         </div>
@@ -306,22 +307,47 @@
       
         <div class="table-card">
           <div class="table-toolbar">
-            <input type="text" id="searchProductos" placeholder="🔍 Buscar producto o categoría..."
-              oninput="filtrarTabla('productos')">
+            <input type="text" id="searchProductos" placeholder="🔍 Buscar producto..."
+              oninput="_aplicarFiltrosProductos()">
+            <div class="combo-cat" id="comboCat">
+              <div class="combo-cat-wrap">
+                <i class="bi bi-tag combo-cat-icon"></i>
+                <input type="text" id="comboCatInput" placeholder="Todas las categorías"
+                  autocomplete="off"
+                  oninput="_comboCatFiltrar()"
+                  onfocus="_comboCatAbrir()"
+                  onblur="_comboCatBlur()">
+                <i class="bi bi-x-lg combo-cat-clear" id="comboCatClear"
+                   title="Quitar filtro de categoría" onclick="_comboCatLimpiar()"></i>
+                <i class="bi bi-chevron-down combo-cat-arrow" onmousedown="event.preventDefault();_comboCatToggle()"></i>
+              </div>
+              <ul class="combo-cat-list" id="comboCatList"></ul>
+            </div>
           </div>
           <div style="overflow-x:auto">
-            <table>
+            <table style="table-layout:fixed;width:100%">
+              <colgroup>
+                <col style="width:50px">
+                <col>
+                <col style="width:160px">
+                <col style="width:120px">
+                <col style="width:130px">
+                <col style="width:90px">
+                <col style="width:100px">
+                <col style="width:90px">
+                <col style="width:115px">
+              </colgroup>
               <thead>
                 <tr>
-                  <th>ID</th>
+                  <th style="text-align:center">ID</th>
                   <th>NOMBRE</th>
                   <th>CATEGORÍA</th>
-                  <th>PRECIO COSTO</th>
-                  <th>PRECIO</th>
-                  <th>OFERTA</th>
-                  <th>STOCK MÍN.</th>
-                  <th>ESTADO</th>
-                  <th>ACCIONES</th>
+                  <th style="text-align:right">PRECIO COSTO</th>
+                  <th style="text-align:right">PRECIO</th>
+                  <th style="text-align:center">OFERTA</th>
+                  <th style="text-align:center">STOCK MÍN.</th>
+                  <th style="text-align:center">ESTADO</th>
+                  <th style="text-align:center">ACCIONES</th>
                 </tr>
               </thead>
               <tbody id="tbodyProductos">
@@ -335,25 +361,76 @@
       <!-- ══ INVENTARIO ══════════════════════════════════════════════════════ -->
       <div class="view" id="view-inventario">
         <div class="mod-header">
-          <span class="mod-title"><i class="bi bi-archive me-2"></i>Inventario</span>
+          <div>
+            <span class="mod-title"><i class="bi bi-archive me-2"></i>Gestión de Inventario</span>
+            <div style="font-size:13px;color:#888;margin-top:2px">Control de stock y movimiento de productos</div>
+          </div>
         </div>
 
-        <div class="stats-row">
-          <div class="stat-pill"><span class="sp-num sp-activos" id="inv-total">—</span> productos</div>
-          <div class="stat-pill"><span class="sp-num" style="color:#c62828" id="inv-critico">—</span> stock crítico</div>
-          <div class="stat-pill"><span class="sp-num" style="color:#2e7d32" id="inv-optimo">—</span> stock óptimo</div>
-          <div class="stat-pill"><span class="sp-num" style="color:#1565c0" id="inv-valor">—</span> valor total</div>
+        <!-- KPI cards -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+          <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8f0;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+            <div style="width:44px;height:44px;border-radius:10px;background:#e8eaf6;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="bi bi-boxes" style="font-size:20px;color:#3949ab"></i>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">TOTAL PRODUCTOS</div>
+              <div style="font-size:26px;font-weight:800;color:#1a1a2e;line-height:1.1" id="inv-total">—</div>
+            </div>
+          </div>
+          <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8f0;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+            <div style="width:44px;height:44px;border-radius:10px;background:#ffebee;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="bi bi-exclamation-circle" style="font-size:20px;color:#c62828"></i>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">STOCK CRÍTICO</div>
+              <div style="font-size:26px;font-weight:800;color:#c62828;line-height:1.1" id="inv-critico">—</div>
+            </div>
+          </div>
+          <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8f0;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+            <div style="width:44px;height:44px;border-radius:10px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="bi bi-check-circle" style="font-size:20px;color:#2e7d32"></i>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">STOCK ÓPTIMO</div>
+              <div style="font-size:26px;font-weight:800;color:#2e7d32;line-height:1.1" id="inv-optimo">—</div>
+            </div>
+          </div>
+          <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8f0;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+            <div style="width:44px;height:44px;border-radius:10px;background:#e3f2fd;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="bi bi-cash-coin" style="font-size:20px;color:#1565c0"></i>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">VALOR TOTAL</div>
+              <div style="font-size:18px;font-weight:800;color:#1565c0;line-height:1.2" id="inv-valor">—</div>
+            </div>
+          </div>
         </div>
 
         <div class="table-card">
+          <div class="table-toolbar">
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#555">
+              Mostrar
+              <select id="invMostrar" class="form-control" style="width:65px;padding:4px 6px;font-size:13px"
+                onchange="limitarFilasInventario(this.value)">
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+              registros
+            </div>
+            <input type="text" id="searchInventario" placeholder="🔍 Buscar producto..."
+              oninput="filtrarTabla('inventario')" style="width:200px">
+          </div>
           <div style="overflow-x:auto">
             <table>
               <thead>
                 <tr>
                   <th>ID</th>
                   <th>PRODUCTO</th>
-                  <th style="text-align:center">STOCK</th>
-                  <th style="text-align:center">STOCK MÍN.</th>
+                  <th style="text-align:center">STOCK GENERAL</th>
+                  <th style="text-align:center">STOCK MÍNIMO</th>
                   <th style="text-align:center">ESTADO</th>
                   <th style="text-align:right">VALOR</th>
                   <th>ACCIONES</th>
@@ -1639,6 +1716,15 @@
         <div class="form-label">Descripción</div>
         <textarea class="form-control" id="categoriaDescripcion" rows="3"
           placeholder="Descripción de la categoría..."></textarea>
+      </div>
+      <div class="mb-3">
+        <div class="form-label">Descuento (%)</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input class="form-control" type="number" id="categoriaDescuento"
+            min="0" max="100" step="0.01" placeholder="0"
+            style="max-width:120px" oninput="this.value=Math.min(100,Math.max(0,this.value))">
+          <span style="font-size:13px;color:#666">0 = sin descuento aplicado a la categoría</span>
+        </div>
       </div>
       <div class="mb-3" id="categoriaEstadoGroup" style="display:none">
         <div class="form-label">Estado</div>
