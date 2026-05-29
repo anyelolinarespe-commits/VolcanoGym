@@ -32,12 +32,17 @@ function renderPerfiles(data) {
     const esSuperAdmin = p.nombre.toLowerCase() === 'superadministrador';
     const esMio        = p.id_perfil === miPerfilId;
 
-    // Edit bloqueado: superAdmin solo lo edita otro superAdmin; admin solo lo edita admin/superAdmin; propio perfil bloqueado
-    const bloqEdit = (!yoSoySuperAdmin && esSuperAdmin) ||
+    // Roles inferiores no pueden editar ni eliminar perfiles
+    const noEsAdmin = !yoSoyAdmin && !yoSoySuperAdmin;
+
+    // Edit bloqueado: roles inferiores; superAdmin solo lo edita otro superAdmin;
+    // admin solo lo edita admin/superAdmin; propio perfil bloqueado
+    const bloqEdit = noEsAdmin ||
+                     (!yoSoySuperAdmin && esSuperAdmin) ||
                      (esAdmin && !yoSoyAdmin && !yoSoySuperAdmin) ||
                      esMio;
-    // Delete bloqueado: superAdmin y Administrador son intocables; propio perfil bloqueado
-    const bloqDel  = esSuperAdmin || esAdmin || esMio;
+    // Delete bloqueado: roles inferiores; superAdmin y Administrador son intocables; propio perfil bloqueado
+    const bloqDel  = noEsAdmin || esSuperAdmin || esAdmin || esMio;
     const badge = (esSuperAdmin || esAdmin || esMio)
       ? `<span style="font-size:10px;color:#7c4dff;background:#ede7f6;padding:2px 7px;border-radius:20px">${esMio ? 'tu perfil' : 'protegido'}</span>`
       : '';

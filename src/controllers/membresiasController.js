@@ -150,22 +150,42 @@ export const getMembresiasByCliente = async (req, res) => {
     }
 };
 
+// ─── helper: cuotas con historial de abonos embebido ────────────────────────
+async function _getCuotasConAbonos(id_membresia) {
+    const result = await pool.query(`
+        SELECT pa.id_pago, pa.num_cuota, pa.monto,
+               pa.fecha_programada, pa.fecha_limite, pa.fecha_pago,
+               pa.metodo_pago, pa.num_comprobante, pa.estado_cuota,
+               pa.created_at,
+               u.nombre || ' ' || u.apellido AS registrado_por,
+               (
+                   SELECT COALESCE(JSON_AGG(
+                       JSON_BUILD_OBJECT(
+                           'id_abono',        ab.id_abono,
+                           'monto',           ab.monto,
+                           'metodo_pago',     ab.metodo_pago,
+                           'num_comprobante', ab.num_comprobante,
+                           'fecha_pago',      ab.fecha_pago,
+                           'registrado_por',  ur.nombre || ' ' || ur.apellido
+                       ) ORDER BY ab.created_at ASC
+                   ), '[]'::json)
+                   FROM abono_cuota ab
+                   JOIN usuarios ur ON ur.id_usuario = ab.id_usuario_reg
+                   WHERE ab.id_pago = pa.id_pago
+               ) AS abonos
+        FROM pago pa
+        LEFT JOIN usuarios u ON u.id_usuario = pa.id_usuario_reg
+        WHERE pa.id_membresia = $1
+        ORDER BY pa.num_cuota ASC
+    `, [id_membresia]);
+    return result.rows;
+}
+
 // ─── GET /api/membresias/:id/cuotas ─────────────────────────────────────────
 export const getCuotasByMembresia = async (req, res) => {
     const { id } = req.params;
     try {
-        const result = await pool.query(`
-            SELECT pa.id_pago, pa.num_cuota, pa.monto,
-                   pa.fecha_programada, pa.fecha_limite, pa.fecha_pago,
-                   pa.metodo_pago, pa.num_comprobante, pa.estado_cuota,
-                   pa.created_at,
-                   u.nombre || ' ' || u.apellido AS registrado_por
-            FROM pago pa
-            LEFT JOIN usuarios u ON u.id_usuario = pa.id_usuario_reg
-            WHERE pa.id_membresia = $1
-            ORDER BY pa.num_cuota ASC
-        `, [id]);
-        res.json(result.rows);
+        res.json(await _getCuotasConAbonos(id));
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error al obtener cuotas' });
@@ -209,33 +229,23 @@ export const createMembresia = async (req, res) => {
             return res.status(404).json({ message: 'Plan no encontrado o inactivo' });
         const plan = planRes.rows[0];
 
-        // ── 2. Validar cuotas ──────────────────────────────────────────────
-        const numCuotas = parseInt(num_cuotas_solicitadas) || 1;
-        if (numCuotas < 1)
-            return res.status(400).json({ message: 'El número de cuotas debe ser al menos 1' });
-        if (numCuotas > 1 && !plan.permite_fraccion)
-            return res.status(400).json({ message: 'Este plan no permite fraccionamiento' });
-        if (numCuotas > plan.max_cuotas)
-            return res.status(400).json({ message: `Este plan permite máximo ${plan.max_cuotas} cuotas` });
-        if (!plan.permite_fraccion && Number(monto_pagado_ahora ?? monto_total) !== Number(monto_total))
-            return res.status(400).json({ message: 'Este plan no permite pagos parciales.' });
-
-        const montoPorCuota = Number(monto_total) / numCuotas;
-        if (numCuotas > 1 && plan.monto_minimo_cuota > 0 && montoPorCuota < plan.monto_minimo_cuota)
-            return res.status(400).json({ message: `El monto por cuota (S/ ${montoPorCuota.toFixed(2)}) es menor al mínimo permitido (S/ ${plan.monto_minimo_cuota})` });
-
-        const fechaFin         = calcFechaFin(fecha_inicio, plan.duracion_meses, plan.duracion_unidad || 'meses');
+        // ── 2. Validar fraccionamiento ─────────────────────────────────────
         const montoPagadoAhora = Number(monto_pagado_ahora ?? monto_total);
         let saldoPendiente     = Math.max(0, Number(monto_total) - montoPagadoAhora);
 
-        // Adjust saldo to include interest on deferred cuotas
-        if (numCuotas > 1 && saldoPendiente > 0 && plan.aplica_interes && Number(plan.tasa_interes) > 0) {
-            const cuotasRest  = numCuotas - 1;
-            const base        = saldoPendiente / cuotasRest;
-            const cuotaConInt = plan.tipo_interes === 'porcentaje'
-                ? base * (1 + Number(plan.tasa_interes) / 100)
-                : base + Number(plan.tasa_interes);
-            saldoPendiente = +(cuotaConInt * cuotasRest).toFixed(2);
+        if (saldoPendiente > 0 && !plan.permite_fraccion)
+            return res.status(400).json({ message: 'Este plan no permite fraccionamiento' });
+
+        if (saldoPendiente > 0 && plan.monto_minimo_cuota > 0 && montoPagadoAhora < Number(plan.monto_minimo_cuota))
+            return res.status(400).json({ message: `El pago inicial (S/ ${montoPagadoAhora.toFixed(2)}) es menor al mínimo requerido (S/ ${Number(plan.monto_minimo_cuota).toFixed(2)})` });
+
+        const fechaFin = calcFechaFin(fecha_inicio, plan.duracion_meses, plan.duracion_unidad || 'meses');
+
+        // Aplicar interés sobre el saldo diferido (una sola vez sobre el total pendiente)
+        if (saldoPendiente > 0 && plan.aplica_interes && Number(plan.tasa_interes) > 0) {
+            saldoPendiente = plan.tipo_interes === 'porcentaje'
+                ? +(saldoPendiente * (1 + Number(plan.tasa_interes) / 100)).toFixed(2)
+                : +(saldoPendiente + Number(plan.tasa_interes)).toFixed(2);
         }
 
         const idUsuarioReg = id_asesor || req.usuario.id;
@@ -269,8 +279,8 @@ export const createMembresia = async (req, res) => {
             // Cuota 1 (pagada ahora)
             await _insertarCuotas(client, {
                 id_membresia: membresia.id_membresia,
-                idUsuarioReg, numCuotas, montoPagadoAhora, saldoPendiente,
-                fecha_inicio, plan, metodo_pago
+                idUsuarioReg, montoPagadoAhora, saldoPendiente,
+                fecha_inicio, fechaFin, plan, metodo_pago
             });
 
             await client.query('COMMIT');
@@ -331,8 +341,8 @@ export const createMembresia = async (req, res) => {
         // 4B-iv. Crear nuevas cuotas para el período renovado
         await _insertarCuotas(client, {
             id_membresia: idMembresia,
-            idUsuarioReg, numCuotas, montoPagadoAhora, saldoPendiente,
-            fecha_inicio, plan, metodo_pago
+            idUsuarioReg, montoPagadoAhora, saldoPendiente,
+            fecha_inicio, fechaFin, plan, metodo_pago
         });
 
         await client.query('COMMIT');
@@ -355,10 +365,10 @@ export const createMembresia = async (req, res) => {
     }
 };
 
-// ─── helper: insertar cuota 1 (pagada) + cuotas pendientes ──────────────────
+// ─── helper: insertar cuota 1 (pagada) + cuota pendiente libre ──────────────
 async function _insertarCuotas(client, {
-    id_membresia, idUsuarioReg, numCuotas,
-    montoPagadoAhora, saldoPendiente, fecha_inicio, plan, metodo_pago
+    id_membresia, idUsuarioReg,
+    montoPagadoAhora, saldoPendiente, fecha_inicio, fechaFin, plan, metodo_pago
 }) {
     // Cuota 1 — pagada ahora
     await client.query(
@@ -371,37 +381,26 @@ async function _insertarCuotas(client, {
             id_membresia, idUsuarioReg,
             montoPagadoAhora,
             fecha_inicio,
-            addDias(fecha_inicio, plan.dias_limite_fraccion),
+            fecha_inicio,
             metodo_pago,
             genComprobante('REN')
         ]
     );
 
-    // Cuotas pendientes (si hay fraccionamiento)
-    if (numCuotas > 1 && saldoPendiente > 0) {
-        const cuotasRestantes       = numCuotas - 1;
-        const montoPorCuotaRestante = +(saldoPendiente / cuotasRestantes).toFixed(2);
-        let saldoAcumulado          = 0;
-
-        for (let n = 2; n <= numCuotas; n++) {
-            const esUltima    = n === numCuotas;
-            const montoCuota  = esUltima
-                ? +(saldoPendiente - saldoAcumulado).toFixed(2)
-                : montoPorCuotaRestante;
-            saldoAcumulado   += montoCuota;
-
-            // La cuenta regresiva arranca desde el día del primer pago (fecha_inicio)
-            const fechaProgr  = fecha_inicio;
-            const fechaLim    = addDias(fecha_inicio, plan.dias_limite_fraccion);
-
-            await client.query(
-                `INSERT INTO pago
-                 (id_membresia, id_usuario_reg, num_cuota, monto,
-                  fecha_programada, fecha_limite, estado_cuota)
-                 VALUES ($1,$2,$3,$4,$5,$6,'pendiente')`,
-                [id_membresia, idUsuarioReg, n, montoCuota, fechaProgr, fechaLim]
-            );
-        }
+    // Cuota pendiente — saldo total restante, plazo según configuración del plan
+    if (saldoPendiente > 0) {
+        await client.query(
+            `INSERT INTO pago
+             (id_membresia, id_usuario_reg, num_cuota, monto,
+              fecha_programada, fecha_limite, estado_cuota)
+             VALUES ($1,$2,2,$3,$4,$5,'pendiente')`,
+            [
+                id_membresia, idUsuarioReg,
+                saldoPendiente,
+                fecha_inicio,
+                addDias(fecha_inicio, plan.dias_limite_fraccion)
+            ]
+        );
     }
 }
 
@@ -427,21 +426,57 @@ export const pagarCuota = async (req, res) => {
         if (!cuotaRes.rows.length)
             return res.status(404).json({ message: 'Cuota no encontrada o ya fue pagada' });
 
-        const cuota = cuotaRes.rows[0];
-        const montoFinal = monto_pagado ? Number(monto_pagado) : cuota.monto;
+        const cuota      = cuotaRes.rows[0];
+        const montoCuota = parseFloat(cuota.monto);
 
-        // Actualizar la cuota
+        // Aceptar cualquier monto entre 0.01 y el total de la deuda
+        const montoEnviado = monto_pagado !== undefined && monto_pagado !== null
+            ? parseFloat(monto_pagado)
+            : montoCuota;
+
+        if (isNaN(montoEnviado) || montoEnviado <= 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ message: 'El monto debe ser mayor a 0.' });
+        }
+        if (montoEnviado > montoCuota + 0.01) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                message: `El monto no puede superar la deuda pendiente: S/ ${montoCuota.toFixed(2)}.`
+            });
+        }
+
+        const montoFinal  = Math.min(montoEnviado, montoCuota);
+        const restante    = +(montoCuota - montoFinal).toFixed(2);
+        const comprobante = num_comprobante || genComprobante('MEM');
+
+        // Registrar abono en el historial de la cuota
         await client.query(
-            `UPDATE pago SET
-                estado_cuota  = 'pagado',
-                fecha_pago    = CURRENT_DATE,
-                metodo_pago   = $1,
-                num_comprobante = $2,
-                monto         = $3,
-                modificado_por = $4
-             WHERE id_pago = $5`,
-            [metodo_pago, num_comprobante || genComprobante('MEM'), montoFinal, req.usuario.id, id_pago]
+            `INSERT INTO abono_cuota
+             (id_pago, id_usuario_reg, monto, metodo_pago, num_comprobante, fecha_pago)
+             VALUES ($1, $2, $3, $4, $5, CURRENT_DATE)`,
+            [id_pago, req.usuario.id, montoFinal, metodo_pago, comprobante]
         );
+
+        if (restante <= 0.01) {
+            // Saldo saldado: marcar cuota como pagada
+            await client.query(
+                `UPDATE pago SET
+                    estado_cuota    = 'pagado',
+                    fecha_pago      = CURRENT_DATE,
+                    metodo_pago     = $1,
+                    num_comprobante = $2,
+                    monto           = $3,
+                    modificado_por  = $4
+                 WHERE id_pago = $5`,
+                [metodo_pago, comprobante, montoFinal, req.usuario.id, id_pago]
+            );
+        } else {
+            // Pago parcial: actualizar saldo restante, la cuota sigue pendiente
+            await client.query(
+                `UPDATE pago SET monto=$1, modificado_por=$2 WHERE id_pago=$3`,
+                [restante, req.usuario.id, id_pago]
+            );
+        }
 
         // Recalcular saldo_pendiente en la membresía
         const saldoRes = await client.query(
@@ -457,35 +492,13 @@ export const pagarCuota = async (req, res) => {
             [nuevoSaldo, id]
         );
 
-        // Arrancar la cuenta regresiva de la siguiente cuota pendiente desde HOY
-        const planRes = await client.query(
-            `SELECT p.dias_limite_fraccion FROM plan_membresia p
-             JOIN membresia m ON m.id_plan = p.id_plan
-             WHERE m.id_membresia = $1`, [id]
-        );
-        if (planRes.rows.length) {
-            const diasLim = planRes.rows[0].dias_limite_fraccion;
-            await client.query(
-                `UPDATE pago
-                 SET fecha_programada = CURRENT_DATE,
-                     fecha_limite     = CURRENT_DATE + $1::integer
-                 WHERE id_membresia = $2
-                   AND estado_cuota IN ('pendiente','vencido')
-                   AND num_cuota = (
-                       SELECT MIN(num_cuota) FROM pago
-                       WHERE id_membresia = $2 AND estado_cuota IN ('pendiente','vencido')
-                   )`,
-                [diasLim, id]
-            );
-        }
-
         await client.query('COMMIT');
 
-        // Retornar cuotas actualizadas
-        const cuotasResult = await pool.query(
-            `SELECT * FROM pago WHERE id_membresia=$1 ORDER BY num_cuota`, [id]
-        );
-        res.json({ message: 'Cuota registrada correctamente', cuotas: cuotasResult.rows, nuevo_saldo: nuevoSaldo });
+        res.json({
+            message:     'Pago registrado correctamente',
+            cuotas:      await _getCuotasConAbonos(id),
+            nuevo_saldo: nuevoSaldo
+        });
 
     } catch (err) {
         await client.query('ROLLBACK');

@@ -119,7 +119,7 @@ function renderMembresias(data) {
             saldoHtml = `<div class="memb-saldo">Saldo: S/ ${parseFloat(m.saldo_pendiente).toFixed(2)}</div>`;
             if (m.proxima_fecha_limite) {
                 const hoy = new Date(); hoy.setHours(0,0,0,0);
-                const lim = new Date(String(m.proxima_fecha_limite).split('T')[0] + 'T12:00:00');
+                const lim = new Date(String(m.proxima_fecha_limite).split('T')[0] + 'T00:00:00');
                 const dias = Math.round((lim - hoy) / 86400000);
                 if (dias > 0) {
                     saldoHtml += `<div style="font-size:10px;color:#e65100;font-weight:600;margin-top:1px">${dias}d para pagar</div>`;
@@ -338,7 +338,7 @@ function buildModalCuotasHTML() {
                 </button>
             </div>
 
-            <div id="panelCuotas" style="padding:18px 22px">
+            <div id="panelCuotas" style="padding:18px 22px;max-height:calc(88vh - 130px);overflow-y:auto">
                 <div id="cuotasBody"></div>
                 <div id="formPagoCuota" style="display:none;margin-top:16px;padding:16px;border:1.5px solid #e0e7ff;border-radius:10px;background:#f8f9fa"></div>
             </div>
@@ -351,6 +351,11 @@ function buildModalCuotasHTML() {
 }
 
 
+function toggleAbonos(id_pago) {
+    const row = document.getElementById('abonos-' + id_pago);
+    if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
 function renderCuotasModal(cuotas) {
     const cont = document.getElementById('cuotasBody');
     if (!cuotas.length) {
@@ -358,12 +363,19 @@ function renderCuotasModal(cuotas) {
         return;
     }
 
-    const hoy = new Date().toISOString().split('T')[0];
+    let rowsHtml = '';
 
-    const rows = cuotas.map(c => {
+    cuotas.forEach(c => {
         const esPendiente = c.estado_cuota === 'pendiente';
         const esVencido   = c.estado_cuota === 'vencido';
         const esPagado    = c.estado_cuota === 'pagado';
+        const abonos      = Array.isArray(c.abonos) ? c.abonos : [];
+        const tieneAbonos = abonos.length > 0;
+
+        // Monto: si está pagado con abonos, mostrar la suma de lo abonado
+        const montoDisplay = esPagado && tieneAbonos
+            ? abonos.reduce((s, a) => s + parseFloat(a.monto), 0)
+            : parseFloat(c.monto);
 
         const estadoHtml = esPagado
             ? '<span style="background:#e8f5e9;color:#2e7d32;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">PAGADO</span>'
@@ -374,38 +386,88 @@ function renderCuotasModal(cuotas) {
         const fechaInfo = esPagado
             ? `<span style="color:#2e7d32;font-size:11px">Pagado: ${formatFechaLarga(c.fecha_pago)}</span>`
             : c.fecha_limite
-            ? `<span style="color:${esVencido ? '#c62828' : '#888'};font-size:11px">
-                Vence: ${formatFechaLarga(c.fecha_limite)}
-                ${esVencido ? ' <b>(mora)</b>' : ''}
-               </span>`
+            ? `<span style="color:${esVencido ? '#c62828' : '#888'};font-size:11px">Vence: ${formatFechaLarga(c.fecha_limite)}${esVencido ? ' <b>(mora)</b>' : ''}</span>`
             : '';
-
-        const btnPagar = (esPendiente || esVencido)
-            ? `<button class="btn-save" style="padding:5px 12px;font-size:12px"
-                onclick="abrirFormPagoCuota(${c.id_pago}, ${c.monto})">
-                <i class="bi bi-cash me-1"></i>Pagar
-               </button>`
-            : `<span style="color:#bbb;font-size:12px">—</span>`;
 
         const metodoBadge = c.metodo_pago
             ? `<span style="background:#f0f4ff;color:#3949ab;padding:2px 7px;border-radius:10px;font-size:11px">${c.metodo_pago}</span>`
             : '';
 
-        return `
+        const toggleBtn = tieneAbonos
+            ? `<button onclick="toggleAbonos(${c.id_pago})"
+                style="background:#e8f5e9;color:#2e7d32;border:none;border-radius:8px;padding:4px 9px;font-size:11px;cursor:pointer;font-weight:600">
+                <i class="bi bi-list-ul me-1"></i>${abonos.length} pago${abonos.length > 1 ? 's' : ''}
+               </button>`
+            : '';
+
+        const accionHtml = (esPendiente || esVencido)
+            ? `<div style="display:flex;gap:5px;justify-content:flex-end;align-items:center">
+                ${toggleBtn}
+                <button class="btn-save" style="padding:5px 12px;font-size:12px"
+                    onclick="abrirFormPagoCuota(${c.id_pago}, ${c.monto})">
+                    <i class="bi bi-cash me-1"></i>Pagar
+                </button>
+               </div>`
+            : tieneAbonos
+            ? `<div style="display:flex;justify-content:flex-end">${toggleBtn}</div>`
+            : `<span style="color:#bbb;font-size:12px">—</span>`;
+
+        rowsHtml += `
         <tr style="border-bottom:1px solid #f0f0f0">
             <td style="padding:10px 8px;text-align:center;font-weight:700;color:#0f3460">C${c.num_cuota}</td>
             <td style="padding:10px 8px">
-                <div style="font-weight:700">S/ ${parseFloat(c.monto).toFixed(2)}</div>
+                <div style="font-weight:700">S/ ${montoDisplay.toFixed(2)}</div>
                 ${metodoBadge}
+                ${esPendiente && tieneAbonos ? '<div style="font-size:10px;color:#888;margin-top:2px">Saldo restante</div>' : ''}
             </td>
             <td style="padding:10px 8px">${estadoHtml}</td>
             <td style="padding:10px 8px">${fechaInfo}</td>
-            <td style="padding:10px 8px;text-align:right">${btnPagar}</td>
+            <td style="padding:10px 8px;text-align:right">${accionHtml}</td>
         </tr>`;
-    }).join('');
+
+        if (tieneAbonos) {
+            const abonosRows = abonos.map((a, i) => `
+                <tr style="border-bottom:1px solid #e8f5e9">
+                    <td style="padding:5px 8px;color:#999;font-size:11px">#${i + 1}</td>
+                    <td style="padding:5px 8px;font-weight:700;color:#2e7d32;font-size:12px">S/ ${parseFloat(a.monto).toFixed(2)}</td>
+                    <td style="padding:5px 8px">
+                        <span style="background:#f0f4ff;color:#3949ab;padding:2px 6px;border-radius:8px;font-size:11px">${a.metodo_pago || '—'}</span>
+                    </td>
+                    <td style="padding:5px 8px;color:#888;font-size:11px">${formatFechaLarga(a.fecha_pago)}</td>
+                    <td style="padding:5px 8px;color:#555;font-size:11px"><i class="bi bi-person-fill me-1"></i>${a.registrado_por || '—'}</td>
+                </tr>`).join('');
+
+            rowsHtml += `
+            <tr id="abonos-${c.id_pago}" style="display:none;background:#f1fdf4">
+                <td colspan="5" style="padding:4px 8px 10px 28px">
+                    <div style="font-size:11px;color:#2e7d32;font-weight:700;margin-bottom:4px;margin-top:4px">
+                        <i class="bi bi-clock-history me-1"></i>Historial de pagos
+                    </div>
+                    <div style="max-height:160px;overflow-y:auto;border-radius:6px;border:1px solid #c8e6c9">
+                    <table style="width:100%;border-collapse:collapse">
+                        <thead style="position:sticky;top:0;background:#e8f5e9;z-index:1">
+                            <tr style="font-size:10px;color:#999">
+                                <th style="padding:3px 8px">#</th>
+                                <th style="padding:3px 8px">Monto</th>
+                                <th style="padding:3px 8px">Método</th>
+                                <th style="padding:3px 8px">Fecha</th>
+                                <th style="padding:3px 8px">Registrado por</th>
+                            </tr>
+                        </thead>
+                        <tbody>${abonosRows}</tbody>
+                    </table>
+                    </div>
+                </td>
+            </tr>`;
+        }
+    });
 
     // Totales
-    const totalPagado  = cuotas.filter(c => c.estado_cuota === 'pagado').reduce((s, c) => s + parseFloat(c.monto), 0);
+    const totalPagado = cuotas.reduce((s, c) => {
+        if (c.estado_cuota !== 'pagado') return s;
+        const ab = Array.isArray(c.abonos) ? c.abonos : [];
+        return s + (ab.length > 0 ? ab.reduce((sa, a) => sa + parseFloat(a.monto), 0) : parseFloat(c.monto));
+    }, 0);
     const totalPendiente = cuotas.filter(c => c.estado_cuota !== 'pagado').reduce((s, c) => s + parseFloat(c.monto), 0);
 
     cont.innerHTML = `
@@ -419,7 +481,7 @@ function renderCuotasModal(cuotas) {
                 <th style="padding:8px;text-align:right">Acción</th>
             </tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody>${rowsHtml}</tbody>
     </table>
     <div style="display:flex;justify-content:space-between;margin-top:14px;padding:10px 12px;background:#f8f9fa;border-radius:8px;font-size:13px">
         <span>✅ Pagado: <b style="color:#2e7d32">S/ ${totalPagado.toFixed(2)}</b></span>
@@ -431,19 +493,31 @@ function renderCuotasModal(cuotas) {
 }
 
 // ─── FORMULARIO INLINE PARA PAGAR CUOTA ───────────────────────────────────────
+function checkMontoAbono(deudaTotal) {
+    const input  = document.getElementById('pcMonto');
+    const aviso  = document.getElementById('avisoAbonoParcial');
+    if (!input || !aviso) return;
+    const ingresado = parseFloat(input.value);
+    aviso.style.display = (!isNaN(ingresado) && ingresado > 0 && ingresado < deudaTotal - 0.01) ? '' : 'none';
+}
+
 function abrirFormPagoCuota(idPago, monto) {
     const form = document.getElementById('formPagoCuota');
     form.style.display = 'block';
     form.innerHTML = `
     <div class="form-pago-titulo" style="font-weight:700;margin-bottom:12px;">
-        <i class="bi bi-cash-stack me-2" style="color:#26a69a"></i>Registrar pago — Cuota
+        <i class="bi bi-cash-stack me-2" style="color:#26a69a"></i>Registrar abono
     </div>
     <div class="alert-msg" id="alertPagoCuota"></div>
     <div class="row g-2">
         <div class="col-6">
-            <div class="form-label">Monto (S/) *</div>
-            <input class="form-control" id="pcMonto" type="number" step="0.01"
-                value="${parseFloat(monto).toFixed(2)}" placeholder="0.00">
+            <div class="form-label">Monto a abonar *</div>
+            <input type="number" class="form-control" id="pcMonto"
+                value="${parseFloat(monto).toFixed(2)}"
+                min="0.01" max="${parseFloat(monto).toFixed(2)}" step="0.01"
+                style="font-weight:700;font-size:15px;color:#2e7d32"
+                oninput="checkMontoAbono(${parseFloat(monto)})">
+            <div style="font-size:11px;color:#888;margin-top:3px">Deuda pendiente: S/ ${parseFloat(monto).toFixed(2)}</div>
         </div>
         <div class="col-6">
             <div class="form-label">Método de pago *</div>
@@ -454,6 +528,9 @@ function abrirFormPagoCuota(idPago, monto) {
                 <option value="transferencia">Transferencia</option>
             </select>
         </div>
+    </div>
+    <div id="avisoAbonoParcial" style="display:none;margin-top:8px;padding:8px 12px;background:#fff8e1;border-left:3px solid #f9a825;border-radius:4px;font-size:11px;color:#795548">
+        <b>⚠ Abono parcial:</b> está ingresando un monto menor al pendiente. Este pago quedará registrado como abono y la cuota seguirá pendiente por el saldo restante.
     </div>
     <div class="mt-2">
         <div class="form-label">N° Comprobante (opcional)</div>
@@ -884,11 +961,8 @@ function onPlanChange() {
     const renovBadge = document.getElementById('membRenovBadge');
     if (renovBadge) renovBadge.style.display = usarRenov ? 'block' : 'none';
 
-    // Panel cuotas
-    const fraccionWrap = document.getElementById('membFraccionInfo');
-    const mostrarCuotas = fraccion && maxCuotas > 1;
-    fraccionWrap.style.display = mostrarCuotas ? 'block' : 'none';
-    _populateCuotasSelect(mostrarCuotas ? maxCuotas : 1);
+    // El fraccionamiento es ahora de monto libre — el selector de N cuotas no se usa
+    document.getElementById('membFraccionInfo').style.display = 'none';
     document.getElementById('membNumCuotas').value = '1';
 
     _actualizarEstadoPago1();
@@ -931,62 +1005,51 @@ function actualizarResumenCuotas() {
     const opt      = sel?.options[sel.selectedIndex];
     const monto    = parseFloat(document.getElementById('membMonto')?.value) || 0;
     const pago1    = parseFloat(document.getElementById('membPago1')?.value) || monto;
-    const numC     = parseInt(document.getElementById('membNumCuotas')?.value) || 1;
     const fi       = document.getElementById('membFechaInicio')?.value;
     const resumen  = document.getElementById('membResumenCuotas');
     if (!resumen) return;
 
-    if (!opt || !opt.value || numC <= 1) {
+    const saldo = Math.max(0, monto - pago1);
+    if (!opt || !opt.value || saldo <= 0) {
         resumen.style.display = 'none';
         return;
     }
 
-    const diasEntre   = parseInt(opt.dataset.diasEntre) || 30;
-    const diasLimite  = parseInt(opt.dataset.diasLimite) || 20;
-    const saldo       = Math.max(0, monto - pago1);
-    const cuotasRest  = numC - 1;
+    const dark       = document.body.dataset.theme === 'dark';
+    const diasLimite = parseInt(opt.dataset.diasLimite) || 20;
 
-    const aplInteres  = opt.dataset.aplicaInteres === 'true';
-    const tasa        = parseFloat(opt.dataset.tasaInteres) || 0;
-    const tipoI       = opt.dataset.tipoInteres || 'porcentaje';
+    const aplInteres = opt.dataset.aplicaInteres === 'true';
+    const tasa       = parseFloat(opt.dataset.tasaInteres) || 0;
+    const tipoI      = opt.dataset.tipoInteres || 'porcentaje';
 
-    const baseAmount  = cuotasRest > 0 ? saldo / cuotasRest : 0;
-    let montoCuota;
-    if (aplInteres && tasa > 0 && cuotasRest > 0) {
-        montoCuota = tipoI === 'porcentaje' ? baseAmount * (1 + tasa / 100) : baseAmount + tasa;
-    } else {
-        montoCuota = baseAmount;
+    let saldoConInteres = saldo;
+    if (aplInteres && tasa > 0) {
+        saldoConInteres = tipoI === 'porcentaje'
+            ? +(saldo * (1 + tasa / 100)).toFixed(2)
+            : +(saldo + tasa).toFixed(2);
     }
-    const totalSaldoEfectivo = montoCuota * cuotasRest;
 
-    const dark = document.body.dataset.theme === 'dark';
     let html = `<div style="font-size:12px;font-weight:700;color:${dark ? '#79b8ff' : '#0f3460'};margin-bottom:8px">
-        <i class="bi bi-calendar3 me-1"></i>Calendario de pagos
+        <i class="bi bi-calendar3 me-1"></i>Desglose de pago
     </div>`;
 
-    // Cuota 1
     html += cuotaRow(1, pago1, fi, fi ? addDiasStr(fi, diasLimite) : null, true);
 
-    // Cuotas restantes
-    if (fi && saldo > 0) {
-        let acum = 0;
-        for (let n = 2; n <= numC; n++) {
-            const offset   = (n - 1) * diasEntre;
-            const fechaP   = addDiasStr(fi, offset);
-            const fechaL   = addDiasStr(fechaP, diasLimite);
-            const esUltima = n === numC;
-            const mc       = esUltima
-                ? (totalSaldoEfectivo - acum).toFixed(2)
-                : montoCuota.toFixed(2);
-            acum += parseFloat(mc);
-            html += cuotaRow(n, mc, fechaP, fechaL, false);
-        }
-    }
+    const saldoClr = dark ? '#ffb74d' : '#e65100';
+    const saldoBg  = dark ? 'rgba(255,255,255,.05)' : '#fff8e1';
+    html += `
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:${saldoBg};border-radius:8px;margin-bottom:4px;border:1px solid ${dark ? 'rgba(255,165,0,.2)' : '#ffe082'}">
+        <div style="width:24px;height:24px;border-radius:50%;background:#ff8f00;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">⏳</div>
+        <div style="flex:1">
+            <span style="font-weight:700;font-size:13px;color:${dark ? '#e6edf3' : '#111'}">S/ ${saldoConInteres.toFixed(2)}</span>
+            <span style="font-size:11px;color:${saldoClr};margin-left:6px">Saldo pendiente — abono libre</span>
+        </div>
+    </div>`;
 
-    if (aplInteres && tasa > 0 && cuotasRest > 0) {
+    if (aplInteres && tasa > 0) {
         const label = tipoI === 'porcentaje' ? `${tasa}%` : `S/ ${tasa.toFixed(2)}`;
         html += `<div style="font-size:11px;color:#bf360c;margin-top:6px;padding:6px 8px;background:#fff3e0;border-radius:6px">
-            <i class="bi bi-percent me-1"></i>Incluye ${label} de interés en cuotas diferidas
+            <i class="bi bi-percent me-1"></i>Incluye ${label} de interés sobre el saldo diferido
         </div>`;
     }
 
@@ -1115,25 +1178,15 @@ async function saveMembresia() {
         showAlert('alertMembresia', 'El pago inicial no puede superar el monto total'); return;
     }
 
-    // Validar cuota mínima del plan
-    const _selPlan   = document.getElementById('membPlan');
-    const _optPlan   = _selPlan?.options[_selPlan.selectedIndex];
-    const _minimo    = parseFloat(_optPlan?.dataset?.minimo) || 0;
-    const _numC      = parseInt(numCuotas) || 1;
-    if (_minimo > 0 && _numC > 1) {
-        const _saldo      = Math.max(0, parseFloat(monto) - parseFloat(pago1));
-        const _cuotasRest = _numC - 1;
-        const _montoCuota = _cuotasRest > 0 ? _saldo / _cuotasRest : 0;
-        if (_montoCuota > 0 && _montoCuota < _minimo) {
-            showAlert('alertMembresia',
-                `La cuota resultante (S/ ${_montoCuota.toFixed(2)}) es menor al mínimo del plan (S/ ${_minimo.toFixed(2)}). Ajusta el pago inicial o el N° de cuotas.`);
-            return;
-        }
-        if (parseFloat(pago1) < _minimo) {
-            showAlert('alertMembresia',
-                `El pago inicial (S/ ${parseFloat(pago1).toFixed(2)}) debe ser al menos S/ ${_minimo.toFixed(2)}.`);
-            return;
-        }
+    // Validar pago mínimo del plan (aplica cuando hay saldo pendiente)
+    const _selPlan = document.getElementById('membPlan');
+    const _optPlan = _selPlan?.options[_selPlan.selectedIndex];
+    const _minimo  = parseFloat(_optPlan?.dataset?.minimo) || 0;
+    const _saldo   = Math.max(0, parseFloat(monto) - parseFloat(pago1));
+    if (_minimo > 0 && _saldo > 0 && parseFloat(pago1) < _minimo) {
+        showAlert('alertMembresia',
+            `El pago inicial (S/ ${parseFloat(pago1).toFixed(2)}) debe ser al menos S/ ${_minimo.toFixed(2)}.`);
+        return;
     }
 
     try {
@@ -1567,15 +1620,9 @@ async function saveMembresia() {
     }
     helpEl.style.color = '#9199ab';
 
-    // Selector de cuotas
+    // El fraccionamiento es de monto libre — el selector de N cuotas no se usa
     const fraccionWrap = document.getElementById('memb-fraccion-wrap');
-    if (plan.fraccion && plan.maxCuotas > 1) {
-      fraccionWrap.style.display = 'block';
-      wiz_poblarCuotas(plan.maxCuotas);
-      document.getElementById('memb-num-cuotas').value = '1';
-    } else {
-      fraccionWrap.style.display = 'none';
-    }
+    if (fraccionWrap) fraccionWrap.style.display = 'none';
 
     // Resumen cliente+plan
     wiz_actualizarResumenPlan();
@@ -1663,29 +1710,20 @@ async function saveMembresia() {
     if (!plan || !plan.fraccion) return true;
     const monto  = plan.precio;
     const pago1  = parseFloat(document.getElementById('memb-pago1').value) || monto;
-    const numC   = parseInt(document.getElementById('memb-num-cuotas').value) || 1;
     const minimo = plan.minCuota;
+    const saldo  = Math.max(0, monto - pago1);
 
-    if (numC <= 1 || minimo <= 0) {
-      helpEl.textContent = 'Lo que paga hoy. El resto se fracciona en cuotas.';
+    if (minimo <= 0 || saldo <= 0) {
+      helpEl.textContent = 'Lo que paga hoy. El resto se fracciona libremente.';
       helpEl.style.color = '#9199ab';
       return true;
     }
-    const saldo      = Math.max(0, monto - pago1);
-    const cuotasRest = numC - 1;
-    const montoCuota = cuotasRest > 0 ? saldo / cuotasRest : 0;
-
     if (pago1 < minimo) {
       helpEl.textContent = `⚠ El pago inicial debe ser ≥ S/ ${minimo.toFixed(2)}.`;
       helpEl.style.color = '#e65100';
       return false;
     }
-    if (montoCuota > 0 && montoCuota < minimo) {
-      helpEl.textContent = `⚠ Cuota resultante S/ ${montoCuota.toFixed(2)} < mínimo S/ ${minimo.toFixed(2)}. Ajusta el pago o N° cuotas.`;
-      helpEl.style.color = '#e65100';
-      return false;
-    }
-    helpEl.textContent = 'Lo que paga hoy. El resto se fracciona en cuotas.';
+    helpEl.textContent = 'Lo que paga hoy. El resto se fracciona libremente.';
     helpEl.style.color = '#9199ab';
     return true;
   }
@@ -1708,46 +1746,39 @@ async function saveMembresia() {
     const resumen = document.getElementById('memb-resumen-cuotas');
     if (!resumen || !plan) return;
 
-    const monto  = plan.precio;
-    const pago1  = parseFloat(document.getElementById('memb-pago1')?.value) || monto;
-    const numC   = parseInt(document.getElementById('memb-num-cuotas')?.value) || 1;
-    const fi     = document.getElementById('memb-fecha-inicio')?.value;
+    const monto = plan.precio;
+    const pago1 = parseFloat(document.getElementById('memb-pago1')?.value) || monto;
+    const fi    = document.getElementById('memb-fecha-inicio')?.value;
+    const saldo = Math.max(0, monto - pago1);
 
-    if (numC <= 1) { resumen.style.display = 'none'; return; }
+    if (saldo <= 0) { resumen.style.display = 'none'; return; }
 
-    const saldo      = Math.max(0, monto - pago1);
-    const cuotasRest = numC - 1;
-    const base       = cuotasRest > 0 ? saldo / cuotasRest : 0;
-    let montoCuota   = base;
-    if (plan.aplInteres && plan.tasaInteres > 0 && cuotasRest > 0) {
-      montoCuota = plan.tipoInteres === 'porcentaje'
-        ? base * (1 + plan.tasaInteres / 100)
-        : base + plan.tasaInteres;
+    let saldoConInteres = saldo;
+    if (plan.aplInteres && plan.tasaInteres > 0) {
+      saldoConInteres = plan.tipoInteres === 'porcentaje'
+        ? +(saldo * (1 + plan.tasaInteres / 100)).toFixed(2)
+        : +(saldo + plan.tasaInteres).toFixed(2);
     }
-    const totalSaldo = montoCuota * cuotasRest;
 
     let html = `<div style="font-size:12px;font-weight:700;color:#0f3460;margin-bottom:8px">
-      <i class="bi bi-calendar3 me-1"></i>Calendario de pagos</div>`;
+      <i class="bi bi-calendar3 me-1"></i>Desglose de pago</div>`;
 
     html += wiz_cuotaRow(1, pago1, fi, fi ? wiz_addDias(fi, plan.diasLimite) : null, true);
 
-    if (fi && saldo > 0) {
-      let acum = 0;
-      for (let n = 2; n <= numC; n++) {
-        const fechaP = wiz_addDias(fi, (n - 1) * plan.diasEntre);
-        const fechaL = wiz_addDias(fechaP, plan.diasLimite);
-        const esUlt  = n === numC;
-        const mc     = esUlt ? (totalSaldo - acum).toFixed(2) : montoCuota.toFixed(2);
-        acum += parseFloat(mc);
-        html += wiz_cuotaRow(n, mc, fechaP, fechaL, false);
-      }
-    }
+    html += `
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:#fff8e1;border-radius:8px;margin-bottom:4px;border:1px solid #ffe082">
+      <div style="width:24px;height:24px;border-radius:50%;background:#ff8f00;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">⏳</div>
+      <div style="flex:1">
+        <span style="font-weight:700;font-size:13px">S/ ${saldoConInteres.toFixed(2)}</span>
+        <span style="font-size:11px;color:#e65100;margin-left:6px">Saldo pendiente — abono libre</span>
+      </div>
+    </div>`;
 
-    if (plan.aplInteres && plan.tasaInteres > 0 && cuotasRest > 0) {
+    if (plan.aplInteres && plan.tasaInteres > 0) {
       const label = plan.tipoInteres === 'porcentaje'
         ? `${plan.tasaInteres}%` : `S/ ${plan.tasaInteres.toFixed(2)}`;
       html += `<div style="font-size:11px;color:#bf360c;margin-top:6px;padding:6px 8px;background:#fff3e0;border-radius:6px">
-        <i class="bi bi-percent me-1"></i>Incluye ${label} de interés en cuotas diferidas</div>`;
+        <i class="bi bi-percent me-1"></i>Incluye ${label} de interés sobre el saldo diferido</div>`;
     }
 
     resumen.innerHTML = html;
@@ -1787,7 +1818,7 @@ async function saveMembresia() {
     const metodo  = document.getElementById('memb-metodo-pago').value;
     const monto   = parseFloat(document.getElementById('memb-monto-total').value) || 0;
     const pago1   = parseFloat(document.getElementById('memb-pago1').value) || 0;
-    const numC    = parseInt(document.getElementById('memb-num-cuotas')?.value) || 1;
+    const numC    = pago1 < monto ? 2 : 1;  // libre fraccionamiento
 
     if (!metodo) { mostrarError('memb-paso4-error', 'Selecciona un método de pago.'); return; }
     if (pago1 <= 0) { mostrarError('memb-paso4-error', 'Ingresa un monto de pago inicial válido.'); return; }

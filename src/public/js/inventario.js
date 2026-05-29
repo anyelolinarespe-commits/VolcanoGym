@@ -269,49 +269,91 @@ function renderActualizarStockPresentaciones(presentaciones) {
       : pr.estado_pp === 'BAJO'    ? '#ffe0b2'
       : pr.es_principal             ? '#ffe0b2' : '#e0e0e0';
     const cardBg      = pr.es_principal ? '#fffde7' : '#fff';
+    const estadoLabel = pr.estado_pp === 'AGOTADO' ? '✗ Agotada'
+      : pr.estado_pp === 'BAJO' ? '▲ Baja' : '✓ Disponible';
 
     return `
       <div style="border:2px solid ${cardBorder};border-radius:12px;padding:16px;margin-bottom:12px;background:${cardBg}">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <strong style="font-size:14px">${pr.presentacion}</strong>
             ${pr.es_principal
               ? '<span style="font-size:10px;background:#fff3e0;color:#e65100;padding:2px 6px;border-radius:6px;margin-left:6px">PRINCIPAL</span>'
               : ''}
-            <div style="font-size:12px;color:var(--color-text-muted)">Precio: S/ ${parseFloat(pr.precio_venta).toFixed(2)}</div>
+            <div style="font-size:12px;color:var(--color-text-muted);margin-top:2px">Precio: S/ ${parseFloat(pr.precio_venta).toFixed(2)}</div>
           </div>
-          <div style="text-align:right">
-            <div style="font-size:28px;font-weight:800;color:${estadoColor}">${pr.stock_actual}</div>
-            <div style="font-size:11px;color:${estadoColor}">
-              ${pr.estado_pp === 'AGOTADO' ? '✗ Agotado' : pr.estado_pp === 'BAJO' ? '▲ Bajo' : '✓ Disponible'}
+          <div style="display:flex;align-items:center;gap:16px">
+            <div style="text-align:right">
+              <div style="font-size:28px;font-weight:800;color:${estadoColor};line-height:1">${pr.stock_actual}</div>
+              <div style="font-size:11px;color:${estadoColor}">${estadoLabel}</div>
             </div>
+            <button class="btn-save" style="padding:8px 14px;font-size:13px;white-space:nowrap"
+              onclick="toggleActualizarForm(${pr.id_pp})">
+              <i class="bi bi-pencil-square me-1"></i>Actualizar
+            </button>
           </div>
         </div>
 
-        <!-- FORMULARIO ACTUALIZAR -->
-        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">
-          <div>
-            <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:4px;font-weight:600">Operación</div>
-            <select class="form-control" id="tipo_${pr.id_pp}" style="font-size:13px">
-              <option value="ingreso">Ingreso</option>
-              <option value="ajuste">Ajuste</option>
-              <option value="devolucion">Devolución</option>
-            </select>
+        <!-- FORMULARIO COLAPSABLE -->
+        <div id="formActualizar_${pr.id_pp}" style="display:none;margin-top:14px;border-top:1px solid #eee;padding-top:12px">
+          <div style="font-size:12px;color:#555;margin-bottom:10px;font-weight:600">
+            Stock: <strong>${pr.stock_actual}</strong>
+            <i class="bi bi-arrow-right mx-2" style="color:#888"></i>
+            <strong id="stockDespues_${pr.id_pp}" style="color:#1565c0;font-size:14px">${pr.stock_actual}</strong>
           </div>
-          <div>
-            <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:4px;font-weight:600">Cantidad</div>
-            <input type="number" class="form-control" id="cant_${pr.id_pp}"
-              min="1" placeholder="0" style="font-size:13px">
-          </div>
-          <div>
-            <button class="btn-save" style="padding:9px 14px;white-space:nowrap"
-              onclick="guardarMovimiento(${pr.id_pp}, ${pr.stock_actual})">
-              <i class="bi bi-check2-circle me-1"></i>Actualizar
-            </button>
+          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">
+            <div>
+              <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:4px;font-weight:600">Operación</div>
+              <select class="form-control" id="tipo_${pr.id_pp}" style="font-size:13px"
+                onchange="previewNuevoStock(${pr.id_pp}, ${pr.stock_actual})">
+                <option value="ingreso">Ingreso</option>
+                <option value="ajuste">Ajuste</option>
+                <option value="salida">Salida</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:4px;font-weight:600">Cantidad</div>
+              <input type="number" class="form-control" id="cant_${pr.id_pp}"
+                min="1" placeholder="0" style="font-size:13px"
+                oninput="previewNuevoStock(${pr.id_pp}, ${pr.stock_actual})">
+            </div>
+            <div>
+              <button class="btn-save" style="padding:9px 14px;white-space:nowrap;background:#43a047"
+                onclick="guardarMovimiento(${pr.id_pp}, ${pr.stock_actual})">
+                <i class="bi bi-check2-circle me-1"></i>Guardar Cambios
+              </button>
+            </div>
           </div>
         </div>
       </div>`;
   }).join('');
+}
+
+function toggleActualizarForm(idPp) {
+  const formEl = document.getElementById(`formActualizar_${idPp}`);
+  if (!formEl) return;
+  const visible = formEl.style.display !== 'none';
+  document.querySelectorAll('[id^="formActualizar_"]').forEach(el => {
+    el.style.display = 'none';
+  });
+  if (!visible) formEl.style.display = 'block';
+}
+
+function previewNuevoStock(idPp, stockActual) {
+  const cantEl = document.getElementById(`cant_${idPp}`);
+  const tipoEl = document.getElementById(`tipo_${idPp}`);
+  const preEl  = document.getElementById(`stockDespues_${idPp}`);
+  if (!cantEl || !tipoEl || !preEl) return;
+  const cant = parseInt(cantEl.value || 0);
+  let nuevo = stockActual;
+  if (tipoEl.value === 'ajuste') {
+    nuevo = cant;
+  } else if (tipoEl.value === 'salida') {
+    nuevo = stockActual - cant;
+  } else {
+    nuevo = stockActual + cant;
+  }
+  preEl.textContent = Math.max(0, nuevo);
 }
 
 function renderActualizarStockHistorial(historial) {
@@ -321,8 +363,8 @@ function renderActualizarStockHistorial(historial) {
     return;
   }
 
-  const tipoColor = { ingreso: '#2e7d32', venta: '#1565c0', ajuste: '#e65100', devolucion: '#6a1b9a' };
-  const tipoBg    = { ingreso: '#e8f5e9', venta: '#e3f2fd', ajuste: '#fff3e0', devolucion: '#f3e5f5' };
+  const tipoColor = { ingreso: '#2e7d32', venta: '#1565c0', ajuste: '#e65100', devolucion: '#6a1b9a', salida: '#b71c1c' };
+  const tipoBg    = { ingreso: '#e8f5e9', venta: '#e3f2fd', ajuste: '#fff3e0', devolucion: '#f3e5f5', salida: '#ffebee' };
 
   cont.innerHTML = `
     <table style="width:100%;border-collapse:collapse">

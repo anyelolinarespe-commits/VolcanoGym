@@ -262,25 +262,19 @@
           📦 Las presentaciones definen el tipo de envase o formato del producto (Pote, Bolsa, Frasco…).
           Cada presentación puede tener un precio distinto por producto.
         </p>
-        <div class="table-card">
-          <div class="table-toolbar">
+        <div class="table-card" style="padding:16px">
+          <div class="table-toolbar" style="margin-bottom:16px;display:flex;gap:10px;align-items:center">
             <input type="text" id="searchPresentaciones" placeholder="🔍 Buscar presentación..."
-              oninput="filtrarTabla('presentaciones')">
+              oninput="filtrarPresentaciones(this.value)" style="flex:1;min-width:0">
+            <select id="filtroCategoriaPresentaciones"
+              onchange="filtrarPresentaciones(document.getElementById('searchPresentaciones').value)"
+              style="min-width:180px;height:38px;border:1px solid #ddd;border-radius:6px;padding:0 10px;font-size:13px;cursor:pointer">
+              <option value="">Todas las categorías</option>
+            </select>
           </div>
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>NOMBRE</th>
-                <th>DESCRIPCIÓN</th>
-                <th>ESTADO</th>
-                <th>ACCIONES</th>
-              </tr>
-            </thead>
-            <tbody id="tbodyPresentaciones">
-              <tr class="loading-row"><td colspan="5">Cargando...</td></tr>
-            </tbody>
-          </table>
+          <div id="contenedorPresentaciones">
+            <div style="text-align:center;padding:32px;color:#bbb">Cargando...</div>
+          </div>
         </div>
       </div>
 
@@ -291,6 +285,7 @@
             <i class="bi bi-plus-lg me-1"></i>Nuevo Producto
           </button>
         </div>
+        <div style="font-size:13px;color:#888;margin-top:2px">Administra los productos del gimnasio</div>
       
         <div class="stats-row">
           <div class="stat-pill"><span class="sp-num sp-activos"   id="prod-activos">—</span> activos</div>
@@ -779,7 +774,7 @@
         <div class="col-6">
           <div class="cl-field">
             <label class="cl-label">DNI <span class="req">*</span></label>
-            <input class="cl-input" id="clienteDni" placeholder="00000000" maxlength="15" autocomplete="off">
+            <input class="cl-input" id="clienteDni" placeholder="00000000" maxlength="8" inputmode="numeric" autocomplete="off">
           </div>
         </div>
         <div class="col-6">
@@ -1444,9 +1439,9 @@
                         <div style="font-size:10px;color:#888;margin-top:2px">Mínimo 2</div>
                     </div>
                     <div class="col-6">
-                        <div class="form-label">Días límite por cuota</div>
+                        <div class="form-label">Días de plazo para pagar</div>
                         <input class="form-control" id="planDiasLimite" type="number" min="1" value="20">
-                        <div style="font-size:10px;color:#888;margin-top:2px">Días hasta vence la cuota pendiente</div>
+                        <div style="font-size:10px;color:#888;margin-top:2px">Días de plazo total para saldar la deuda</div>
                     </div>
                 </div>
                 <div class="row g-2 mb-2">
@@ -1599,7 +1594,7 @@
       <div class="row g-2 mb-2">
         <div class="col-6">
           <div class="form-label">DNI</div>
-          <input class="form-control" id="usuarioDni" placeholder="00000000" maxlength="15">
+          <input class="form-control" id="usuarioDni" placeholder="00000000" maxlength="8" inputmode="numeric">
         </div>
         <div class="col-6">
           <div class="form-label">Celular</div>
@@ -1754,6 +1749,13 @@
         <textarea class="form-control" id="presentacionDescripcion" rows="2"
           placeholder="Descripción opcional..."></textarea>
       </div>
+      <div class="mb-3" id="presentacionCategoriaGroup">
+        <div class="form-label" id="presentacionCategoriaLabel">Categoría *</div>
+        <select class="form-control" id="presentacionCategoriaId">
+          <option value="">-- Seleccionar categoría --</option>
+        </select>
+        <input type="hidden" id="presentacionCategoriaOriginal">
+      </div>
       <div class="mb-3" id="presentacionEstadoGroup" style="display:none">
         <div class="form-label">Estado</div>
         <select class="form-control" id="presentacionEstado">
@@ -1812,7 +1814,7 @@
         <div class="row g-2 mb-2">
           <div class="col-8">
             <div class="form-label">Nombre *</div>
-            <input class="form-control" id="productoNombre" placeholder="Ej: Amoxicilina 500mg">
+            <input class="form-control" id="productoNombre" placeholder="Ej: Proteína Whey 1kg">
           </div>
           <div class="col-4">
             <div class="form-label">Categoria *</div>
@@ -1831,7 +1833,7 @@
         <div class="row g-2 mb-2">
           <div class="col-4">
             <div class="form-label">Marca</div>
-            <input class="form-control" id="productoMarca" placeholder="Ej: Bayer">
+            <input class="form-control" id="productoMarca" placeholder="Ej: Optimum Nutrition">
           </div>
           <div class="col-4">
             <div class="form-label">Modelo</div>
@@ -1962,7 +1964,7 @@
 
         <div style="margin-bottom:12px">
           <div style="font-weight:700;font-size:13px;color:#1a1a2e">PRESENTACIONES Y PRECIOS</div>
-          <div style="font-size:12px;color:#888">Agrega diferentes presentaciones (CAJA, BLISTER, POTE, etc.) con sus respectivos precios</div>
+          <div style="font-size:12px;color:#888">Agregue diferentes presentaciones (CAJA, BLISTER, POTE, etc.) con sus respectivos precios</div>
         </div>
 
         <div class="alert-msg" id="alertPreciosPresentacion" style="margin-bottom:10px"></div>
@@ -1975,7 +1977,7 @@
         <div id="ppFormWrapper" style="background:#f8f9fa;border-radius:10px;padding:14px;border:2px solid #e0f2f1">
           <div style="font-weight:700;font-size:13px;color:#1a1a2e;margin-bottom:10px">
             <i class="bi bi-plus-circle me-1" style="color:#26a69a"></i>
-            <span id="ppFormTitle">AGREGAR NUEVA PRESENTACION</span>
+            <span id="ppFormTitle">AGREGAR NUEVA PRESENTACIÓN</span>
           </div>
           <input type="hidden" id="ppEditId">
           <div class="row g-2 mb-2">
@@ -2007,7 +2009,7 @@
               <button id="ppBtnGuardar" class="btn-save"
                 onclick="guardarPresentacionProducto()" style="padding:9px 20px">
                 <i class="bi bi-plus-lg me-1" id="ppBtnIcon"></i>
-                <span id="ppBtnLabel">Agregar Presentacion</span>
+                <span id="ppBtnLabel">Agregar Presentación</span>
               </button>
             </div>
           </div>
@@ -2097,47 +2099,56 @@
   <!-- ══ MODAL: ACTUALIZAR STOCK ════════════════════════════════════════════ -->
   <div class="modal-overlay" id="modalActualizarStock">
     <div class="modal-box" style="width:640px;max-height:90vh;overflow-y:auto">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <div class="modal-title" id="actStockProductoNombre" style="margin-bottom:0">Actualizar Stock</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="modal-title" style="margin-bottom:0">
+          <i class="bi bi-pencil-square me-2" style="color:var(--accent)"></i>Actualizar Stock
+        </div>
         <button onclick="closeModal('modalActualizarStock')"
           style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1">&#10005;</button>
       </div>
 
       <input type="hidden" id="actStockProductoId">
 
-      <!-- KPIs rápidos -->
-      <div style="display:flex;gap:12px;margin-bottom:16px">
-        <div style="background:#e3f2fd;border-radius:8px;padding:10px 16px;flex:1;text-align:center">
-          <div style="font-size:22px;font-weight:800;color:#1565c0" id="actStockTotal">—</div>
-          <div style="font-size:11px;color:#1565c0">Stock Total</div>
+      <!-- Info producto -->
+      <div style="display:flex;gap:24px;align-items:center;margin-bottom:16px;background:#f8f9fa;border-radius:10px;padding:12px 16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">Producto</div>
+          <div style="font-weight:700;font-size:14px;color:#1a1a2e" id="actStockProductoNombre">—</div>
         </div>
-        <div style="background:#fff3e0;border-radius:8px;padding:10px 16px;flex:1;text-align:center">
-          <div style="font-size:22px;font-weight:800;color:#e65100" id="actStockMinimo">—</div>
-          <div style="font-size:11px;color:#e65100">Stock Mínimo</div>
+        <div>
+          <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">Stock Actual</div>
+          <div style="font-size:22px;font-weight:800;color:#1565c0;line-height:1" id="actStockTotal">—</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">Mínimo</div>
+          <div style="font-size:22px;font-weight:800;color:#e65100;line-height:1" id="actStockMinimo">—</div>
+        </div>
+      </div>
+
+      <!-- Tarjetas por presentación -->
+      <div style="font-size:12px;font-weight:700;color:var(--color-text-secondary);margin-bottom:8px;letter-spacing:.5px">
+        <i class="bi bi-box2 me-1"></i>PRESENTACIONES
+      </div>
+      <div id="actStockPresentaciones">
+        <div style="text-align:center;padding:20px;color:#bbb">Cargando...</div>
+      </div>
+
+      <!-- Campos globales -->
+      <div class="row g-2 mb-3" style="margin-top:16px">
+        <div class="col-6">
+          <div class="form-label">Boleta / Ref.</div>
+          <input class="form-control" id="actStockBoleta" placeholder="Ej: BOL-001-2026">
+        </div>
+        <div class="col-6">
+          <div class="form-label">Observación</div>
+          <input class="form-control" id="actStockObservacion" placeholder="Detalles del movimiento...">
         </div>
       </div>
 
       <div class="alert-msg" id="alertActStock"></div>
 
-      <!-- Campos globales opcionales -->
-      <div class="row g-2 mb-3">
-        <div class="col-6">
-          <div class="form-label">Boleta / Referencia</div>
-          <input class="form-control" id="actStockBoleta" placeholder="Ej: B001-0042">
-        </div>
-        <div class="col-6">
-          <div class="form-label">Observación</div>
-          <input class="form-control" id="actStockObservacion" placeholder="Opcional...">
-        </div>
-      </div>
-
-      <!-- Tarjetas por presentación -->
-      <div id="actStockPresentaciones">
-        <div style="text-align:center;padding:20px;color:#bbb">Cargando...</div>
-      </div>
-
       <!-- Historial -->
-      <div style="margin-top:20px">
+      <div style="margin-top:12px">
         <div style="font-size:11px;font-weight:800;letter-spacing:1px;color:#9199ab;margin-bottom:10px">
           <i class="bi bi-clock-history me-1"></i> HISTORIAL DE MOVIMIENTOS
         </div>
@@ -2145,7 +2156,29 @@
       </div>
 
       <div class="modal-footer" style="margin-top:16px">
-        <button class="btn-cancel" onclick="closeModal('modalActualizarStock')">Cerrar</button>
+        <button class="btn-cancel" onclick="closeModal('modalActualizarStock')">Cancelar</button>
+        <button class="btn-save" style="background:#43a047" onclick="closeModal('modalActualizarStock')">
+          <i class="bi bi-check2 me-1"></i>Guardar Cambios
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: STOCK POR PRESENTACIÓN (vista rápida desde productos) ═════ -->
+  <div class="modal-overlay" id="modalStockPresentacion">
+    <div class="modal-box" style="width:460px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 22px 12px">
+        <div class="modal-title" style="margin-bottom:0;font-size:17px">
+          <i class="bi bi-box2 me-2" style="color:#3949ab"></i>Stock por Presentación
+        </div>
+        <button onclick="closeModal('modalStockPresentacion')"
+          style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1">&#10005;</button>
+      </div>
+      <div id="stockPresBody" style="padding:0 22px 4px">
+        <div style="text-align:center;padding:24px;color:#bbb">Cargando...</div>
+      </div>
+      <div class="modal-footer" style="padding:12px 22px">
+        <button class="btn-cancel" onclick="closeModal('modalStockPresentacion')">Cerrar</button>
       </div>
     </div>
   </div>

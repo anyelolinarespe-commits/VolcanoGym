@@ -649,6 +649,11 @@ async function saveCliente() {
     return;
   }
 
+  if (dni && !/^\d{8}$/.test(dni)) {
+    showAlert('alertCliente', 'El DNI debe tener exactamente 8 dígitos numéricos');
+    return;
+  }
+
   // Validar que el DNI no esté ya registrado (solo al crear, no al editar)
   if (!id && dni) {
     const dniExistente = dataClientes.find(c => c.dni === dni);

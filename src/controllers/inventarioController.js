@@ -3,7 +3,7 @@ import { pool } from '../config/bd.js';
 // ══════════════════════════════════════════════════════════════════════════════
 //  CONTROLLER: INVENTARIO
 //  Usa las vistas: v_inventario_resumen, v_inventario_por_presentacion
-//  Usa la función: fn_actualizar_stock_manual
+//  Actualiza stock via transacción directa (evita ambigüedad en fn_actualizar_stock_manual)
 // ══════════════════════════════════════════════════════════════════════════════
 
 // GET /api/inventario
@@ -229,43 +229,70 @@ export const getPresentacionesStock = async (req, res) => {
 };
 
 // PUT /api/inventario/actualizar-stock
-// Actualiza el stock de una presentación (ingreso, ajuste, devolución)
+// Actualiza el stock de una presentación (ingreso, ajuste, salida)
 export const actualizarStock = async (req, res) => {
     const { id_pp, tipo, cantidad, boleta_ref, observacion } = req.body;
 
     if (!id_pp || !tipo || !cantidad)
         return res.status(400).json({ message: 'id_pp, tipo y cantidad son requeridos' });
 
-    if (!['ingreso', 'ajuste', 'devolucion'].includes(tipo))
-        return res.status(400).json({ message: 'Tipo inválido. Usa: ingreso, ajuste, devolucion' });
+    if (!['ingreso', 'ajuste', 'salida'].includes(tipo))
+        return res.status(400).json({ message: 'Tipo inválido. Usa: ingreso, ajuste, salida' });
 
     if (Number(cantidad) <= 0)
         return res.status(400).json({ message: 'La cantidad debe ser mayor a 0' });
 
+    const client = await pool.connect();
     try {
-        // Usar la función de BD que maneja la lógica y crea el movimiento
-        const result = await pool.query(
-            `SELECT * FROM fn_actualizar_stock_manual($1, $2::tipo_movimiento_enum, $3, $4, $5, $6)`,
-            [
-                id_pp,
-                tipo,
-                Number(cantidad),
-                boleta_ref   || null,
-                observacion  || null,
-                req.usuario.id
-            ]
+        await client.query('BEGIN');
+
+        const lockRes = await client.query(
+            `SELECT stock_actual FROM producto_presentacion WHERE id = $1 FOR UPDATE`,
+            [id_pp]
         );
+        if (lockRes.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ message: 'Presentación no encontrada' });
+        }
+
+        const stockAntes   = lockRes.rows[0].stock_actual;
+        const delta        = tipo === 'salida' ? -Number(cantidad) : Number(cantidad);
+        const stockDespues = tipo === 'ajuste' ? Number(cantidad) : stockAntes + delta;
+
+        if (stockDespues < 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                message: `Stock insuficiente. Stock actual: ${stockAntes}, cantidad solicitada: ${Number(cantidad)}.`
+            });
+        }
+
+        await client.query(
+            `UPDATE producto_presentacion SET stock_actual = $1 WHERE id = $2`,
+            [stockDespues, id_pp]
+        );
+
+        const movRes = await client.query(
+            `INSERT INTO inventario_movimiento
+                (id_pp, id_usuario_reg, tipo, stock_antes, stock_despues, cantidad, boleta_ref, observacion)
+             VALUES ($1, $2, $3::tipo_movimiento_enum, $4, $5, $6, $7, $8)
+             RETURNING id_movimiento`,
+            [id_pp, req.usuario.id, tipo, stockAntes, stockDespues, delta, boleta_ref || null, observacion || null]
+        );
+
+        await client.query('COMMIT');
 
         res.json({
             message:       'Stock actualizado correctamente',
-            stock_antes:   result.rows[0].stock_antes,
-            stock_despues: result.rows[0].stock_despues,
-            id_movimiento: result.rows[0].id_movimiento
+            stock_antes:   stockAntes,
+            stock_despues: stockDespues,
+            id_movimiento: movRes.rows[0].id_movimiento
         });
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error(err);
-        // El error de la función de BD tiene mensajes claros, los retransmitimos
         res.status(400).json({ message: err.message?.split('\n')[0] || 'Error al actualizar stock' });
+    } finally {
+        client.release();
     }
 };
 

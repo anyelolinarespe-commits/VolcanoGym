@@ -52,6 +52,14 @@ function renderCategorias(data) {
           <button class="btn-icon edit" title="Editar" onclick="editCategoria(${c.id_categoria})">
             <i class="bi bi-pencil"></i>
           </button>
+          ${c.estado === 1
+            ? `<button class="btn-icon danger" title="Anular categoría" onclick="anularCategoria(${c.id_categoria})">
+                <i class="bi bi-trash"></i>
+               </button>`
+            : `<button class="btn-icon" style="border-color:#2e7d32;color:#2e7d32" title="Reactivar categoría" onclick="anularCategoria(${c.id_categoria})">
+                <i class="bi bi-check-circle"></i>
+               </button>`
+          }
         </div>
       </td>
     </tr>`;
@@ -154,6 +162,19 @@ async function saveCategoria() {
     showAlert('alertCategoria', e.message);
   }
 }
+async function anularCategoria(id) {
+  const cat = dataCategorias.find(x => x.id_categoria === id);
+  if (!cat) return;
+  const nuevoEstado = cat.estado === 1 ? 0 : 1;
+  const accion = nuevoEstado === 0 ? 'anular' : 'reactivar';
+  if (!confirm(`¿Deseas ${accion} la categoría "${cat.nombre}"?`)) return;
+  try {
+    await api('PUT', `/api/categorias/${id}`, { estado: nuevoEstado });
+    await loadCategorias();
+    if (typeof cargarCategoriasSelect === 'function') cargarCategoriasSelect();
+  } catch (e) { alert(e.message); }
+}
+
 function resetCategoriaForm() {
   document.getElementById('categoriaId').value = '';
   document.getElementById('categoriaNombre').value = '';

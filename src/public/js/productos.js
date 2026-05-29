@@ -250,8 +250,8 @@ function renderProductos(data) {
           <button class="btn-icon edit" title="Editar producto" onclick="editProducto(${p.id_producto})">
             <i class="bi bi-pencil"></i>
           </button>
-          <button class="btn-icon" title="Ver inventario"
-            onclick="verInventarioProducto(${p.id_producto})"
+          <button class="btn-icon" title="Stock por presentación"
+            onclick="verStockPorPresentacion(${p.id_producto})"
             style="background:var(--color-info-bg);color:var(--color-info)">
             <i class="bi bi-eye"></i>
           </button>
@@ -678,4 +678,386 @@ function abrirPresentacionesProducto(id) {
   const p = dataProductos.find(x => x.id_producto === id);
   if (!p) return;
   editProducto(id);
+}
+
+// ══════════════════════════════════════════════════════
+//  TAB PRESENTACIONES — gestión de precios por formato
+// ══════════════════════════════════════════════════════
+
+// Carga y renderiza la tabla de presentaciones del producto
+async function cargarPreciosPresentacion(idProducto) {
+  const listado = document.getElementById('ppListado');
+  if (!listado) return;
+  listado.innerHTML = '<div style="text-align:center;padding:24px;color:#bbb">Cargando...</div>';
+
+  try {
+    const pres = await api('GET', `/api/presentaciones/producto/${idProducto}`);
+
+    if (!pres.length) {
+      listado.innerHTML = `
+        <div style="text-align:center;padding:24px;color:#bbb">
+          <i class="bi bi-box2" style="font-size:28px;display:block;margin-bottom:8px"></i>
+          Sin presentaciones aún. Agrega la primera abajo.
+        </div>`;
+      return;
+    }
+
+    listado.innerHTML = `
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:#f0f4ff">
+            <th style="padding:10px 14px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">PRESENTACIÓN</th>
+            <th style="padding:10px 14px;text-align:right;font-size:11px;color:var(--color-text-secondary);font-weight:700">PRECIO COSTO</th>
+            <th style="padding:10px 14px;text-align:right;font-size:11px;color:var(--color-text-secondary);font-weight:700">PRECIO VENTA</th>
+            <th style="padding:10px 14px;text-align:center;font-size:11px;color:var(--color-text-secondary);font-weight:700">GANANCIA</th>
+            <th style="padding:10px 14px;text-align:center;font-size:11px;color:var(--color-text-secondary);font-weight:700">ACCIONES</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pres.map(pr => {
+            const costo  = parseFloat(pr.precio_costo ?? 0);
+            const venta  = parseFloat(pr.precio_venta ?? 0);
+            const gan    = venta - costo;
+            const ganPct = venta > 0 ? (gan / venta * 100).toFixed(1) : 0;
+            return `<tr style="border-bottom:1px solid #f0f0f0">
+              <td style="padding:11px 14px">
+                <strong>${pr.presentacion}</strong>
+                ${pr.es_principal
+                  ? '<span style="font-size:10px;background:#fff3e0;color:#e65100;padding:2px 7px;border-radius:8px;margin-left:6px">PRINCIPAL</span>'
+                  : ''}
+              </td>
+              <td style="padding:11px 14px;text-align:right;color:var(--color-text-secondary)">
+                ${costo > 0 ? `S/ ${costo.toFixed(2)}` : '—'}
+              </td>
+              <td style="padding:11px 14px;text-align:right;font-weight:700">S/ ${venta.toFixed(2)}</td>
+              <td style="padding:11px 14px;text-align:center">
+                <span style="color:#2e7d32;font-weight:600">S/ ${gan.toFixed(2)}</span>
+                <span style="color:#888;font-size:11px"> (${ganPct}%)</span>
+              </td>
+              <td style="padding:11px 14px;text-align:center">
+                <div style="display:flex;gap:5px;justify-content:center">
+                  <button class="btn-icon edit" title="Editar"
+                    onclick="editarPresentacionProducto(${pr.id},'${pr.presentacion.replace(/'/g,"\\'")}',${costo},${venta},${pr.id_presentacion},${pr.es_principal})">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <button class="btn-icon danger" title="Eliminar"
+                    onclick="eliminarPresentacionProducto(${pr.id},'${pr.presentacion.replace(/'/g,"\\'")}')">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  } catch (e) {
+    listado.innerHTML = `<div style="color:#c62828;padding:16px">${e.message}</div>`;
+  }
+}
+
+// Llena el select de "Agregar presentación" excluyendo las ya asignadas
+async function cargarPresentacionesSelectPP(idProducto, idCategoria) {
+  const sel = document.getElementById('ppPresentacionSelect');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">-- Seleccionar --</option>';
+  if (!idCategoria) return;
+
+  try {
+    const [disponibles, asignadas] = await Promise.all([
+      api('GET', `/api/presentaciones/por-categoria/${idCategoria}`),
+      api('GET', `/api/presentaciones/producto/${idProducto}`)
+    ]);
+    const asignadasIds = asignadas.map(p => p.id_presentacion);
+    disponibles.forEach(p => {
+      if (!asignadasIds.includes(p.id_presentacion)) {
+        sel.innerHTML += `<option value="${p.id_presentacion}">${p.nombre}</option>`;
+      }
+    });
+  } catch (e) { console.warn('cargarPresentacionesSelectPP:', e.message); }
+}
+
+// Pre-rellena el formulario inline para editar una presentación existente
+function editarPresentacionProducto(idPP, nombre, costo, venta, idPresentacion, esPrincipal) {
+  document.getElementById('ppEditId').value            = idPP;
+  document.getElementById('ppNuevoCosto').value        = costo;
+  document.getElementById('ppNuevoVenta').value        = venta;
+  document.getElementById('ppEsPrincipal').checked     = !!esPrincipal;
+  document.getElementById('ppFormTitle').textContent   = 'EDITAR PRESENTACIÓN';
+  document.getElementById('ppBtnLabel').textContent    = 'Actualizar Presentación';
+  document.getElementById('ppBtnIcon').className       = 'bi bi-check2 me-1';
+  document.getElementById('ppBtnCancelarEdit').style.display = 'inline-flex';
+
+  // Asegurar que la opción existe en el select (puede estar excluida por estar ya asignada)
+  const sel = document.getElementById('ppPresentacionSelect');
+  if (!Array.from(sel.options).some(o => o.value == idPresentacion)) {
+    const opt = document.createElement('option');
+    opt.value       = idPresentacion;
+    opt.textContent = nombre;
+    sel.appendChild(opt);
+  }
+  sel.value = idPresentacion;
+
+  document.getElementById('ppFormWrapper')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Resetea el formulario inline al modo "agregar"
+function cancelarEditPP() {
+  document.getElementById('ppEditId').value             = '';
+  document.getElementById('ppNuevoCosto').value         = '';
+  document.getElementById('ppNuevoVenta').value         = '';
+  document.getElementById('ppEsPrincipal').checked      = false;
+  document.getElementById('ppPresentacionSelect').value = '';
+  document.getElementById('ppFormTitle').textContent    = 'AGREGAR NUEVA PRESENTACIÓN';
+  document.getElementById('ppBtnLabel').textContent     = 'Agregar Presentación';
+  document.getElementById('ppBtnIcon').className        = 'bi bi-plus-lg me-1';
+  document.getElementById('ppBtnCancelarEdit').style.display = 'none';
+
+  const idProducto  = document.getElementById('ppProductoId').value;
+  const idCategoria = document.getElementById('productoCategoriaSelect').value;
+  if (idProducto && idCategoria) {
+    cargarPresentacionesSelectPP(Number(idProducto), idCategoria);
+  }
+}
+
+// Guarda la presentación (nueva o editada)
+async function guardarPresentacionProducto() {
+  const idProducto  = document.getElementById('ppProductoId').value;
+  const idPP        = document.getElementById('ppEditId').value;
+  const idPres      = document.getElementById('ppPresentacionSelect').value;
+  const costo       = parseFloat(document.getElementById('ppNuevoCosto').value  ?? 0) || 0;
+  const venta       = parseFloat(document.getElementById('ppNuevoVenta').value  ?? 0) || 0;
+  const esPrincipal = document.getElementById('ppEsPrincipal').checked;
+
+  if (venta <= 0) {
+    showAlert('alertPreciosPresentacion', 'El precio de venta es requerido y debe ser mayor a 0');
+    return;
+  }
+  if (!idPP && !idPres) {
+    showAlert('alertPreciosPresentacion', 'Selecciona una presentación');
+    return;
+  }
+
+  const btn = document.getElementById('ppBtnGuardar');
+  if (btn) btn.disabled = true;
+
+  try {
+    if (idPP) {
+      await api('PUT', `/api/presentaciones/producto-precio/${idPP}`, {
+        precio_costo: costo,
+        precio_venta: venta,
+        es_principal: esPrincipal,
+        estado: 1
+      });
+    } else {
+      await api('POST', `/api/presentaciones/producto/${idProducto}`, {
+        id_presentacion: Number(idPres),
+        precio_costo:    costo,
+        precio_venta:    venta,
+        stock_actual:    0,
+        stock_minimo:    0,
+        es_principal:    esPrincipal
+      });
+    }
+
+    cancelarEditPP();
+    await cargarPreciosPresentacion(Number(idProducto));
+    await loadProductos();
+    showAlert('alertPreciosPresentacion',
+      idPP ? '✓ Presentación actualizada' : '✓ Presentación agregada',
+      'success'
+    );
+  } catch (e) {
+    showAlert('alertPreciosPresentacion', e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// Elimina una presentación de producto (con confirmación)
+async function eliminarPresentacionProducto(idPP, nombre) {
+  if (!confirm(`¿Eliminar la presentación "${nombre}"? Esta acción no se puede deshacer.`)) return;
+  try {
+    await api('DELETE', `/api/presentaciones/producto-precio/${idPP}`);
+    const idProducto  = document.getElementById('ppProductoId').value;
+    const idCategoria = document.getElementById('productoCategoriaSelect').value;
+    await cargarPreciosPresentacion(Number(idProducto));
+    await cargarPresentacionesSelectPP(Number(idProducto), idCategoria);
+    await loadProductos();
+  } catch (e) {
+    showAlert('alertPreciosPresentacion', e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  TAB FOTOS — galería de imágenes del producto
+// ══════════════════════════════════════════════════════
+
+// Carga y renderiza la galería de fotos
+async function activarTabFotos(idProducto) {
+  const galeria = document.getElementById('fotosGaleria');
+  if (!galeria) return;
+  galeria.innerHTML = '<div style="text-align:center;padding:20px;color:#bbb">Cargando...</div>';
+
+  try {
+    const fotos = await api('GET', `/api/productos/${idProducto}/fotos`);
+
+    if (!fotos.length) {
+      galeria.innerHTML = `
+        <div style="text-align:center;padding:20px;color:#bbb">
+          <i class="bi bi-image" style="font-size:32px;display:block;margin-bottom:8px"></i>
+          Sin fotos aún
+        </div>`;
+      return;
+    }
+
+    galeria.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px">
+        ${fotos.map(f => `
+          <div style="border-radius:8px;overflow:hidden;border:2px solid ${f.es_principal ? '#ff7043' : '#eee'};position:relative;background:#f5f5f5">
+            <img src="${f.url_foto}" alt="foto"
+              style="width:100%;height:100px;object-fit:cover;display:block"
+              onerror="this.style.background='#eee'">
+            <div style="position:absolute;top:4px;right:4px;display:flex;gap:3px">
+              ${!f.es_principal
+                ? `<button title="Marcar como principal"
+                    onclick="marcarFotoPrincipal(${idProducto},${f.id_foto})"
+                    style="width:26px;height:26px;border:none;border-radius:50%;background:rgba(255,255,255,.9);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;color:#e65100">
+                    <i class="bi bi-star"></i>
+                  </button>`
+                : `<span title="Foto principal"
+                    style="width:26px;height:26px;border-radius:50%;background:#ff7043;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px">
+                    <i class="bi bi-star-fill"></i>
+                  </span>`}
+              <button title="Eliminar foto"
+                onclick="eliminarFoto(${idProducto},${f.id_foto})"
+                style="width:26px;height:26px;border:none;border-radius:50%;background:rgba(255,255,255,.9);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;color:#c62828">
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
+            ${f.es_principal
+              ? '<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(255,112,67,.85);color:#fff;font-size:9px;font-weight:700;text-align:center;padding:2px">PRINCIPAL</div>'
+              : ''}
+          </div>`).join('')}
+      </div>`;
+  } catch (e) {
+    galeria.innerHTML = `<div style="color:#c62828;padding:16px">${e.message}</div>`;
+  }
+}
+
+// Sube la foto seleccionada al servidor
+async function handleFotoInputChange(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const idProducto = _idProductoActivo;
+  if (!idProducto) {
+    showAlert('alertFotos', 'Guarda el producto primero antes de subir fotos');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('foto', file);
+
+  const btn = document.getElementById('btnSubirFoto');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass me-1"></i>Subiendo...'; }
+
+  try {
+    const res = await fetch(`/api/productos/${idProducto}/fotos`, {
+      method:  'POST',
+      headers: { 'Authorization': `Bearer ${TOKEN}` },
+      body:    formData
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.message || 'Error al subir la foto');
+    }
+    input.value = '';
+    await activarTabFotos(idProducto);
+    showAlert('alertFotos', '✓ Foto subida correctamente', 'success');
+  } catch (e) {
+    showAlert('alertFotos', e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-upload me-1"></i>Subir foto'; }
+  }
+}
+
+// Marca una foto como principal
+async function marcarFotoPrincipal(idProducto, idFoto) {
+  try {
+    await api('PUT', `/api/productos/${idProducto}/fotos/${idFoto}/principal`);
+    await activarTabFotos(idProducto);
+  } catch (e) {
+    showAlert('alertFotos', e.message);
+  }
+}
+
+// Elimina una foto del producto
+async function eliminarFoto(idProducto, idFoto) {
+  if (!confirm('¿Eliminar esta foto?')) return;
+  try {
+    await api('DELETE', `/api/productos/${idProducto}/fotos/${idFoto}`);
+    await activarTabFotos(idProducto);
+  } catch (e) {
+    showAlert('alertFotos', e.message);
+  }
+}
+
+// ── STOCK POR PRESENTACIÓN (popup rápido desde tabla productos) ──────────
+async function verStockPorPresentacion(idProducto) {
+  const modal = document.getElementById('modalStockPresentacion');
+  if (!modal) { verInventarioProducto(idProducto); return; }
+
+  document.getElementById('stockPresBody').innerHTML =
+    '<div style="text-align:center;padding:24px;color:#bbb">Cargando...</div>';
+  modal.classList.add('open');
+
+  try {
+    const pres = await api('GET', `/api/presentaciones/producto/${idProducto}`);
+    const prod = dataProductos.find(x => x.id_producto === idProducto);
+
+    if (!pres.length) {
+      document.getElementById('stockPresBody').innerHTML =
+        '<div style="text-align:center;padding:24px;color:#bbb">Sin presentaciones registradas</div>';
+      return;
+    }
+
+    document.getElementById('stockPresBody').innerHTML = `
+      ${prod ? `<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:10px">
+        <strong style="color:var(--color-secondary)">${prod.nombre}</strong>
+        <span style="margin-left:8px;font-size:11px;background:var(--color-info-bg);color:var(--color-info);padding:2px 8px;border-radius:10px">
+          Stock total: ${prod.stock_total}
+        </span>
+      </div>` : ''}
+      <div style="border:1px solid #eee;border-radius:10px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:#f0f4ff">
+              <th style="padding:10px 14px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">PRESENTACIÓN</th>
+              <th style="padding:10px 14px;text-align:center;font-size:11px;color:var(--color-text-secondary);font-weight:700">STOCK</th>
+              <th style="padding:10px 14px;text-align:right;font-size:11px;color:var(--color-text-secondary);font-weight:700">PRECIO VENTA</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${pres.map(pr => {
+              const stockColor = pr.stock_actual > 0 ? '#2e7d32' : '#c62828';
+              return `<tr style="border-bottom:1px solid #f5f5f5">
+                <td style="padding:11px 14px">
+                  <strong>${pr.presentacion}</strong>
+                  ${pr.es_principal
+                    ? '<span style="font-size:10px;background:#fff3e0;color:#e65100;padding:2px 6px;border-radius:8px;margin-left:5px">PRINCIPAL</span>'
+                    : ''}
+                </td>
+                <td style="padding:11px 14px;text-align:center;font-size:18px;font-weight:800;color:${stockColor}">
+                  ${pr.stock_actual}
+                </td>
+                <td style="padding:11px 14px;text-align:right;font-weight:600">S/ ${parseFloat(pr.precio_venta).toFixed(2)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    document.getElementById('stockPresBody').innerHTML =
+      `<div style="color:#c62828;padding:16px">${e.message}</div>`;
+  }
 }
