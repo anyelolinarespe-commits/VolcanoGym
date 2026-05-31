@@ -486,15 +486,19 @@ export const getHistorialCliente = async (req, res) => {
                 m.saldo_pendiente,
                 m.tipo_ingreso,
                 m.created_at,
+                p.duracion_meses,
+                p.duracion_unidad,
                 (
                     SELECT json_agg(json_build_object(
-                        'id_pago',         pa.id_pago,
-                        'num_cuota',       pa.num_cuota,
-                        'monto',           pa.monto,
-                        'metodo_pago',     pa.metodo_pago,
-                        'fecha_pago',      pa.fecha_pago,
-                        'estado_cuota',    pa.estado_cuota,
-                        'num_comprobante', pa.num_comprobante
+                        'id_pago',          pa.id_pago,
+                        'num_cuota',        pa.num_cuota,
+                        'monto',            pa.monto,
+                        'metodo_pago',      pa.metodo_pago,
+                        'fecha_pago',       pa.fecha_pago,
+                        'fecha_programada', pa.fecha_programada,
+                        'fecha_limite',     pa.fecha_limite,
+                        'estado_cuota',     pa.estado_cuota,
+                        'num_comprobante',  pa.num_comprobante
                     ) ORDER BY pa.num_cuota)
                     FROM pago pa
                     WHERE pa.id_membresia = m.id_membresia
@@ -518,10 +522,13 @@ export const getHistorialCliente = async (req, res) => {
                 h.saldo_pendiente,
                 h.tipo_ingreso,
                 h.renovado_at     AS created_at,
+                COALESCE(p2.duracion_meses, 1)       AS duracion_meses,
+                COALESCE(p2.duracion_unidad, 'meses') AS duracion_unidad,
                 NULL::json        AS cuotas,
                 COALESCE(u2.alias_asesor, u2.nombre) AS asesor
             FROM historial_membresia h
-            LEFT JOIN usuarios u2 ON u2.id_usuario = h.id_usuario_reg
+            LEFT JOIN plan_membresia p2 ON p2.id_plan  = h.id_plan
+            LEFT JOIN usuarios u2        ON u2.id_usuario = h.id_usuario_reg
             WHERE ${membWhereHist}
 
             ORDER BY fecha_inicio DESC, created_at DESC

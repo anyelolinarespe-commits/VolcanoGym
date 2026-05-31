@@ -4,6 +4,8 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import morgan from 'morgan';
 import cors from 'cors';
+import { verificarToken } from './middlewares/verificarToken.js';
+import { uploadComprobante } from './middlewares/upload.js';
 import authRoutes            from './routes/authRoutes.js';
 import perfilesRoutes        from './routes/perfilesRoutes.js';
 import usuariosRoutes        from './routes/usuariosRoutes.js';
@@ -16,6 +18,8 @@ import categoriasRoutes      from './routes/categoriasRoutes.js';
 import productosRoutes       from './routes/productosRoutes.js';
 import presentacionesRoutes  from './routes/presentacionesRoutes.js';
 import asistenciasRoutes     from './routes/asistenciasRoutes.js';
+import inventarioRoutes from './routes/inventarioRoutes.js';
+import fotosRoutes from './routes/fotosRoutes.js';
 
 dotenv.config();
 
@@ -40,6 +44,18 @@ app.use('/api/categorias',     categoriasRoutes);
 app.use('/api/productos',      productosRoutes);
 app.use('/api/presentaciones', presentacionesRoutes);
 app.use('/api/asistencias',   asistenciasRoutes);
+app.use('/api/inventario', inventarioRoutes);
+app.use('/api/productos/:id/fotos', fotosRoutes);
+
+// Upload de capturas de comprobantes de pago
+app.post('/api/uploads/comprobante',
+  verificarToken,
+  uploadComprobante.single('file'),
+  (req, res) => {
+    if (!req.file) return res.status(400).json({ message: 'No se recibió ningún archivo' });
+    res.json({ url: `/uploads/comprobantes/${req.file.filename}` });
+  }
+);
 
 // Páginas
 app.get('/',          (req, res) => res.sendFile(__dirname + '/public/login.html'));

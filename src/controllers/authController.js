@@ -12,13 +12,13 @@ export const login = async (req, res) => {
     }
 
     try {
-        // ── 1. Buscar usuario activo 
+        // ── 1. Buscar usuario (excluye solo los eliminados con soft-delete)
         const result = await pool.query(
             `SELECT u.*, p.nombre AS perfil, p.estado AS perfil_estado
              FROM usuarios u
              JOIN perfiles p ON u.id_perfil = p.id_perfil
              WHERE u.username = $1
-               AND u.estado = 1
+               AND u.estado != 2
                AND u.deleted_at IS NULL`,
             [username]
         );
@@ -31,7 +31,7 @@ export const login = async (req, res) => {
 
         const usuario = result.rows[0];
 
-        // ── 2. Verificar contraseña ANTES de revelar estado del perfil 
+        // ── 2. Verificar contraseña ANTES de revelar cualquier estado
         const passwordValida = await bcrypt.compare(password, usuario.password_hash);
         if (!passwordValida) {
             return res.status(401).json({
@@ -39,7 +39,14 @@ export const login = async (req, res) => {
             });
         }
 
-        // ── 3. Verificar que el perfil esté activo ──
+        // ── 3. Verificar que la cuenta del usuario esté activa
+        if (usuario.estado !== 1) {
+            return res.status(403).json({
+                message: 'Tu cuenta está inactiva. Contacta al administrador.'
+            });
+        }
+
+        // ── 4. Verificar que el perfil esté activo
         if (usuario.perfil_estado !== 1) {
             return res.status(403).json({
                 message: 'Tu perfil de acceso está inactivo. Contacta al administrador.'

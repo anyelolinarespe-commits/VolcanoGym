@@ -32,12 +32,17 @@ function renderPerfiles(data) {
     const esSuperAdmin = p.nombre.toLowerCase() === 'superadministrador';
     const esMio        = p.id_perfil === miPerfilId;
 
-    // Edit bloqueado: superAdmin solo lo edita otro superAdmin; admin solo lo edita admin/superAdmin; propio perfil bloqueado
-    const bloqEdit = (!yoSoySuperAdmin && esSuperAdmin) ||
+    // Roles inferiores no pueden editar ni eliminar perfiles
+    const noEsAdmin = !yoSoyAdmin && !yoSoySuperAdmin;
+
+    // Edit bloqueado: roles inferiores; superAdmin solo lo edita otro superAdmin;
+    // admin solo lo edita admin/superAdmin; propio perfil bloqueado
+    const bloqEdit = noEsAdmin ||
+                     (!yoSoySuperAdmin && esSuperAdmin) ||
                      (esAdmin && !yoSoyAdmin && !yoSoySuperAdmin) ||
                      esMio;
-    // Delete bloqueado: superAdmin y Administrador son intocables; propio perfil bloqueado
-    const bloqDel  = esSuperAdmin || esAdmin || esMio;
+    // Delete bloqueado: roles inferiores; superAdmin y Administrador son intocables; propio perfil bloqueado
+    const bloqDel  = noEsAdmin || esSuperAdmin || esAdmin || esMio;
     const badge = (esSuperAdmin || esAdmin || esMio)
       ? `<span style="font-size:10px;color:#7c4dff;background:#ede7f6;padding:2px 7px;border-radius:20px">${esMio ? 'tu perfil' : 'protegido'}</span>`
       : '';
@@ -45,14 +50,14 @@ function renderPerfiles(data) {
     return `<tr>
       <td>${p.id_perfil}</td>
       <td><strong>${p.nombre}</strong> ${badge}</td>
-      <td style="color:#666">${p.descripcion || '—'}</td>
+      <td style="color:var(--color-text-secondary)">${p.descripcion || '—'}</td>
       <td><span class="badge-estado ${p.estado === 1 ? 'badge-activo' : 'badge-inactivo'}">${p.estado === 1 ? 'Activo' : 'Inactivo'}</span></td>
       <td>${new Date(p.created_at).toLocaleDateString('es-PE')}</td>
       <td style="display:flex;gap:6px">
         <button class="btn-icon perm" onclick="openPermisos(${p.id_perfil},'${p.nombre}')"><i class="bi bi-key"></i> Permisos</button>
         ${bloqEdit
         ? `<button class="btn-icon" disabled style="opacity:.35"><i class="bi bi-pencil"></i></button>`
-        : `<button class="btn-icon" onclick="editPerfil(${p.id_perfil})"><i class="bi bi-pencil"></i></button>`}
+        : `<button class="btn-icon edit" onclick="editPerfil(${p.id_perfil})"><i class="bi bi-pencil"></i></button>`}
         ${bloqDel
         ? `<button class="btn-icon danger" disabled style="opacity:.35"><i class="bi bi-lock"></i></button>`
         : `<button class="btn-icon danger" onclick="confirmDelete('perfil',${p.id_perfil},'${p.nombre}')"><i class="bi bi-trash"></i></button>`}

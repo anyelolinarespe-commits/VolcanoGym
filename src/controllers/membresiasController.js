@@ -1,5 +1,10 @@
 import { pool } from '../config/bd.js';
 import { v4 as uuidv4 } from 'uuid';
+import nodemailer from 'nodemailer';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -52,9 +57,10 @@ export const getMembresias = async (req, res) => {
                 m.id_membresia,
                 m.id_cliente,
                 c.nombre || ' ' || c.apellido  AS nombre_cliente,
-                c.dni, c.telefono, c.foto_perfil,
+                c.nombre, c.apellido,
+                c.dni, c.telefono, c.celular, c.foto_perfil,
                 p.id_plan, p.nombre             AS nombre_plan,
-                p.tipo_cliente, p.duracion_meses,
+                p.tipo_cliente, p.duracion_meses, p.duracion_unidad,
                 p.permite_fraccion, p.max_cuotas,
                 m.fecha_inicio, m.fecha_fin,
                 m.tipo_ingreso, m.estado,
@@ -150,22 +156,42 @@ export const getMembresiasByCliente = async (req, res) => {
     }
 };
 
+// ─── helper: cuotas con historial de abonos embebido ────────────────────────
+async function _getCuotasConAbonos(id_membresia) {
+    const result = await pool.query(`
+        SELECT pa.id_pago, pa.num_cuota, pa.monto,
+               pa.fecha_programada, pa.fecha_limite, pa.fecha_pago,
+               pa.metodo_pago, pa.num_comprobante, pa.estado_cuota,
+               pa.created_at,
+               u.nombre || ' ' || u.apellido AS registrado_por,
+               (
+                   SELECT COALESCE(JSON_AGG(
+                       JSON_BUILD_OBJECT(
+                           'id_abono',        ab.id_abono,
+                           'monto',           ab.monto,
+                           'metodo_pago',     ab.metodo_pago,
+                           'num_comprobante', ab.num_comprobante,
+                           'fecha_pago',      ab.fecha_pago,
+                           'registrado_por',  ur.nombre || ' ' || ur.apellido
+                       ) ORDER BY ab.created_at ASC
+                   ), '[]'::json)
+                   FROM abono_cuota ab
+                   JOIN usuarios ur ON ur.id_usuario = ab.id_usuario_reg
+                   WHERE ab.id_pago = pa.id_pago
+               ) AS abonos
+        FROM pago pa
+        LEFT JOIN usuarios u ON u.id_usuario = pa.id_usuario_reg
+        WHERE pa.id_membresia = $1
+        ORDER BY pa.num_cuota ASC
+    `, [id_membresia]);
+    return result.rows;
+}
+
 // ─── GET /api/membresias/:id/cuotas ─────────────────────────────────────────
 export const getCuotasByMembresia = async (req, res) => {
     const { id } = req.params;
     try {
-        const result = await pool.query(`
-            SELECT pa.id_pago, pa.num_cuota, pa.monto,
-                   pa.fecha_programada, pa.fecha_limite, pa.fecha_pago,
-                   pa.metodo_pago, pa.num_comprobante, pa.estado_cuota,
-                   pa.created_at,
-                   u.nombre || ' ' || u.apellido AS registrado_por
-            FROM pago pa
-            LEFT JOIN usuarios u ON u.id_usuario = pa.id_usuario_reg
-            WHERE pa.id_membresia = $1
-            ORDER BY pa.num_cuota ASC
-        `, [id]);
-        res.json(result.rows);
+        res.json(await _getCuotasConAbonos(id));
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error al obtener cuotas' });
@@ -191,7 +217,7 @@ export const createMembresia = async (req, res) => {
         id_cliente, id_plan, fecha_inicio,
         monto_total, monto_pagado_ahora,
         metodo_pago, observaciones, id_asesor,
-        num_cuotas_solicitadas
+        num_cuotas_solicitadas, pagos_detalle
     } = req.body;
 
     if (!id_cliente || !id_plan || !fecha_inicio || !monto_total || !metodo_pago)
@@ -209,33 +235,23 @@ export const createMembresia = async (req, res) => {
             return res.status(404).json({ message: 'Plan no encontrado o inactivo' });
         const plan = planRes.rows[0];
 
-        // ── 2. Validar cuotas ──────────────────────────────────────────────
-        const numCuotas = parseInt(num_cuotas_solicitadas) || 1;
-        if (numCuotas < 1)
-            return res.status(400).json({ message: 'El número de cuotas debe ser al menos 1' });
-        if (numCuotas > 1 && !plan.permite_fraccion)
-            return res.status(400).json({ message: 'Este plan no permite fraccionamiento' });
-        if (numCuotas > plan.max_cuotas)
-            return res.status(400).json({ message: `Este plan permite máximo ${plan.max_cuotas} cuotas` });
-        if (!plan.permite_fraccion && Number(monto_pagado_ahora ?? monto_total) !== Number(monto_total))
-            return res.status(400).json({ message: 'Este plan no permite pagos parciales.' });
-
-        const montoPorCuota = Number(monto_total) / numCuotas;
-        if (numCuotas > 1 && plan.monto_minimo_cuota > 0 && montoPorCuota < plan.monto_minimo_cuota)
-            return res.status(400).json({ message: `El monto por cuota (S/ ${montoPorCuota.toFixed(2)}) es menor al mínimo permitido (S/ ${plan.monto_minimo_cuota})` });
-
-        const fechaFin         = calcFechaFin(fecha_inicio, plan.duracion_meses, plan.duracion_unidad || 'meses');
+        // ── 2. Validar fraccionamiento ─────────────────────────────────────
         const montoPagadoAhora = Number(monto_pagado_ahora ?? monto_total);
         let saldoPendiente     = Math.max(0, Number(monto_total) - montoPagadoAhora);
 
-        // Adjust saldo to include interest on deferred cuotas
-        if (numCuotas > 1 && saldoPendiente > 0 && plan.aplica_interes && Number(plan.tasa_interes) > 0) {
-            const cuotasRest  = numCuotas - 1;
-            const base        = saldoPendiente / cuotasRest;
-            const cuotaConInt = plan.tipo_interes === 'porcentaje'
-                ? base * (1 + Number(plan.tasa_interes) / 100)
-                : base + Number(plan.tasa_interes);
-            saldoPendiente = +(cuotaConInt * cuotasRest).toFixed(2);
+        if (saldoPendiente > 0 && !plan.permite_fraccion)
+            return res.status(400).json({ message: 'Este plan no permite fraccionamiento' });
+
+        if (saldoPendiente > 0 && plan.monto_minimo_cuota > 0 && montoPagadoAhora < Number(plan.monto_minimo_cuota))
+            return res.status(400).json({ message: `El pago inicial (S/ ${montoPagadoAhora.toFixed(2)}) es menor al mínimo requerido (S/ ${Number(plan.monto_minimo_cuota).toFixed(2)})` });
+
+        const fechaFin = calcFechaFin(fecha_inicio, plan.duracion_meses, plan.duracion_unidad || 'meses');
+
+        // Aplicar interés sobre el saldo diferido (una sola vez sobre el total pendiente)
+        if (saldoPendiente > 0 && plan.aplica_interes && Number(plan.tasa_interes) > 0) {
+            saldoPendiente = plan.tipo_interes === 'porcentaje'
+                ? +(saldoPendiente * (1 + Number(plan.tasa_interes) / 100)).toFixed(2)
+                : +(saldoPendiente + Number(plan.tasa_interes)).toFixed(2);
         }
 
         const idUsuarioReg = id_asesor || req.usuario.id;
@@ -269,8 +285,8 @@ export const createMembresia = async (req, res) => {
             // Cuota 1 (pagada ahora)
             await _insertarCuotas(client, {
                 id_membresia: membresia.id_membresia,
-                idUsuarioReg, numCuotas, montoPagadoAhora, saldoPendiente,
-                fecha_inicio, plan, metodo_pago
+                idUsuarioReg, montoPagadoAhora, saldoPendiente,
+                fecha_inicio, fechaFin, plan, metodo_pago, pagos_detalle
             });
 
             await client.query('COMMIT');
@@ -331,8 +347,8 @@ export const createMembresia = async (req, res) => {
         // 4B-iv. Crear nuevas cuotas para el período renovado
         await _insertarCuotas(client, {
             id_membresia: idMembresia,
-            idUsuarioReg, numCuotas, montoPagadoAhora, saldoPendiente,
-            fecha_inicio, plan, metodo_pago
+            idUsuarioReg, montoPagadoAhora, saldoPendiente,
+            fecha_inicio, fechaFin, plan, metodo_pago, pagos_detalle
         });
 
         await client.query('COMMIT');
@@ -355,70 +371,100 @@ export const createMembresia = async (req, res) => {
     }
 };
 
-// ─── helper: insertar cuota 1 (pagada) + cuotas pendientes ──────────────────
+// ─── helper: insertar cuota 1 (pagada) + cuota pendiente libre ──────────────
 async function _insertarCuotas(client, {
-    id_membresia, idUsuarioReg, numCuotas,
-    montoPagadoAhora, saldoPendiente, fecha_inicio, plan, metodo_pago
+    id_membresia, idUsuarioReg,
+    montoPagadoAhora, saldoPendiente, fecha_inicio, fechaFin, plan, metodo_pago,
+    pagos_detalle = null
 }) {
+    const esMixto = Array.isArray(pagos_detalle) && pagos_detalle.length > 1;
+    const metodoPrimario = Array.isArray(pagos_detalle) && pagos_detalle.length > 0
+        ? pagos_detalle[0].metodo_pago
+        : metodo_pago;
+    const comprobante = genComprobante('REN');
+
     // Cuota 1 — pagada ahora
-    await client.query(
+    const c1Res = await client.query(
         `INSERT INTO pago
          (id_membresia, id_usuario_reg, num_cuota, monto,
           fecha_pago, fecha_programada, fecha_limite,
-          metodo_pago, num_comprobante, estado_cuota)
-         VALUES ($1,$2,1,$3,CURRENT_DATE,$4,$5,$6,$7,'pagado')`,
+          metodo_pago, num_comprobante, estado_cuota, es_mixto)
+         VALUES ($1,$2,1,$3,CURRENT_DATE,$4,$5,$6,$7,'pagado',$8)
+         RETURNING id_pago`,
         [
             id_membresia, idUsuarioReg,
             montoPagadoAhora,
             fecha_inicio,
-            addDias(fecha_inicio, plan.dias_limite_fraccion),
-            metodo_pago,
-            genComprobante('REN')
+            fecha_inicio,
+            metodoPrimario,
+            comprobante,
+            esMixto
         ]
     );
+    const idPagoC1 = c1Res.rows[0].id_pago;
 
-    // Cuotas pendientes (si hay fraccionamiento)
-    if (numCuotas > 1 && saldoPendiente > 0) {
-        const cuotasRestantes       = numCuotas - 1;
-        const montoPorCuotaRestante = +(saldoPendiente / cuotasRestantes).toFixed(2);
-        let saldoAcumulado          = 0;
+    // Registrar detalle de métodos de pago para C1
+    const detalles = Array.isArray(pagos_detalle) && pagos_detalle.length > 0
+        ? pagos_detalle
+        : [{ metodo_pago: metodo_pago, monto_parcial: montoPagadoAhora, referencia: null, codigo_seguridad: null, url_comprobante: null }];
 
-        for (let n = 2; n <= numCuotas; n++) {
-            const esUltima    = n === numCuotas;
-            const montoCuota  = esUltima
-                ? +(saldoPendiente - saldoAcumulado).toFixed(2)
-                : montoPorCuotaRestante;
-            saldoAcumulado   += montoCuota;
+    for (const d of detalles) {
+        await client.query(
+            `INSERT INTO pago_detalle
+             (id_pago, metodo_pago, monto_parcial, referencia, codigo_seguridad, url_comprobante)
+             VALUES ($1,$2,$3,$4,$5,$6)`,
+            [idPagoC1, d.metodo_pago, d.monto_parcial,
+             d.referencia || null, d.codigo_seguridad || null, d.url_comprobante || null]
+        );
+    }
 
-            // La cuenta regresiva arranca desde el día del primer pago (fecha_inicio)
-            const fechaProgr  = fecha_inicio;
-            const fechaLim    = addDias(fecha_inicio, plan.dias_limite_fraccion);
-
-            await client.query(
-                `INSERT INTO pago
-                 (id_membresia, id_usuario_reg, num_cuota, monto,
-                  fecha_programada, fecha_limite, estado_cuota)
-                 VALUES ($1,$2,$3,$4,$5,$6,'pendiente')`,
-                [id_membresia, idUsuarioReg, n, montoCuota, fechaProgr, fechaLim]
-            );
-        }
+    // Cuota pendiente — saldo total restante, plazo según configuración del plan
+    if (saldoPendiente > 0) {
+        await client.query(
+            `INSERT INTO pago
+             (id_membresia, id_usuario_reg, num_cuota, monto,
+              fecha_programada, fecha_limite, estado_cuota)
+             VALUES ($1,$2,2,$3,$4,$5,'pendiente')`,
+            [
+                id_membresia, idUsuarioReg,
+                saldoPendiente,
+                fecha_inicio,
+                addDias(fecha_inicio, plan.dias_limite_fraccion)
+            ]
+        );
     }
 }
 
 // ─── POST /api/membresias/:id/pagar-cuota ───────────────────────────────────
-// Registra el pago de una cuota pendiente
+// Registra el pago de una cuota pendiente.
+// Body: { id_pago, monto_pagado, pagos_detalle: [{metodo_pago, monto_parcial, referencia, codigo_seguridad, url_comprobante}] }
+// pagos_detalle es requerido; si solo hay 1 elemento, se trata como pago simple.
 export const pagarCuota = async (req, res) => {
-    const { id } = req.params;         // id_membresia
-    const { id_pago, metodo_pago, num_comprobante, monto_pagado } = req.body;
+    const { id } = req.params;
+    const { id_pago, monto_pagado, pagos_detalle, metodo_pago, num_comprobante } = req.body;
 
-    if (!id_pago || !metodo_pago)
-        return res.status(400).json({ message: 'id_pago y metodo_pago son requeridos' });
+    if (!id_pago)
+        return res.status(400).json({ message: 'id_pago es requerido' });
+
+    // Determinar método primario y validar que viene algún método
+    const detalles = Array.isArray(pagos_detalle) && pagos_detalle.length > 0
+        ? pagos_detalle
+        : metodo_pago
+            ? [{ metodo_pago, monto_parcial: null, referencia: null, codigo_seguridad: null, url_comprobante: null }]
+            : null;
+
+    if (!detalles)
+        return res.status(400).json({ message: 'Se requiere al menos un método de pago (pagos_detalle o metodo_pago)' });
+
+    const metodoPrimario = detalles[0].metodo_pago;
+    const esMixto        = detalles.length > 1;
+    const comprobante    = num_comprobante || genComprobante('MEM');
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        // Verificar que la cuota pertenece a esta membresía y está pendiente/vencida
+        // Verificar cuota pendiente
         const cuotaRes = await client.query(
             `SELECT * FROM pago WHERE id_pago=$1 AND id_membresia=$2 AND estado_cuota IN ('pendiente','vencido')
              FOR UPDATE`,
@@ -427,65 +473,93 @@ export const pagarCuota = async (req, res) => {
         if (!cuotaRes.rows.length)
             return res.status(404).json({ message: 'Cuota no encontrada o ya fue pagada' });
 
-        const cuota = cuotaRes.rows[0];
-        const montoFinal = monto_pagado ? Number(monto_pagado) : cuota.monto;
+        const cuota      = cuotaRes.rows[0];
+        const montoCuota = parseFloat(cuota.monto);
 
-        // Actualizar la cuota
+        const montoEnviado = monto_pagado !== undefined && monto_pagado !== null
+            ? parseFloat(monto_pagado)
+            : montoCuota;
+
+        if (isNaN(montoEnviado) || montoEnviado <= 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ message: 'El monto debe ser mayor a 0.' });
+        }
+        if (montoEnviado > montoCuota + 0.01) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                message: `El monto no puede superar la deuda pendiente: S/ ${montoCuota.toFixed(2)}.`
+            });
+        }
+
+        const montoFinal = Math.min(montoEnviado, montoCuota);
+        const restante   = +(montoCuota - montoFinal).toFixed(2);
+
+        // Distribuir monto en splits si es mixto (ajustar el último para cuadrar exacto)
+        const splitsFinales = detalles.map((d, i) => ({
+            ...d,
+            monto_parcial: d.monto_parcial != null ? parseFloat(d.monto_parcial) : montoFinal
+        }));
+
+        if (restante <= 0.01) {
+            // ── PAGO COMPLETO: marcar cuota como pagada ─────────────────────
+            await client.query(
+                `UPDATE pago SET
+                    estado_cuota    = 'pagado',
+                    fecha_pago      = CURRENT_DATE,
+                    metodo_pago     = $1,
+                    num_comprobante = $2,
+                    monto           = $3,
+                    modificado_por  = $4,
+                    es_mixto        = $5
+                 WHERE id_pago = $6`,
+                [metodoPrimario, comprobante, montoFinal, req.usuario.id, esMixto, id_pago]
+            );
+
+            // Insertar detalle de métodos de pago
+            for (const d of splitsFinales) {
+                await client.query(
+                    `INSERT INTO pago_detalle
+                     (id_pago, metodo_pago, monto_parcial, referencia, codigo_seguridad, url_comprobante)
+                     VALUES ($1,$2,$3,$4,$5,$6)`,
+                    [id_pago, d.metodo_pago, d.monto_parcial,
+                     d.referencia || null, d.codigo_seguridad || null, d.url_comprobante || null]
+                );
+            }
+        } else {
+            // ── PAGO PARCIAL: actualizar saldo restante ──────────────────────
+            await client.query(
+                `UPDATE pago SET monto=$1, modificado_por=$2 WHERE id_pago=$3`,
+                [restante, req.usuario.id, id_pago]
+            );
+        }
+
+        // Registrar abono en historial (siempre, parcial o completo)
         await client.query(
-            `UPDATE pago SET
-                estado_cuota  = 'pagado',
-                fecha_pago    = CURRENT_DATE,
-                metodo_pago   = $1,
-                num_comprobante = $2,
-                monto         = $3,
-                modificado_por = $4
-             WHERE id_pago = $5`,
-            [metodo_pago, num_comprobante || genComprobante('MEM'), montoFinal, req.usuario.id, id_pago]
+            `INSERT INTO abono_cuota
+             (id_pago, id_usuario_reg, monto, metodo_pago, num_comprobante, fecha_pago)
+             VALUES ($1,$2,$3,$4,$5,CURRENT_DATE)`,
+            [id_pago, req.usuario.id, montoFinal, metodoPrimario, comprobante]
         );
 
-        // Recalcular saldo_pendiente en la membresía
+        // Recalcular saldo de la membresía
         const saldoRes = await client.query(
-            `SELECT COALESCE(SUM(monto), 0) AS saldo
-             FROM pago
+            `SELECT COALESCE(SUM(monto),0) AS saldo FROM pago
              WHERE id_membresia=$1 AND estado_cuota IN ('pendiente','vencido')`,
             [id]
         );
         const nuevoSaldo = parseFloat(saldoRes.rows[0].saldo);
-
         await client.query(
             `UPDATE membresia SET saldo_pendiente=$1 WHERE id_membresia=$2`,
             [nuevoSaldo, id]
         );
 
-        // Arrancar la cuenta regresiva de la siguiente cuota pendiente desde HOY
-        const planRes = await client.query(
-            `SELECT p.dias_limite_fraccion FROM plan_membresia p
-             JOIN membresia m ON m.id_plan = p.id_plan
-             WHERE m.id_membresia = $1`, [id]
-        );
-        if (planRes.rows.length) {
-            const diasLim = planRes.rows[0].dias_limite_fraccion;
-            await client.query(
-                `UPDATE pago
-                 SET fecha_programada = CURRENT_DATE,
-                     fecha_limite     = CURRENT_DATE + $1
-                 WHERE id_membresia = $2
-                   AND estado_cuota IN ('pendiente','vencido')
-                   AND num_cuota = (
-                       SELECT MIN(num_cuota) FROM pago
-                       WHERE id_membresia = $2 AND estado_cuota IN ('pendiente','vencido')
-                   )`,
-                [diasLim, id]
-            );
-        }
-
         await client.query('COMMIT');
 
-        // Retornar cuotas actualizadas
-        const cuotasResult = await pool.query(
-            `SELECT * FROM pago WHERE id_membresia=$1 ORDER BY num_cuota`, [id]
-        );
-        res.json({ message: 'Cuota registrada correctamente', cuotas: cuotasResult.rows, nuevo_saldo: nuevoSaldo });
+        res.json({
+            message:     restante <= 0.01 ? 'Pago completo registrado' : 'Abono parcial registrado',
+            cuotas:      await _getCuotasConAbonos(id),
+            nuevo_saldo: nuevoSaldo
+        });
 
     } catch (err) {
         await client.query('ROLLBACK');
@@ -815,6 +889,166 @@ export const crearMembresia = async (req, res) => {
   }
 };
  
+// ─── ENVIAR BOLETA POR CORREO ────────────────────────────────────────────────
+export const enviarBoletaEmail = async (req, res) => {
+    const { email, datos } = req.body;
+    if (!email || !datos) {
+        return res.status(400).json({ ok: false, mensaje: 'Faltan el correo o los datos de la boleta.' });
+    }
+
+    const transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+        },
+        tls: { rejectUnauthorized: false }
+    });
+
+    // Ruta del logo para adjuntarlo como CID inline (funciona en Gmail/Outlook)
+    const iconoPath = path.join(__dirname, '../public/icono.png');
+    const iconoExists = fs.existsSync(iconoPath);
+
+    const total       = parseFloat(datos.monto_total  || 0);
+    const pagado      = parseFloat(datos.monto_pagado || 0);
+    const pendienteN  = Math.max(0, total - pagado);
+    const nCuotas     = (datos.cuotas || []).length;
+    const fmtFE = f => {
+        if (!f) return '—';
+        const d = String(f).includes('T') ? new Date(f) : new Date(f + 'T12:00:00');
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    };
+
+    const cuotasFilas = (datos.cuotas || []).map((c, i) => {
+        const monto    = parseFloat(c.monto || 0).toFixed(2);
+        const esPagado = c.estado_cuota === 'pagado';
+        const esVenc   = c.estado_cuota === 'vencido';
+        const color    = esPagado ? '#2e7d32' : esVenc ? '#c62828' : '#e65100';
+        const est      = esPagado ? '✓' : esVenc ? '⚠' : '⏳';
+        const fechaVenc = fmtFE(c.fecha_limite || c.fecha_programada || c.fecha_pago);
+        const bg       = i % 2 === 1 ? 'background:#fafafa' : '';
+        return `<tr style="${bg}">
+            <td style="padding:5px 8px;text-align:center;border-right:1px solid #eee;font-size:12px;font-weight:700">${i + 1}</td>
+            <td style="padding:5px 8px;border-right:1px solid #eee;font-size:12px">${fechaVenc}</td>
+            <td style="padding:5px 8px;text-align:right;font-size:12px;color:${color};font-weight:600">S/ ${monto}</td>
+            <td style="padding:5px 8px;text-align:center;font-size:12px;color:${color};font-weight:700">${est}</td>
+        </tr>`;
+    }).join('');
+
+    const saldoPendiente = (parseFloat(datos.monto_total || 0) - parseFloat(datos.monto_pagado || 0)).toFixed(2);
+    const tienePendiente = parseFloat(saldoPendiente) > 0;
+
+    const htmlEmail = `
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Comprobante Volcano Gym</title></head>
+<body style="margin:0;padding:20px;background:#f4f4f4;font-family:Arial,sans-serif;font-size:13px;color:#222">
+  <div style="max-width:500px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">
+    <!-- Header rojo -->
+    <div style="background:#c62828;padding:20px 24px;text-align:center">
+      ${iconoExists ? `<div style="margin-bottom:8px"><img src="cid:volcano_logo" width="64" height="64" style="border-radius:8px;display:inline-block" alt="Volcano Gym"></div>` : ''}
+      <div style="color:#fff;font-size:22px;font-weight:bold;letter-spacing:2px">VOLCANO GYM</div>
+      <div style="color:rgba(255,255,255,.8);font-size:11px;margin-top:4px">Av. Balta 2340 – Urb. Latina – Chiclayo</div>
+      <div style="color:rgba(255,255,255,.8);font-size:11px">volcanogym21@gmail.com</div>
+      <div style="color:rgba(255,255,255,.95);font-size:11px;font-weight:bold;margin-top:2px">RUC: 20604869201</div>
+    </div>
+    <!-- Título comprobante -->
+    <div style="background:#fafafa;border-bottom:1px solid #eee;padding:14px 24px;text-align:center">
+      <div style="font-size:13px;font-weight:bold;color:#444;letter-spacing:1px">COMPROBANTE DE SERVICIO</div>
+      <div style="font-size:16px;font-weight:bold;color:#c62828;margin-top:4px">${datos.num_comprobante || 'B001-0000'}</div>
+      <div style="font-size:11px;color:#888;margin-top:2px">Fecha de emisión: ${datos.fecha_emision || ''}</div>
+    </div>
+    <!-- Body -->
+    <div style="padding:20px 24px">
+      <!-- Cliente -->
+      <div style="font-size:11px;font-weight:bold;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Datos del cliente</div>
+      <table width="100%" cellspacing="0" cellpadding="0" style="font-size:13px;margin-bottom:16px">
+        <tr><td style="padding:3px 0;color:#555;width:45%">Señor(a):</td><td style="padding:3px 0;font-weight:600">${datos.nombre || ''} ${datos.apellido || ''}</td></tr>
+        <tr><td style="padding:3px 0;color:#555">DNI:</td><td style="padding:3px 0">${datos.dni || ''}</td></tr>
+        ${datos.celular && datos.celular !== '—' ? `<tr><td style="padding:3px 0;color:#555">Celular:</td><td style="padding:3px 0">${datos.celular}</td></tr>` : ''}
+      </table>
+      <hr style="border:none;border-top:1px dashed #ddd;margin:12px 0">
+      <!-- Servicio -->
+      <div style="font-size:11px;font-weight:bold;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Detalle del servicio</div>
+      <table width="100%" cellspacing="0" cellpadding="0" style="font-size:13px;margin-bottom:16px">
+        <tr><td style="padding:3px 0;color:#555;width:45%">Plan:</td><td style="padding:3px 0;font-weight:600">${datos.plan || ''}</td></tr>
+        <tr><td style="padding:3px 0;color:#555">F. Inicio:</td><td style="padding:3px 0">${datos.fecha_inicio || ''}</td></tr>
+        <tr><td style="padding:3px 0;color:#555">F. Vencimiento:</td><td style="padding:3px 0">${datos.fecha_fin || ''}</td></tr>
+        <tr><td style="padding:3px 0;color:#555">Tiempo contratado:</td><td style="padding:3px 0">${datos.duracion || ''}</td></tr>
+        <tr><td style="padding:3px 0;color:#555">Método de pago:</td><td style="padding:3px 0">${datos.metodo_pago || ''}</td></tr>
+      </table>
+      <hr style="border:none;border-top:1px dashed #ddd;margin:12px 0">
+      <!-- Cuotas: información del crédito + tabla -->
+      <div style="font-size:11px;font-weight:bold;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Detalle de pagos</div>
+      <!-- Resumen crédito -->
+      <table width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e0e0e0;border-radius:6px;overflow:hidden;margin-bottom:8px">
+        <tr style="background:#f0f0f0">
+          <td colspan="2" style="padding:5px 10px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid #e0e0e0">Información del crédito</td>
+        </tr>
+        <tr>
+          <td style="padding:5px 10px;font-size:12px;color:#555">Monto neto pendiente de pago:</td>
+          <td style="padding:5px 10px;font-size:12px;font-weight:700;color:${pendienteN > 0 ? '#e65100' : '#2e7d32'};text-align:right">S/ ${pendienteN.toFixed(2)}</td>
+        </tr>
+        <tr style="background:#fafafa">
+          <td style="padding:4px 10px;font-size:12px;color:#555">Cuotas:</td>
+          <td style="padding:4px 10px;font-size:12px;font-weight:600;text-align:right">${nCuotas}</td>
+        </tr>
+      </table>
+      <!-- Tabla de cuotas -->
+      <table width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e0e0e0;border-radius:6px;overflow:hidden;margin-bottom:10px">
+        <tr style="background:#f0f0f0">
+          <th style="padding:5px 8px;text-align:center;border-right:1px solid #e0e0e0;border-bottom:1px solid #e0e0e0;font-size:11px">N° CUOTA</th>
+          <th style="padding:5px 8px;text-align:left;border-right:1px solid #e0e0e0;border-bottom:1px solid #e0e0e0;font-size:11px">FEC. VENC.</th>
+          <th style="padding:5px 8px;text-align:right;border-right:1px solid #e0e0e0;border-bottom:1px solid #e0e0e0;font-size:11px">MONTO</th>
+          <th style="padding:5px 8px;text-align:center;border-bottom:1px solid #e0e0e0;font-size:11px">EST.</th>
+        </tr>
+        ${cuotasFilas}
+      </table>
+      <!-- Total -->
+      <div style="background:#fef3f2;border:1px solid #fca5a5;border-radius:6px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:bold;font-size:14px">TOTAL PAGADO:</span>
+        <span style="font-weight:bold;font-size:18px;color:#c62828">S/ ${parseFloat(datos.monto_pagado || 0).toFixed(2)}</span>
+      </div>
+      ${tienePendiente ? `<div style="margin-top:8px;font-size:12px;color:#e65100;text-align:right">Saldo pendiente: S/ ${saldoPendiente}</div>` : ''}
+    </div>
+    <!-- Footer -->
+    <div style="background:#fafafa;border-top:1px solid #eee;padding:14px 24px;font-size:10px;color:#999;text-align:center;line-height:1.6">
+      Boleta basada en el contrato físico del gimnasio con todas las cláusulas legales.<br>
+      Cláusula 5a: Las membresías se renuevan automáticamente al vencimiento.<br>
+      Cláusula 6a: No aplica devolución de matrícula o cualquier tipo de pago.
+    </div>
+  </div>
+</body>
+</html>`;
+
+    try {
+        const attachments = [];
+        if (iconoExists) {
+            attachments.push({
+                filename: 'icono.png',
+                path: iconoPath,
+                cid: 'volcano_logo'
+            });
+        }
+
+        await transporter.sendMail({
+            from: process.env.EMAIL_FROM || `"Volcano Gym" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: `Volcano Gym - Tu comprobante de membresía ${datos.num_comprobante || ''}`,
+            html: htmlEmail,
+            attachments
+        });
+        return res.json({ ok: true, mensaje: 'Correo enviado exitosamente.' });
+    } catch (err) {
+        console.error('Error enviando correo:', err.message);
+        return res.status(500).json({ ok: false, mensaje: 'No se pudo enviar el correo. Verifica la configuración de EMAIL_USER y EMAIL_PASS en el servidor.' });
+    }
+};
+
 // ─── LISTAR MEMBRESÍAS ────────────────────────────────────────────────────────
 export const listarMembresias = async (req, res) => {
   const { estado, buscar, pagina = 1, por_pagina = 20 } = req.query;

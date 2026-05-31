@@ -69,6 +69,11 @@ export const updatePerfil = async (req, res) => {
         const ejecutorEsSuperAdmin = ejecutor_perfil_nombre?.toLowerCase() === 'superadministrador';
         const ejecutorEsAdmin      = ejecutor_perfil_nombre?.toLowerCase() === 'administrador';
 
+        // Solo admin o superAdmin pueden editar perfiles
+        if (!ejecutorEsAdmin && !ejecutorEsSuperAdmin) {
+            return res.status(403).json({ message: 'No tienes permisos para editar perfiles' });
+        }
+
         // Solo superAdmin puede editar el perfil superAdministrador
         if (targetEsSuperAdmin && !ejecutorEsSuperAdmin) {
             return res.status(403).json({ message: 'No tienes permisos para editar el perfil SuperAdministrador' });
@@ -127,7 +132,15 @@ export const deletePerfil = async (req, res) => {
 
         if (!info.rows.length) return res.status(404).json({ message: 'Perfil no encontrado' });
 
-        const { target_nombre, ejecutor_perfil_id } = info.rows[0];
+        const { target_nombre, ejecutor_perfil_id, ejecutor_perfil_nombre } = info.rows[0];
+
+        const ejecutorEsAdmin      = ejecutor_perfil_nombre?.toLowerCase() === 'administrador';
+        const ejecutorEsSuperAdmin = ejecutor_perfil_nombre?.toLowerCase() === 'superadministrador';
+
+        // Solo admin o superAdmin pueden eliminar perfiles
+        if (!ejecutorEsAdmin && !ejecutorEsSuperAdmin) {
+            return res.status(403).json({ message: 'No tienes permisos para eliminar perfiles' });
+        }
 
         // No se puede eliminar el perfil superAdministrador
         if (target_nombre.toLowerCase() === 'superadministrador') {

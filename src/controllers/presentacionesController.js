@@ -2,15 +2,15 @@ import { pool } from '../config/bd.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  CONTROLLER: PRESENTACIONES
-//  Tabla: presentacion  (catálogo de tipos de envase/formato)
 // ══════════════════════════════════════════════════════════════════════════════
 
 // GET /api/presentaciones
 export const getPresentaciones = async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT p.id_presentacion, p.nombre, p.descripcion, p.estado, p.created_at,
-                   COUNT(cp.id_categoria) AS total_categorias
+            SELECT
+                p.id_presentacion, p.nombre, p.descripcion, p.estado, p.created_at,
+                COUNT(cp.id_categoria) AS total_categorias
             FROM presentacion p
             LEFT JOIN categoria_presentacion cp ON cp.id_presentacion = p.id_presentacion
             WHERE p.estado != 2
@@ -24,7 +24,7 @@ export const getPresentaciones = async (req, res) => {
     }
 };
 
-// GET /api/presentaciones/activas  — solo activas (para selects)
+// GET /api/presentaciones/activas
 export const getPresentacionesActivas = async (req, res) => {
     try {
         const result = await pool.query(`
@@ -41,7 +41,7 @@ export const getPresentacionesActivas = async (req, res) => {
 };
 
 // GET /api/presentaciones/por-categoria/:id_categoria
-// Devuelve solo las presentaciones válidas para una categoría específica
+// Devuelve solo las presentaciones válidas para una categoría (Opción B)
 export const getPresentacionesByCategoria = async (req, res) => {
     const { id_categoria } = req.params;
     try {
@@ -49,8 +49,7 @@ export const getPresentacionesByCategoria = async (req, res) => {
             SELECT p.id_presentacion, p.nombre, p.descripcion
             FROM presentacion p
             JOIN categoria_presentacion cp ON cp.id_presentacion = p.id_presentacion
-            WHERE cp.id_categoria = $1
-              AND p.estado = 1
+            WHERE cp.id_categoria = $1 AND p.estado = 1
             ORDER BY p.nombre ASC
         `, [id_categoria]);
         res.json(result.rows);
@@ -105,17 +104,17 @@ export const updatePresentacion = async (req, res) => {
     }
 };
 
-// DELETE /api/presentaciones/:id  (soft delete: estado=2)
+// DELETE /api/presentaciones/:id (soft delete)
 export const deletePresentacion = async (req, res) => {
     const { id } = req.params;
     try {
-        // Verificar si está en uso por algún producto
         const check = await pool.query(
-            `SELECT COUNT(*) FROM producto_presentacion WHERE id_presentacion=$1`, [id]
+            `SELECT COUNT(*) FROM producto_presentacion
+             WHERE id_presentacion=$1 AND estado != 2`, [id]
         );
         if (parseInt(check.rows[0].count) > 0)
             return res.status(409).json({
-                message: `No se puede eliminar: hay ${check.rows[0].count} producto(s) usando esta presentación`
+                message: `No se puede eliminar: ${check.rows[0].count} producto(s) usan esta presentación`
             });
 
         const result = await pool.query(
@@ -133,7 +132,8 @@ export const deletePresentacion = async (req, res) => {
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
-//  PRECIOS POR PRESENTACIÓN DE UN PRODUCTO  (tabla producto_presentacion)
+//  PRESENTACIONES POR PRODUCTO (tabla producto_presentacion)
+//  Ahora incluye: stock_actual, stock_minimo, es_principal
 // ──────────────────────────────────────────────────────────────────────────────
 
 // GET /api/presentaciones/producto/:id_producto
@@ -145,19 +145,20 @@ export const getPresentacionesByProducto = async (req, res) => {
                 pp.id,
                 pp.id_producto,
                 pp.id_presentacion,
-                p.nombre  AS presentacion,
+                p.nombre            AS presentacion,
                 pp.precio_costo,
                 pp.precio_venta,
+                pp.stock_actual,
+                pp.stock_minimo,
+                pp.es_principal,
                 pp.estado,
-                CASE
-                    WHEN pp.precio_costo > 0
+                CASE WHEN pp.precio_costo > 0
                     THEN ROUND((pp.precio_venta - pp.precio_costo) / pp.precio_costo * 100, 1)
-                    ELSE NULL
-                END AS ganancia_pct
+                    ELSE NULL END   AS ganancia_pct
             FROM producto_presentacion pp
             JOIN presentacion p ON p.id_presentacion = pp.id_presentacion
-            WHERE pp.id_producto = $1
-            ORDER BY p.nombre ASC
+            WHERE pp.id_producto = $1 AND pp.estado != 2
+            ORDER BY pp.es_principal DESC, p.nombre ASC
         `, [id_producto]);
         res.json(result.rows);
     } catch (err) {
@@ -169,7 +170,10 @@ export const getPresentacionesByProducto = async (req, res) => {
 // POST /api/presentaciones/producto/:id_producto
 export const addPresentacionToProducto = async (req, res) => {
     const { id_producto } = req.params;
-    const { id_presentacion, precio_costo, precio_venta } = req.body;
+    const {
+        id_presentacion, precio_costo, precio_venta,
+        stock_actual, stock_minimo, es_principal
+    } = req.body;
 
     if (!id_presentacion || precio_venta === undefined || precio_venta === null)
         return res.status(400).json({ message: 'Presentación y precio de venta son requeridos' });
@@ -177,64 +181,146 @@ export const addPresentacionToProducto = async (req, res) => {
     if (Number(precio_venta) <= 0)
         return res.status(400).json({ message: 'El precio de venta debe ser mayor a 0' });
 
+    const client = await pool.connect();
     try {
-        const existe = await pool.query(
+        await client.query('BEGIN');
+
+        // Verificar que la presentación sea válida para la categoría del producto
+        const catCheck = await client.query(`
+            SELECT cp.id_categoria
+            FROM categoria_presentacion cp
+            JOIN producto p ON p.id_categoria = cp.id_categoria
+            WHERE p.id_producto = $1 AND cp.id_presentacion = $2
+        `, [id_producto, id_presentacion]);
+
+        if (catCheck.rowCount === 0)
+            return res.status(409).json({
+                message: 'Esta presentación no está permitida para la categoría del producto'
+            });
+
+        // Verificar duplicado
+        const existe = await client.query(
             `SELECT id FROM producto_presentacion
-             WHERE id_producto=$1 AND id_presentacion=$2`,
+             WHERE id_producto=$1 AND id_presentacion=$2 AND estado != 2`,
             [id_producto, id_presentacion]
         );
         if (existe.rows.length > 0)
             return res.status(409).json({ message: 'Esta presentación ya está registrada para el producto' });
 
-        const result = await pool.query(
+        // Si es_principal=true, desmarcar la anterior
+        if (es_principal === true) {
+            await client.query(
+                `UPDATE producto_presentacion SET es_principal=false
+                 WHERE id_producto=$1 AND es_principal=true`,
+                [id_producto]
+            );
+        }
+
+        const result = await client.query(
             `INSERT INTO producto_presentacion
-             (id_producto, id_presentacion, precio_costo, precio_venta, creado_por)
-             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-            [id_producto, id_presentacion,
+             (id_producto, id_presentacion, precio_costo, precio_venta,
+              stock_actual, stock_minimo, es_principal, creado_por)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+            [
+                id_producto, id_presentacion,
                 Number(precio_costo ?? 0), Number(precio_venta),
-                req.usuario.id]
+                Number(stock_actual ?? 0), Number(stock_minimo ?? 0),
+                es_principal === true,
+                req.usuario.id
+            ]
         );
+
+        await client.query('COMMIT');
         res.status(201).json(result.rows[0]);
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error(err);
         res.status(500).json({ message: 'Error al agregar presentación al producto' });
+    } finally {
+        client.release();
     }
 };
 
 // PUT /api/presentaciones/producto-precio/:id
 export const updatePresentacionProducto = async (req, res) => {
     const { id } = req.params;
-    const { precio_costo, precio_venta, estado } = req.body;
+    const { precio_costo, precio_venta, stock_minimo, es_principal, estado } = req.body;
 
     if (precio_venta !== undefined && Number(precio_venta) <= 0)
         return res.status(400).json({ message: 'El precio de venta debe ser mayor a 0' });
 
+    const client = await pool.connect();
     try {
-        const result = await pool.query(
+        await client.query('BEGIN');
+
+        // Si se marca como principal, desmarcar la anterior del mismo producto
+        if (es_principal === true) {
+            const pp = await client.query(
+                `SELECT id_producto FROM producto_presentacion WHERE id=$1`, [id]
+            );
+            if (pp.rows.length > 0) {
+                await client.query(
+                    `UPDATE producto_presentacion SET es_principal=false
+                     WHERE id_producto=$1 AND es_principal=true AND id != $2`,
+                    [pp.rows[0].id_producto, id]
+                );
+            }
+        }
+
+        const result = await client.query(
             `UPDATE producto_presentacion
-             SET precio_costo=$1, precio_venta=$2, estado=$3
-             WHERE id=$4 RETURNING *`,
-            [Number(precio_costo ?? 0), Number(precio_venta), estado ?? 1, id]
+             SET precio_costo=$1, precio_venta=$2, stock_minimo=$3,
+                 es_principal=$4, estado=$5
+             WHERE id=$6 RETURNING *`,
+            [
+                Number(precio_costo ?? 0),
+                Number(precio_venta),
+                Number(stock_minimo ?? 0),
+                es_principal ?? false,
+                estado ?? 1,
+                id
+            ]
         );
         if (result.rowCount === 0)
             return res.status(404).json({ message: 'Registro no encontrado' });
+
+        await client.query('COMMIT');
         res.json(result.rows[0]);
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error(err);
-        res.status(500).json({ message: 'Error al actualizar precios' });
+        res.status(500).json({ message: 'Error al actualizar presentación' });
+    } finally {
+        client.release();
     }
 };
 
-// DELETE /api/presentaciones/producto-precio/:id
+// DELETE /api/presentaciones/producto-precio/:id (soft delete)
 export const deletePresentacionProducto = async (req, res) => {
     const { id } = req.params;
     try {
-        const result = await pool.query(
-            `DELETE FROM producto_presentacion WHERE id=$1 RETURNING id`,
-            [id]
+        // No permitir eliminar si tiene stock
+        const check = await pool.query(
+            `SELECT stock_actual, es_principal FROM producto_presentacion WHERE id=$1`, [id]
         );
-        if (result.rowCount === 0)
+        if (check.rowCount === 0)
             return res.status(404).json({ message: 'Registro no encontrado' });
+
+        if (check.rows[0].stock_actual > 0)
+            return res.status(409).json({
+                message: `No se puede eliminar: esta presentación tiene ${check.rows[0].stock_actual} unidades en stock`
+            });
+
+        if (check.rows[0].es_principal)
+            return res.status(409).json({
+                message: 'No se puede eliminar la presentación principal. Asigna otra como principal primero.'
+            });
+
+        const result = await pool.query(
+            `UPDATE producto_presentacion SET estado=2, eliminado_por=$1
+             WHERE id=$2 RETURNING id`,
+            [req.usuario.id, id]
+        );
         res.json({ message: 'Presentación eliminada del producto' });
     } catch (err) {
         console.error(err);
@@ -243,11 +329,11 @@ export const deletePresentacionProducto = async (req, res) => {
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
-//  ASIGNACIÓN DE PRESENTACIONES A CATEGORÍAS (tabla categoria_presentacion)
+//  ASIGNACIÓN DE PRESENTACIONES A CATEGORÍAS
 // ──────────────────────────────────────────────────────────────────────────────
 
-// GET /api/presentaciones/categoria/:id_categoria  — ya cubierto arriba
-// PUT /api/presentaciones/categoria/:id_categoria  — reemplaza asignaciones
+// GET /api/presentaciones/categoria/:id_categoria — cubierto en getPresentacionesByCategoria
+// PUT /api/presentaciones/categoria/:id_categoria — reemplaza asignaciones
 export const setPresentacionesByCategoria = async (req, res) => {
     const { id_categoria } = req.params;
     const { presentaciones } = req.body; // array de id_presentacion
@@ -263,12 +349,12 @@ export const setPresentacionesByCategoria = async (req, res) => {
         );
         if (presentaciones.length > 0) {
             const values = presentaciones
-                .map((_, i) => `($1, $${i + 2})`)
+                .map((_, i) => `($1, $${i + 2}, $${presentaciones.length + 2})`)
                 .join(', ');
             await client.query(
-                `INSERT INTO categoria_presentacion (id_categoria, id_presentacion) VALUES ${values}
-                 ON CONFLICT DO NOTHING`,
-                [id_categoria, ...presentaciones]
+                `INSERT INTO categoria_presentacion (id_categoria, id_presentacion, creado_por)
+                 VALUES ${values} ON CONFLICT DO NOTHING`,
+                [id_categoria, ...presentaciones, req.usuario.id]
             );
         }
         await client.query('COMMIT');
