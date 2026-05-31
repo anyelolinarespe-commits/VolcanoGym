@@ -32,13 +32,16 @@ function renderUsuarios(data) {
     const esSuperAdmin = tPerfil === 'superadministrador';
     const esSelf       = u.id_usuario === miId;
 
-    // Eliminar bloqueado si: mismo perfil, yo mismo, superAdmin (nadie lo puede borrar),
-    // o es admin y yo no soy superAdmin
-    const bloqDel = esSelf || mismos || esSuperAdmin || (esAdmin && !yoSoySuperAdmin);
-    // Editar bloqueado si: no soy superAdmin y target es superAdmin;
-    // no soy superAdmin y target es admin y no es yo mismo;
-    // mismo perfil y no es yo mismo
-    const bloqEdit = (!yoSoySuperAdmin && esSuperAdmin) ||
+    // Roles inferiores (no admin ni superAdmin) no pueden eliminar ni editar a otros
+    const noEsAdmin = !yoSoyAdmin && !yoSoySuperAdmin;
+
+    // Eliminar bloqueado si: yo mismo, roles inferiores, mismo perfil,
+    // superAdmin (nadie lo puede borrar), o es admin y yo no soy superAdmin
+    const bloqDel = esSelf || noEsAdmin || mismos || esSuperAdmin || (esAdmin && !yoSoySuperAdmin);
+    // Editar bloqueado si: rol inferior editando a otro; no soy superAdmin y target es superAdmin;
+    // no soy superAdmin y target es admin y no es yo mismo; mismo perfil y no es yo mismo
+    const bloqEdit = (noEsAdmin && !esSelf) ||
+                     (!yoSoySuperAdmin && esSuperAdmin) ||
                      (!yoSoySuperAdmin && esAdmin && !esSelf) ||
                      (mismos && !esSelf);
 
@@ -52,7 +55,7 @@ function renderUsuarios(data) {
       <td style="display:flex;gap:6px">
         ${bloqEdit
         ? `<button class="btn-icon" disabled style="opacity:.35"><i class="bi bi-pencil"></i></button>`
-        : `<button class="btn-icon" onclick="editUsuario(${u.id_usuario})"><i class="bi bi-pencil"></i></button>`}
+        : `<button class="btn-icon edit" onclick="editUsuario(${u.id_usuario})"><i class="bi bi-pencil"></i></button>`}
         ${bloqDel
         ? `<button class="btn-icon danger" disabled style="opacity:.35"><i class="bi bi-lock"></i></button>`
         : `<button class="btn-icon danger" onclick="confirmDelete('usuario',${u.id_usuario},'${u.nombre}')"><i class="bi bi-trash"></i></button>`}
@@ -73,10 +76,10 @@ async function cargarPerfilesSelect() {
 
     lista
       .filter(p => p.estado === 1)
-      // superAdministrador solo visible para el propio superAdmin
-      .filter(p => yoSoySuperAdmin || p.nombre.toLowerCase() !== 'superadministrador')
-      // Administrador solo visible para admin o superAdmin
-      .filter(p => (yoSoyAdmin || yoSoySuperAdmin) || p.nombre.toLowerCase() !== 'administrador')
+      // superAdministrador nunca asignable desde el formulario
+      .filter(p => p.nombre.toLowerCase() !== 'superadministrador')
+      // Administrador solo asignable por superAdmin
+      .filter(p => yoSoySuperAdmin || p.nombre.toLowerCase() !== 'administrador')
       .forEach(p => {
         sel.innerHTML += `<option value="${p.id_perfil}">${p.nombre}</option>`;
       });
@@ -156,6 +159,12 @@ function editUsuario(id) {
   }
 
   cargarPerfilesSelect().then(() => {
+    if (esSuperAdmin) {
+      const opt = document.createElement('option');
+      opt.value = u.id_perfil;
+      opt.textContent = u.perfil;
+      document.getElementById('usuarioPerfil').appendChild(opt);
+    }
     document.getElementById('usuarioPerfil').value = u.id_perfil || '';
   });
 
@@ -199,12 +208,12 @@ async function saveUsuario() {
   const perfilSel = dataPerfiles.find(p => p.id_perfil === Number(id_perfil));
   if (perfilSel) {
     const destNombre = perfilSel.nombre.toLowerCase();
-    if (destNombre === 'superadministrador' && !yoSoySuperAdminSave) {
-      showAlert('alertUsuario', 'No tienes permisos para asignar el perfil SuperAdministrador');
+    if (destNombre === 'superadministrador') {
+      showAlert('alertUsuario', 'No se puede asignar el perfil SuperAdministrador');
       return;
     }
-    if (destNombre === 'administrador' && !yoSoyAdminSave && !yoSoySuperAdminSave) {
-      showAlert('alertUsuario', 'No tienes permisos para asignar el perfil Administrador');
+    if (destNombre === 'administrador' && !yoSoySuperAdminSave) {
+      showAlert('alertUsuario', 'Solo el SuperAdministrador puede asignar el perfil Administrador');
       return;
     }
   }
@@ -219,6 +228,11 @@ async function saveUsuario() {
   const dni         = document.getElementById('usuarioDni').value.trim();
   const celular     = document.getElementById('usuarioCelular').value.trim();
   const foto_perfil = document.getElementById('usuarioFotoPerfil').value.trim();
+
+  if (dni && !/^\d{8}$/.test(dni)) {
+    showAlert('alertUsuario', 'El DNI debe tener exactamente 8 dígitos numéricos');
+    return;
+  }
 
   // Validación frontend de contactos
   if (uCe1Tel && !uCe1Par) { showAlert('alertUsuario', 'Contacto 1: el parentesco es obligatorio'); return; }

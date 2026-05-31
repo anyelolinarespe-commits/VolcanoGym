@@ -5,6 +5,366 @@
 // ─── FILTER STATE ────────────────────────────────────────────────────────────
 let _filtroMembExtra      = 'todos';
 let _clienteEsRenovacion  = false;
+let _boletaModalDatos     = null; // datos del comprobante activo en el modal
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  COMPONENTE _PM — Payment Manager (pago mixto + captura + código)
+//  Uso:  _PM.init('contenedor-id', montoTotal)
+//        _PM.getDetalles()   → array para backend
+//        _PM.validate()      → null | string error
+// ══════════════════════════════════════════════════════════════════════════════
+const _PM = (() => {
+    const METODOS = [
+        { key: 'efectivo',       label: 'Efectivo',      icon: '💵', digital: false },
+        { key: 'yape',           label: 'Yape',          icon: '📱', digital: true  },
+        { key: 'plin',           label: 'Plin',          icon: '📲', digital: true  },
+        { key: 'transferencia',  label: 'Transferencia', icon: '🏦', digital: true  }
+    ];
+
+    let _splits      = [];
+    let _total       = 0;
+    let _containerId = '';
+
+    function _metodoInfo(key) { return METODOS.find(m => m.key === key) || { digital: false }; }
+    function _fmtS(n) { return `S/ ${parseFloat(n || 0).toFixed(2)}`; }
+
+    function _sumSplits() {
+        return _splits.reduce((s, sp) => s + parseFloat(sp.monto || 0), 0);
+    }
+
+    function _renderSplit(i) {
+        const sp   = _splits[i];
+        const info = _metodoInfo(sp.metodo);
+        const multi = _splits.length > 1;
+
+        const metodoBtns = METODOS.map(m =>
+            `<button type="button"
+               class="pm-metodo-btn${sp.metodo === m.key ? ' activo' : ''}"
+               onclick="_PM._selMetodo(${i},'${m.key}')"
+               title="${m.label}">
+               ${m.icon} ${m.label}
+             </button>`
+        ).join('');
+
+        const montoField = multi ? `
+            <div class="pm-field-row">
+              <label class="pm-lbl">Monto:</label>
+              <input type="number" class="pm-monto" min="0.01" step="0.01"
+                value="${parseFloat(sp.monto || 0).toFixed(2)}"
+                oninput="_PM._setMonto(${i}, this.value)"
+                style="width:120px;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-weight:700;color:#0f3460">
+              <span class="pm-total-hint" style="font-size:11px;color:#888">de ${_fmtS(_total)}</span>
+            </div>` : '';
+
+        const digitalFields = info.digital ? `
+            <div class="pm-digital" id="pm-digital-${i}">
+              <div class="pm-field-row">
+                <label class="pm-lbl">Nombre/Referencia:</label>
+                <input type="text" class="pm-referencia" maxlength="60"
+                  value="${sp.referencia || ''}"
+                  placeholder="Ej: Juan García"
+                  oninput="_PM._setField(${i},'referencia',this.value)"
+                  style="flex:1;padding:5px 8px;border:1px solid #ddd;border-radius:6px">
+              </div>
+              <div class="pm-field-row">
+                <label class="pm-lbl">Código de operación:</label>
+                <input type="text" class="pm-codigo" maxlength="30"
+                  value="${sp.codigo || ''}"
+                  placeholder="Ej: AX1234"
+                  oninput="_PM._setField(${i},'codigo',this.value)"
+                  style="flex:1;padding:5px 8px;border:1px solid #ddd;border-radius:6px">
+              </div>
+              <div class="pm-field-row" style="align-items:flex-start">
+                <label class="pm-lbl" style="margin-top:6px">Captura:</label>
+                <div style="flex:1">
+                  ${sp.url
+                    ? `<div class="pm-preview" id="pm-prev-${i}">
+                         <img src="${sp.url}" alt="Comprobante" style="max-height:80px;max-width:180px;border-radius:6px;border:1px solid #ddd;cursor:pointer"
+                              onclick="window.open('${sp.url}','_blank')">
+                         <button type="button" class="pm-foto-remove" onclick="_PM._removeFile(${i})" title="Quitar">✕</button>
+                       </div>`
+                    : sp.uploading
+                      ? `<div class="pm-uploading" id="pm-prev-${i}"><span class="pm-spin">⏳</span> Subiendo…</div>`
+                      : `<div id="pm-prev-${i}" style="display:inline"></div>`
+                  }
+                  <label class="pm-foto-label" for="pm-file-${i}" style="${sp.url ? 'display:none' : ''}">
+                    <input type="file" id="pm-file-${i}" accept="image/*" style="display:none"
+                      onchange="_PM._onFile(${i}, this)">
+                    <span class="pm-foto-btn">📷 ${sp.url ? 'Cambiar' : 'Adjuntar imagen'}</span>
+                  </label>
+                </div>
+              </div>
+            </div>` : '';
+
+        const removeBtn = multi
+            ? `<button type="button" class="pm-remove-btn" onclick="_PM.removeSplit(${i})" title="Quitar método">✕ Quitar</button>`
+            : '';
+
+        return `
+        <div class="pm-split" id="pm-split-${i}" style="border:1px solid #e0e7ff;border-radius:10px;padding:12px 14px;margin-bottom:8px;background:#f8f9ff;position:relative">
+          ${removeBtn}
+          ${multi ? `<div class="pm-split-label" style="font-size:11px;font-weight:700;color:#7c3aed;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Método ${i+1}</div>` : ''}
+          <div class="pm-metodos-row" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:${info.digital || multi ? '10px' : '0'}">
+            ${metodoBtns}
+          </div>
+          ${montoField}
+          ${digitalFields}
+        </div>`;
+    }
+
+    function _render() {
+        const c = document.getElementById(_containerId);
+        if (!c) return;
+
+        const totalCubierto = _sumSplits();
+        const ok    = Math.abs(totalCubierto - _total) < 0.02;
+        const multi = _splits.length > 1;
+
+        const canAdd = _splits.length < 4 &&
+            _splits.every(s => s.metodo) &&
+            METODOS.some(m => !_splits.find(s => s.metodo === m.key));
+
+        const totalBar = multi ? `
+            <div class="pm-total-bar" style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:${ok ? '#e8f5e9' : '#fff3e0'};border:1px solid ${ok ? '#a5d6a7' : '#ffcc80'};border-radius:8px;margin-top:4px;font-size:12px">
+              <span>Total cubierto: <b style="color:${ok ? '#2e7d32' : '#e65100'}">${_fmtS(totalCubierto)}</b> / ${_fmtS(_total)}</span>
+              <span>${ok ? '✅' : '⚠️ No coincide'}</span>
+            </div>` : '';
+
+        c.innerHTML = `
+          <div class="pm-label" style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px">Forma de pago</div>
+          ${_splits.map((_, i) => _renderSplit(i)).join('')}
+          ${canAdd ? `<button type="button" class="pm-add-btn" onclick="_PM.addSplit()" style="background:none;border:1.5px dashed #a5b4fc;color:#6366f1;border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer;width:100%;margin-bottom:4px">+ Agregar otro método de pago (Pago mixto)</button>` : ''}
+          ${totalBar}`;
+    }
+
+    return {
+        init(containerId, totalAmount) {
+            _containerId = containerId;
+            _total       = parseFloat(totalAmount) || 0;
+            _splits      = [{ metodo: '', monto: _total, referencia: '', codigo: '', url: '', uploading: false }];
+            _render();
+        },
+
+        updateTotal(newTotal) {
+            _total = parseFloat(newTotal) || 0;
+            if (_splits.length === 1) _splits[0].monto = _total;
+            _render();
+        },
+
+        addSplit() {
+            if (_splits.length >= 4) return;
+            const usados = _splits.map(s => s.metodo).filter(Boolean);
+            const libre  = METODOS.find(m => !usados.includes(m.key));
+            if (!libre) return;
+            // Repartir saldo pendiente
+            const cubierto = _sumSplits();
+            const resto    = Math.max(0, +(_total - cubierto).toFixed(2));
+            _splits.push({ metodo: libre.key, monto: resto, referencia: '', codigo: '', url: '', uploading: false });
+            _render();
+        },
+
+        removeSplit(i) {
+            if (_splits.length <= 1) return;
+            _splits.splice(i, 1);
+            if (_splits.length === 1) _splits[0].monto = _total;
+            _render();
+        },
+
+        _selMetodo(i, key) {
+            if (_splits.some((s, j) => j !== i && s.metodo === key)) return;
+            _splits[i].metodo = key;
+            _splits[i].url    = '';
+            _render();
+        },
+
+        _setMonto(i, val) {
+            _splits[i].monto = parseFloat(val) || 0;
+            _render();
+        },
+
+        _setField(i, field, val) { _splits[i][field] = val; },
+
+        async _onFile(i, input) {
+            const file = input.files[0];
+            if (!file) return;
+            _splits[i].uploading = true;
+            _render();
+            try {
+                const fd = new FormData();
+                fd.append('file', file);
+                const token = localStorage.getItem('token');
+                const r = await fetch('/api/uploads/comprobante', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                    body: fd
+                });
+                const data = await r.json();
+                if (r.ok) {
+                    _splits[i].url      = data.url;
+                    _splits[i].uploading = false;
+                } else {
+                    alert('Error al subir imagen: ' + (data.message || 'Inténtalo de nuevo'));
+                    _splits[i].uploading = false;
+                }
+            } catch {
+                alert('Error de conexión al subir imagen.');
+                _splits[i].uploading = false;
+            }
+            _render();
+        },
+
+        _removeFile(i) {
+            _splits[i].url = '';
+            _render();
+        },
+
+        getDetalles() {
+            return _splits.filter(s => s.metodo).map(s => ({
+                metodo_pago:      s.metodo,
+                monto_parcial:    parseFloat(s.monto) || 0,
+                referencia:       s.referencia || null,
+                codigo_seguridad: s.codigo     || null,
+                url_comprobante:  s.url        || null
+            }));
+        },
+
+        getPrimaryMetodo() {
+            return (_splits.find(s => s.metodo) || {}).metodo || '';
+        },
+
+        validate() {
+            if (!_splits.some(s => s.metodo)) return 'Selecciona al menos un método de pago.';
+            if (_splits.length > 1) {
+                const total = _sumSplits();
+                if (Math.abs(total - _total) > 0.02)
+                    return `Los montos no coinciden con el total: ${_fmtS(total)} ≠ ${_fmtS(_total)}.`;
+            }
+            return null;
+        }
+    };
+})();
+
+// ─── Helper: formatear duración con unidad correcta (días/meses/años) ────────
+function _fmtDuracion(valor, unidad) {
+    const v = parseInt(valor) || 0;
+    if (!v) return '—';
+    const sing = { dias: 'día',  meses: 'mes',  anos: 'año'  }[unidad] || (unidad || 'mes');
+    const plur = { dias: 'días', meses: 'meses', anos: 'años' }[unidad] || (unidad || 'meses');
+    return `${v} ${v === 1 ? sing : plur}`;
+}
+
+// ─── Helper: sección de cuotas estilo tabla (compartida por boleta/modal/PDF) ─
+function _buildCuotasSection(cuotas, montoTotal, montoPagado, esCompacto = false) {
+    const total = parseFloat(montoTotal || 0);
+    const nC    = (cuotas || []).length;
+
+    const fmtS = n => `S/ ${parseFloat(n || 0).toFixed(2)}`;
+    const fmtF = f => {
+        if (!f) return '—';
+        const d = String(f).includes('T') ? new Date(f) : new Date(f + 'T12:00:00');
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    };
+
+    // Total pagado real: suma abonos de cada cuota (con fallback a monto de cuotas pagadas)
+    const totalPagadoHistorico = nC > 0
+        ? (cuotas || []).reduce((s, c) => {
+            const ab = Array.isArray(c.abonos) ? c.abonos : [];
+            if (ab.length > 0) return s + ab.reduce((sa, a) => sa + parseFloat(a.monto || 0), 0);
+            if (c.estado_cuota === 'pagado') return s + parseFloat(c.monto || 0);
+            return s;
+        }, 0)
+        : parseFloat(montoPagado || 0);
+
+    const saldoReal = Math.max(0, total - totalPagadoHistorico);
+
+    const fs  = esCompacto ? '9px' : '10px';
+    const fs2 = esCompacto ? '8px' : '9px';
+
+    // Cabecera resumen con desglose completo
+    const summary = `
+      <div style="background:#f8f8f8;border:1px solid #ddd;border-radius:4px;overflow:hidden;margin-bottom:6px">
+        <div style="background:#e8e8e8;padding:3px 8px;font-size:${fs};font-weight:700;letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid #ddd">
+          Información del crédito
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:4px 8px 1px;font-size:${fs}">
+          <span>Monto Total del Contrato:</span>
+          <span style="font-weight:700">${fmtS(total)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:1px 8px;font-size:${fs}">
+          <span>Total Pagado:</span>
+          <span style="font-weight:700;color:#2e7d32">${fmtS(totalPagadoHistorico)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:2px 8px 4px;font-size:${fs};border-top:1px dashed #ddd;margin-top:1px">
+          <span>Saldo Pendiente:</span>
+          <span style="font-weight:700;color:${saldoReal > 0 ? '#e65100' : '#2e7d32'}">${fmtS(saldoReal)}</span>
+        </div>
+      </div>`;
+
+    // Filas de cuotas
+    if (!nC) return summary + `<div style="font-size:${fs};color:#aaa;padding:2px 0">Sin cuotas registradas.</div>`;
+
+    const pd  = esCompacto ? '3px 4px' : '4px 6px';
+    const pd2 = esCompacto ? '3px 5px' : '4px 7px';
+
+    const rows = (cuotas || []).map((c, i) => {
+        const abonos       = Array.isArray(c.abonos) ? c.abonos : [];
+        const totalAbonado = abonos.reduce((s, a) => s + parseFloat(a.monto || 0), 0);
+        const esPagado     = c.estado_cuota === 'pagado';
+        const esVenc       = c.estado_cuota === 'vencido';
+
+        // Monto original: abonado acumulado + saldo restante
+        let montoOriginal;
+        if (abonos.length > 0) {
+            montoOriginal = esPagado ? totalAbonado : parseFloat(c.monto || 0) + totalAbonado;
+        } else {
+            montoOriginal = parseFloat(c.monto || 0);
+        }
+
+        // Columna ABONADO: total acumulado pagado hacia esta cuota
+        const abonado = esPagado
+            ? (abonos.length > 0 ? totalAbonado : montoOriginal)
+            : totalAbonado;
+
+        // Columna SALDO: lo que resta por pagar
+        const saldo = esPagado ? 0 : parseFloat(c.monto || 0);
+
+        const colorEst  = esPagado ? '#2e7d32' : esVenc ? '#c62828' : '#e65100';
+        const colorSald = saldo > 0 ? '#e65100' : '#2e7d32';
+        const estText   = esPagado ? '✓ PAG' : esVenc ? '! VEN' : '⏳ PEN';
+        const estBg     = esPagado ? '#e8f5e9' : esVenc ? '#ffebee' : '#fff3e0';
+        const fechaCol  = fmtF(c.fecha_limite || c.fecha_programada || c.fecha_pago);
+        const bg        = i % 2 === 1 ? 'background:#fafafa' : '';
+
+        return `<tr style="${bg}">
+          <td style="padding:${pd};text-align:center;border-right:1px solid #eee;font-size:${fs};font-weight:700">${i + 1}</td>
+          <td style="padding:${pd};border-right:1px solid #eee;font-size:${fs};white-space:nowrap">${fechaCol}</td>
+          <td style="padding:${pd};text-align:right;border-right:1px solid #eee;font-size:${fs};font-weight:600">${fmtS(montoOriginal)}</td>
+          <td style="padding:${pd};text-align:right;border-right:1px solid #eee;font-size:${fs};color:#2e7d32;font-weight:600">${fmtS(abonado)}</td>
+          <td style="padding:${pd};text-align:right;border-right:1px solid #eee;font-size:${fs};color:${colorSald};font-weight:600">${fmtS(saldo)}</td>
+          <td style="padding:${pd2};text-align:center;font-size:${fs2}">
+            <span style="background:${estBg};color:${colorEst};padding:1px 4px;border-radius:3px;font-weight:700;white-space:nowrap">${estText}</span>
+          </td>
+        </tr>`;
+    }).join('');
+
+    const table = `
+      <table style="width:100%;border-collapse:collapse;border:1px solid #ddd;border-radius:4px;overflow:hidden;font-size:${fs}">
+        <thead>
+          <tr style="background:#e8e8e8">
+            <th style="padding:${pd};text-align:center;border-right:1px solid #ccc;border-bottom:1px solid #ccc;font-size:${fs2};white-space:nowrap">N°</th>
+            <th style="padding:${pd};text-align:left;border-right:1px solid #ccc;border-bottom:1px solid #ccc;font-size:${fs2};white-space:nowrap">FEC. VENC.</th>
+            <th style="padding:${pd};text-align:right;border-right:1px solid #ccc;border-bottom:1px solid #ccc;font-size:${fs2};white-space:nowrap">MONTO ORIG.</th>
+            <th style="padding:${pd};text-align:right;border-right:1px solid #ccc;border-bottom:1px solid #ccc;font-size:${fs2};white-space:nowrap">ABONADO</th>
+            <th style="padding:${pd};text-align:right;border-right:1px solid #ccc;border-bottom:1px solid #ccc;font-size:${fs2};white-space:nowrap">SALDO</th>
+            <th style="padding:${pd};text-align:center;border-bottom:1px solid #ccc;font-size:${fs2};white-space:nowrap">ESTADO</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+    return summary + table;
+}
 
 function filtroMembresia(tipo, el) {
     _filtroMembExtra = tipo;
@@ -119,7 +479,7 @@ function renderMembresias(data) {
             saldoHtml = `<div class="memb-saldo">Saldo: S/ ${parseFloat(m.saldo_pendiente).toFixed(2)}</div>`;
             if (m.proxima_fecha_limite) {
                 const hoy = new Date(); hoy.setHours(0,0,0,0);
-                const lim = new Date(String(m.proxima_fecha_limite).split('T')[0] + 'T12:00:00');
+                const lim = new Date(String(m.proxima_fecha_limite).split('T')[0] + 'T00:00:00');
                 const dias = Math.round((lim - hoy) / 86400000);
                 if (dias > 0) {
                     saldoHtml += `<div style="font-size:10px;color:#e65100;font-weight:600;margin-top:1px">${dias}d para pagar</div>`;
@@ -177,6 +537,11 @@ function renderMembresias(data) {
                     onclick="congelarMembresia(${m.id_membresia},'congelar','${(m.nombre_cliente||'').replace(/'/g,"\'")}')">
                     <i class="bi bi-snow"></i>
                 </button>` : ''}
+                <button class="btn-icon" title="Ver / imprimir comprobante"
+                    style="background:#f3e8ff;color:#7c3aed;border-color:#ddd6fe"
+                    onclick="memb_abrirBoletaExistente(${m.id_membresia})">
+                    <i class="bi bi-receipt"></i>
+                </button>
                 <button class="btn-anular-memb" title="Anular membresía"
                     onclick="confirmarEliminarMembresia(${m.id_membresia},'${(m.nombre_cliente||'').replace(/'/g,"\'")}')">
                     <i class="bi bi-slash-circle"></i> Anular
@@ -184,6 +549,294 @@ function renderMembresias(data) {
             </div>
         </div>`;
     }).join('');
+}
+
+// ─── MODAL COMPROBANTE (historial de boletas) ─────────────────────────────────
+async function memb_abrirBoletaExistente(idMembresia) {
+    const m = dataMembresias.find(x => x.id_membresia === idMembresia);
+    if (!m) return;
+
+    // Obtener cuotas de ese período
+    let cuotas = [];
+    try {
+        const token = localStorage.getItem('token');
+        const r = await fetch(`/api/membresias/${idMembresia}/cuotas`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const raw = await r.json();
+        cuotas = Array.isArray(raw) ? raw : (raw.cuotas || []);
+    } catch (e) { console.warn('cuotas:', e); }
+
+    const fmtF = typeof window.memb_fmtFecha === 'function'
+        ? window.memb_fmtFecha
+        : f => f ? new Date(String(f).includes('T') ? f : f + 'T12:00:00').toLocaleDateString('es-PE') : '—';
+
+    const montoPagado = cuotas.reduce((s, c) => {
+        const ab = Array.isArray(c.abonos) ? c.abonos : [];
+        if (ab.length > 0) return s + ab.reduce((sa, a) => sa + parseFloat(a.monto || 0), 0);
+        if (c.estado_cuota === 'pagado') return s + parseFloat(c.monto || 0);
+        return s;
+    }, 0);
+
+    _boletaModalDatos = {
+        id_membresia:    m.id_membresia,
+        id_cliente:      m.id_cliente,
+        num_comprobante: `B001-${String(m.id_membresia).padStart(4, '0')}`,
+        fecha_emision:   m.created_at
+            ? new Date(m.created_at).toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric' })
+            : new Date().toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric' }),
+        nombre:   m.nombre   || m.nombre_cliente || '—',
+        apellido: m.apellido || '',
+        dni:      m.dni      || '—',
+        celular:  m.celular  || m.telefono || '—',
+        plan:     m.nombre_plan || '—',
+        duracion: _fmtDuracion(m.duracion_meses, m.duracion_unidad || 'meses'),
+        fecha_inicio: fmtF(m.fecha_inicio),
+        fecha_fin:    fmtF(m.fecha_fin),
+        monto_total:  parseFloat(m.monto_total  || 0),
+        monto_pagado: montoPagado,
+        metodo_pago:  cuotas[0]?.metodo_pago || '—',
+        cuotas,
+        observaciones: m.observaciones || ''
+    };
+
+    memb_mostrarModalBoleta(_boletaModalDatos);
+}
+
+function _bRow(lbl, val) {
+    return `<div style="display:flex;justify-content:space-between;font-size:12px;margin:2px 0">
+        <span style="color:#666">${lbl}</span>
+        <span style="font-weight:600;text-align:right;max-width:60%">${val}</span>
+    </div>`;
+}
+
+function memb_mostrarModalBoleta(datos) {
+    if (!document.getElementById('memb-boleta-modal')) {
+        document.body.insertAdjacentHTML('beforeend', `
+        <div id="memb-boleta-modal" style="display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:1rem">
+          <div style="background:#fff;border-radius:12px;width:100%;max-width:500px;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.25)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#fff;z-index:1">
+              <div>
+                <div style="font-size:11px;font-weight:600;color:#7c3aed;text-transform:uppercase;letter-spacing:1px">Comprobante de Servicio</div>
+                <div style="font-size:15px;font-weight:700;margin-top:1px" id="memb-boleta-modal-num">—</div>
+              </div>
+              <button onclick="document.getElementById('memb-boleta-modal').style.display='none'"
+                style="background:none;border:none;cursor:pointer;font-size:22px;color:#666;line-height:1">✕</button>
+            </div>
+            <div id="memb-boleta-modal-body" style="padding:20px"></div>
+          </div>
+        </div>`);
+
+        // Cerrar al clicar fuera
+        document.getElementById('memb-boleta-modal').addEventListener('click', function(e) {
+            if (e.target === this) this.style.display = 'none';
+        });
+    }
+
+    document.getElementById('memb-boleta-modal-num').textContent = datos.num_comprobante;
+
+    const cuotas = datos.cuotas || [];
+    const cuotasHTML = _buildCuotasSection(cuotas, datos.monto_total, datos.monto_pagado, false);
+
+    const saldo = (parseFloat(datos.monto_total || 0) - parseFloat(datos.monto_pagado || 0)).toFixed(2);
+    const tieneSaldo = parseFloat(saldo) > 0;
+
+    const sec = txt => `<div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">${txt}</div>`;
+    const hr  = `<hr style="border:none;border-top:1px dashed #e0e0e0;margin:10px 0">`;
+
+    document.getElementById('memb-boleta-modal-body').innerHTML = `
+      <!-- Preview comprobante -->
+      <div style="background:#fafafa;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:16px">
+        <div style="text-align:center;margin-bottom:12px">
+          <div style="font-size:12px;color:#888">Fecha de emisión: ${datos.fecha_emision}</div>
+        </div>
+        ${hr}
+        ${sec('Cliente')}
+        ${_bRow('Señor(a):', `${datos.nombre} ${datos.apellido}`.trim())}
+        ${_bRow('DNI:', datos.dni)}
+        ${datos.celular && datos.celular !== '—' ? _bRow('Celular:', datos.celular) : ''}
+        ${hr}
+        ${sec('Detalle del servicio')}
+        ${_bRow('Plan:', datos.plan)}
+        ${_bRow('F. Inicio:', datos.fecha_inicio)}
+        ${_bRow('F. Vencimiento:', datos.fecha_fin)}
+        ${_bRow('Duración:', datos.duracion)}
+        ${_bRow('Método de pago:', datos.metodo_pago)}
+        ${hr}
+        ${sec('Detalle de pagos')}
+        ${cuotasHTML}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:10px 12px;background:#fef3f2;border:1px solid #fca5a5;border-radius:7px">
+          <span style="font-weight:700;font-size:13px">TOTAL PAGADO:</span>
+          <span style="font-weight:700;font-size:18px;color:#c62828">S/ ${parseFloat(datos.monto_pagado).toFixed(2)}</span>
+        </div>
+      </div>
+
+      <!-- Formulario celular (aparece cuando no hay número registrado) -->
+      <div id="memb-boleta-cel-form" style="display:none;border:1px solid #fde68a;background:#fffbeb;border-radius:8px;padding:12px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:4px">📱 Sin celular registrado</div>
+        <div style="font-size:12px;color:#78350f;margin-bottom:8px">Ingresa el número para enviarlo por WhatsApp y guardarlo en el perfil del cliente.</div>
+        <div style="display:flex;gap:8px">
+          <input type="tel" id="memb-boleta-cel-input" placeholder="9XXXXXXXX" maxlength="9"
+            style="flex:1;padding:8px 12px;border:1px solid #fcd34d;border-radius:8px;font-size:13px;outline:none">
+          <button onclick="memb_guardarYEnviarWA()"
+              style="padding:8px 14px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">
+            Guardar y enviar
+          </button>
+        </div>
+        <div id="memb-boleta-cel-fb" style="font-size:12px;margin-top:5px;min-height:16px"></div>
+      </div>
+
+      <!-- Acciones -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <button onclick="window.memb_imprimirBoletaConDatos(_boletaModalDatos)"
+            style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;background:#1a56db;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+          🖨️ Imprimir boleta
+        </button>
+        <button id="btn-boleta-modal-wa" onclick="memb_boletaEnviarWA()"
+            style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;background:#25d366;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          WhatsApp
+        </button>
+      </div>
+      <div style="border-top:1px solid #e5e7eb;padding-top:12px">
+        <div style="font-size:12px;color:#666;margin-bottom:6px">Enviar comprobante por correo</div>
+        <div style="display:flex;gap:8px">
+          <input type="email" id="memb-boleta-email" placeholder="correo@ejemplo.com"
+            style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;outline:none">
+          <button onclick="memb_boletaEnviarCorreo()"
+              style="padding:8px 14px;background:#374151;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">
+            ✉️ Enviar
+          </button>
+        </div>
+        <div id="memb-boleta-email-fb" style="font-size:12px;margin-top:5px;min-height:18px"></div>
+      </div>`;
+
+    document.getElementById('memb-boleta-modal').style.display = 'flex';
+}
+
+async function memb_boletaEnviarWA() {
+    const datos = _boletaModalDatos;
+    if (!datos) return;
+    const tel = (datos.celular || '').replace(/\D/g, '');
+    if (!tel) {
+        // Mostrar formulario inline para registrar el celular
+        const form = document.getElementById('memb-boleta-cel-form');
+        if (form) {
+            form.style.display = 'block';
+            document.getElementById('memb-boleta-cel-input')?.focus();
+        }
+        return;
+    }
+
+    const btn = document.getElementById('btn-boleta-modal-wa');
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Generando PDF…'; }
+
+    try {
+        await window.memb_generarYDescargarPDF(datos);
+
+        const aviso = document.createElement('div');
+        aviso.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;background:#1a1a1a;color:#fff;padding:14px 18px;border-radius:10px;font-size:13px;max-width:320px;line-height:1.5;box-shadow:0 4px 16px rgba(0,0,0,.3);animation:memb-fadein .25s ease';
+        aviso.innerHTML = '<div style="font-weight:700;margin-bottom:4px">📎 PDF descargado</div><div style="color:#ddd;font-size:12px">Se abrirá WhatsApp. Adjunta el PDF desde tus descargas para enviarlo al cliente.</div>';
+        document.body.appendChild(aviso);
+        setTimeout(() => aviso.remove(), 5000);
+
+        const cuotasMsj = (datos.cuotas || []).map((c, i) => {
+            const m = parseFloat(c.monto || 0).toFixed(2);
+            return `  Cuota ${i + 1}°: ${c.estado_cuota === 'pagado' ? 'S/ ' + m : '— (pendiente)'}`;
+        }).join('\n');
+
+        const msg = `🌋 *VOLCANO GYM*\nHola ${datos.nombre}, te compartimos tu comprobante de membresía.\n\nN° ${datos.num_comprobante} | ${datos.fecha_emision}\nPlan: ${datos.plan}\nVigencia: ${datos.fecha_inicio} → ${datos.fecha_fin}\nTotal pagado: S/ ${parseFloat(datos.monto_pagado).toFixed(2)}\n\n📎 _Revisa el PDF adjunto con el detalle completo._\n_¡Gracias por confiar en Volcano Gym! 💪_`;
+
+        setTimeout(() => window.open(`https://wa.me/51${tel}?text=${encodeURIComponent(msg)}`, '_blank'), 600);
+    } catch (err) {
+        console.error('Error PDF:', err);
+        alert('No se pudo generar el PDF. Intenta de nuevo.');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+    }
+}
+
+async function memb_boletaEnviarCorreo() {
+    const datos = _boletaModalDatos;
+    const emailInput = document.getElementById('memb-boleta-email');
+    const feedback   = document.getElementById('memb-boleta-email-fb');
+    const email = emailInput?.value.trim();
+
+    if (!email) { feedback.innerHTML = '<span style="color:#dc2626">Ingresa un correo electrónico.</span>'; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { feedback.innerHTML = '<span style="color:#dc2626">Correo inválido.</span>'; return; }
+
+    const btnEnv = emailInput.nextElementSibling;
+    if (btnEnv) { btnEnv.disabled = true; btnEnv.textContent = 'Enviando…'; }
+    feedback.innerHTML = '<span style="color:#666">Enviando correo…</span>';
+
+    try {
+        const token = localStorage.getItem('token');
+        const resp = await fetch('/api/membresias/enviar-boleta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ email, datos })
+        });
+        const result = await resp.json();
+        if (resp.ok) {
+            feedback.innerHTML = '<span style="color:#16a34a">✅ Correo enviado exitosamente.</span>';
+            if (emailInput) emailInput.value = '';
+        } else {
+            feedback.innerHTML = `<span style="color:#dc2626">Error: ${result.mensaje || 'No se pudo enviar.'}</span>`;
+        }
+    } catch {
+        feedback.innerHTML = '<span style="color:#dc2626">Error de conexión.</span>';
+    } finally {
+        if (btnEnv) { btnEnv.disabled = false; btnEnv.textContent = '✉️ Enviar'; }
+    }
+}
+
+// ─── Guardar celular del cliente y reenviar por WhatsApp ────────────────────
+async function memb_guardarYEnviarWA() {
+    const datos = _boletaModalDatos;
+    const input  = document.getElementById('memb-boleta-cel-input');
+    const fb     = document.getElementById('memb-boleta-cel-fb');
+    const celular = (input?.value.trim() || '').replace(/\D/g, '');
+
+    if (!celular || celular.length < 9) {
+        fb.innerHTML = '<span style="color:#dc2626">Ingresa un celular válido (9 dígitos, ej: 987654321).</span>';
+        return;
+    }
+
+    const btn = input?.nextElementSibling;
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    fb.innerHTML = '<span style="color:#666">Guardando número…</span>';
+
+    try {
+        const token = localStorage.getItem('token');
+        const resp = await fetch(`/api/clientes/${datos.id_cliente}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ celular })
+        });
+        const result = await resp.json();
+
+        if (!resp.ok) {
+            fb.innerHTML = `<span style="color:#dc2626">Error: ${result.message || 'No se pudo guardar.'}</span>`;
+            return;
+        }
+
+        // Actualizar datos en memoria
+        datos.celular = celular;
+        const mInData = dataMembresias?.find(x => x.id_membresia === datos.id_membresia);
+        if (mInData) mInData.celular = celular;
+
+        // Ocultar formulario y proceder con WhatsApp
+        document.getElementById('memb-boleta-cel-form').style.display = 'none';
+        if (input) input.value = '';
+        fb.innerHTML = '';
+
+        await memb_boletaEnviarWA();
+    } catch {
+        fb.innerHTML = '<span style="color:#dc2626">Error de conexión al guardar.</span>';
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Guardar y enviar'; }
+    }
 }
 
 function estadoBadgeMini(estado, saldo, vencidas = 0) {
@@ -338,7 +991,7 @@ function buildModalCuotasHTML() {
                 </button>
             </div>
 
-            <div id="panelCuotas" style="padding:18px 22px">
+            <div id="panelCuotas" style="padding:18px 22px;max-height:calc(88vh - 130px);overflow-y:auto">
                 <div id="cuotasBody"></div>
                 <div id="formPagoCuota" style="display:none;margin-top:16px;padding:16px;border:1.5px solid #e0e7ff;border-radius:10px;background:#f8f9fa"></div>
             </div>
@@ -351,6 +1004,11 @@ function buildModalCuotasHTML() {
 }
 
 
+function toggleAbonos(id_pago) {
+    const row = document.getElementById('abonos-' + id_pago);
+    if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
 function renderCuotasModal(cuotas) {
     const cont = document.getElementById('cuotasBody');
     if (!cuotas.length) {
@@ -358,12 +1016,19 @@ function renderCuotasModal(cuotas) {
         return;
     }
 
-    const hoy = new Date().toISOString().split('T')[0];
+    let rowsHtml = '';
 
-    const rows = cuotas.map(c => {
+    cuotas.forEach(c => {
         const esPendiente = c.estado_cuota === 'pendiente';
         const esVencido   = c.estado_cuota === 'vencido';
         const esPagado    = c.estado_cuota === 'pagado';
+        const abonos      = Array.isArray(c.abonos) ? c.abonos : [];
+        const tieneAbonos = abonos.length > 0;
+
+        // Monto: si está pagado con abonos, mostrar la suma de lo abonado
+        const montoDisplay = esPagado && tieneAbonos
+            ? abonos.reduce((s, a) => s + parseFloat(a.monto), 0)
+            : parseFloat(c.monto);
 
         const estadoHtml = esPagado
             ? '<span style="background:#e8f5e9;color:#2e7d32;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">PAGADO</span>'
@@ -374,38 +1039,88 @@ function renderCuotasModal(cuotas) {
         const fechaInfo = esPagado
             ? `<span style="color:#2e7d32;font-size:11px">Pagado: ${formatFechaLarga(c.fecha_pago)}</span>`
             : c.fecha_limite
-            ? `<span style="color:${esVencido ? '#c62828' : '#888'};font-size:11px">
-                Vence: ${formatFechaLarga(c.fecha_limite)}
-                ${esVencido ? ' <b>(mora)</b>' : ''}
-               </span>`
+            ? `<span style="color:${esVencido ? '#c62828' : '#888'};font-size:11px">Vence: ${formatFechaLarga(c.fecha_limite)}${esVencido ? ' <b>(mora)</b>' : ''}</span>`
             : '';
-
-        const btnPagar = (esPendiente || esVencido)
-            ? `<button class="btn-save" style="padding:5px 12px;font-size:12px"
-                onclick="abrirFormPagoCuota(${c.id_pago}, ${c.monto})">
-                <i class="bi bi-cash me-1"></i>Pagar
-               </button>`
-            : `<span style="color:#bbb;font-size:12px">—</span>`;
 
         const metodoBadge = c.metodo_pago
             ? `<span style="background:#f0f4ff;color:#3949ab;padding:2px 7px;border-radius:10px;font-size:11px">${c.metodo_pago}</span>`
             : '';
 
-        return `
+        const toggleBtn = tieneAbonos
+            ? `<button onclick="toggleAbonos(${c.id_pago})"
+                style="background:#e8f5e9;color:#2e7d32;border:none;border-radius:8px;padding:4px 9px;font-size:11px;cursor:pointer;font-weight:600">
+                <i class="bi bi-list-ul me-1"></i>${abonos.length} pago${abonos.length > 1 ? 's' : ''}
+               </button>`
+            : '';
+
+        const accionHtml = (esPendiente || esVencido)
+            ? `<div style="display:flex;gap:5px;justify-content:flex-end;align-items:center">
+                ${toggleBtn}
+                <button class="btn-save" style="padding:5px 12px;font-size:12px"
+                    onclick="abrirFormPagoCuota(${c.id_pago}, ${c.monto})">
+                    <i class="bi bi-cash me-1"></i>Pagar
+                </button>
+               </div>`
+            : tieneAbonos
+            ? `<div style="display:flex;justify-content:flex-end">${toggleBtn}</div>`
+            : `<span style="color:#bbb;font-size:12px">—</span>`;
+
+        rowsHtml += `
         <tr style="border-bottom:1px solid #f0f0f0">
             <td style="padding:10px 8px;text-align:center;font-weight:700;color:#0f3460">C${c.num_cuota}</td>
             <td style="padding:10px 8px">
-                <div style="font-weight:700">S/ ${parseFloat(c.monto).toFixed(2)}</div>
+                <div style="font-weight:700">S/ ${montoDisplay.toFixed(2)}</div>
                 ${metodoBadge}
+                ${esPendiente && tieneAbonos ? '<div style="font-size:10px;color:#888;margin-top:2px">Saldo restante</div>' : ''}
             </td>
             <td style="padding:10px 8px">${estadoHtml}</td>
             <td style="padding:10px 8px">${fechaInfo}</td>
-            <td style="padding:10px 8px;text-align:right">${btnPagar}</td>
+            <td style="padding:10px 8px;text-align:right">${accionHtml}</td>
         </tr>`;
-    }).join('');
+
+        if (tieneAbonos) {
+            const abonosRows = abonos.map((a, i) => `
+                <tr style="border-bottom:1px solid #e8f5e9">
+                    <td style="padding:5px 8px;color:#999;font-size:11px">#${i + 1}</td>
+                    <td style="padding:5px 8px;font-weight:700;color:#2e7d32;font-size:12px">S/ ${parseFloat(a.monto).toFixed(2)}</td>
+                    <td style="padding:5px 8px">
+                        <span style="background:#f0f4ff;color:#3949ab;padding:2px 6px;border-radius:8px;font-size:11px">${a.metodo_pago || '—'}</span>
+                    </td>
+                    <td style="padding:5px 8px;color:#888;font-size:11px">${formatFechaLarga(a.fecha_pago)}</td>
+                    <td style="padding:5px 8px;color:#555;font-size:11px"><i class="bi bi-person-fill me-1"></i>${a.registrado_por || '—'}</td>
+                </tr>`).join('');
+
+            rowsHtml += `
+            <tr id="abonos-${c.id_pago}" style="display:none;background:#f1fdf4">
+                <td colspan="5" style="padding:4px 8px 10px 28px">
+                    <div style="font-size:11px;color:#2e7d32;font-weight:700;margin-bottom:4px;margin-top:4px">
+                        <i class="bi bi-clock-history me-1"></i>Historial de pagos
+                    </div>
+                    <div style="max-height:160px;overflow-y:auto;border-radius:6px;border:1px solid #c8e6c9">
+                    <table style="width:100%;border-collapse:collapse">
+                        <thead style="position:sticky;top:0;background:#e8f5e9;z-index:1">
+                            <tr style="font-size:10px;color:#999">
+                                <th style="padding:3px 8px">#</th>
+                                <th style="padding:3px 8px">Monto</th>
+                                <th style="padding:3px 8px">Método</th>
+                                <th style="padding:3px 8px">Fecha</th>
+                                <th style="padding:3px 8px">Registrado por</th>
+                            </tr>
+                        </thead>
+                        <tbody>${abonosRows}</tbody>
+                    </table>
+                    </div>
+                </td>
+            </tr>`;
+        }
+    });
 
     // Totales
-    const totalPagado  = cuotas.filter(c => c.estado_cuota === 'pagado').reduce((s, c) => s + parseFloat(c.monto), 0);
+    const totalPagado = cuotas.reduce((s, c) => {
+        if (c.estado_cuota !== 'pagado') return s;
+        const ab = Array.isArray(c.abonos) ? c.abonos : [];
+        return s + (ab.length > 0 ? ab.reduce((sa, a) => sa + parseFloat(a.monto), 0) : parseFloat(c.monto));
+    }, 0);
     const totalPendiente = cuotas.filter(c => c.estado_cuota !== 'pagado').reduce((s, c) => s + parseFloat(c.monto), 0);
 
     cont.innerHTML = `
@@ -419,7 +1134,7 @@ function renderCuotasModal(cuotas) {
                 <th style="padding:8px;text-align:right">Acción</th>
             </tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody>${rowsHtml}</tbody>
     </table>
     <div style="display:flex;justify-content:space-between;margin-top:14px;padding:10px 12px;background:#f8f9fa;border-radius:8px;font-size:13px">
         <span>✅ Pagado: <b style="color:#2e7d32">S/ ${totalPagado.toFixed(2)}</b></span>
@@ -431,35 +1146,49 @@ function renderCuotasModal(cuotas) {
 }
 
 // ─── FORMULARIO INLINE PARA PAGAR CUOTA ───────────────────────────────────────
+function _pcCheckAbono(deudaTotal) {
+    const input = document.getElementById('pcMonto');
+    const aviso = document.getElementById('avisoAbonoParcial');
+    if (!input || !aviso) return;
+    const ing = parseFloat(input.value);
+    const esAbono = !isNaN(ing) && ing > 0 && ing < deudaTotal - 0.01;
+    aviso.style.display = esAbono ? '' : 'none';
+    // Actualizar total del componente _PM
+    _PM.updateTotal(parseFloat(input.value) || deudaTotal);
+}
+
 function abrirFormPagoCuota(idPago, monto) {
     const form = document.getElementById('formPagoCuota');
     form.style.display = 'block';
     form.innerHTML = `
-    <div style="font-weight:700;margin-bottom:12px;color:#0f3460">
-        <i class="bi bi-cash-stack me-2" style="color:#26a69a"></i>Registrar pago — Cuota
+    <div style="font-weight:700;margin-bottom:12px">
+        <i class="bi bi-cash-stack me-2" style="color:#26a69a"></i>Registrar abono
     </div>
     <div class="alert-msg" id="alertPagoCuota"></div>
-    <div class="row g-2">
-        <div class="col-6">
-            <div class="form-label">Monto (S/) *</div>
-            <input class="form-control" id="pcMonto" type="number" step="0.01"
-                value="${parseFloat(monto).toFixed(2)}" placeholder="0.00">
-        </div>
-        <div class="col-6">
-            <div class="form-label">Método de pago *</div>
-            <select class="form-control" id="pcMetodo">
-                <option value="efectivo">Efectivo</option>
-                <option value="yape">Yape</option>
-                <option value="plin">Plin</option>
-                <option value="transferencia">Transferencia</option>
-            </select>
-        </div>
+
+    <div style="margin-bottom:12px">
+        <div class="form-label">Monto a abonar *</div>
+        <input type="number" class="form-control" id="pcMonto"
+            value="${parseFloat(monto).toFixed(2)}"
+            min="0.01" max="${parseFloat(monto).toFixed(2)}" step="0.01"
+            style="font-weight:700;font-size:15px;color:#2e7d32;max-width:180px"
+            oninput="_pcCheckAbono(${parseFloat(monto)})">
+        <div style="font-size:11px;color:#888;margin-top:3px">Deuda pendiente: S/ ${parseFloat(monto).toFixed(2)}</div>
     </div>
-    <div class="mt-2">
+
+    <div id="avisoAbonoParcial" style="display:none;margin-bottom:10px;padding:8px 12px;background:#fff8e1;border-left:3px solid #f9a825;border-radius:4px;font-size:11px;color:#795548">
+        <b>⚠ Abono parcial:</b> monto menor al pendiente. La cuota seguirá pendiente por el saldo restante.
+    </div>
+
+    <!-- Componente _PM de pago mixto -->
+    <div id="pcPmContainer"></div>
+
+    <div style="margin-top:10px">
         <div class="form-label">N° Comprobante (opcional)</div>
-        <input class="form-control" id="pcComprobante" placeholder="Ej: REC-001">
+        <input class="form-control" id="pcComprobante" placeholder="Ej: REC-001" style="max-width:200px">
     </div>
-    <div class="modal-footer" style="margin-top:12px;padding-top:12px;border-top:1px solid #eee">
+
+    <div class="modal-footer" style="margin-top:14px;padding-top:12px;border-top:1px solid #eee">
         <button class="btn-cancel" onclick="document.getElementById('formPagoCuota').style.display='none'">
             Cancelar
         </button>
@@ -468,31 +1197,31 @@ function abrirFormPagoCuota(idPago, monto) {
         </button>
     </div>`;
 
+    // Inicializar _PM con el monto de la cuota
+    _PM.init('pcPmContainer', parseFloat(monto));
     form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function confirmarPagoCuota(idPago) {
-    const monto       = document.getElementById('pcMonto').value;
-    const metodo      = document.getElementById('pcMetodo').value;
-    const comprobante = document.getElementById('pcComprobante').value.trim();
+    const monto = parseFloat(document.getElementById('pcMonto')?.value || 0);
+    if (!monto || monto <= 0) { showAlert('alertPagoCuota', 'Ingresa un monto válido.'); return; }
 
-    if (!monto || parseFloat(monto) <= 0) {
-        showAlert('alertPagoCuota', 'Ingresa un monto válido');
-        return;
-    }
+    const pmError = _PM.validate();
+    if (pmError) { showAlert('alertPagoCuota', pmError); return; }
+
+    const pagos_detalle = _PM.getDetalles();
+    const comprobante   = document.getElementById('pcComprobante')?.value.trim() || null;
 
     try {
         const result = await api('POST', `/api/membresias/${_membresiaActivaCuotas}/pagar-cuota`, {
-            id_pago:         idPago,
-            metodo_pago:     metodo,
-            num_comprobante: comprobante || null,
-            monto_pagado:    parseFloat(monto)
+            id_pago:      idPago,
+            monto_pagado: monto,
+            pagos_detalle,
+            num_comprobante: comprobante
         });
 
         document.getElementById('formPagoCuota').style.display = 'none';
         renderCuotasModal(result.cuotas);
-
-        // Actualizar el listado de membresías en segundo plano
         loadMembresias();
         loadClientes();
 
@@ -655,6 +1384,9 @@ function resetMembresiaForm() {
     document.getElementById('membFechaInicio').value = hoy;
     document.getElementById('alertMembresia').className     = 'alert-msg';
     document.getElementById('modalMembresiaTitle').textContent = 'Nueva Membresía';
+    // Limpiar el contenedor de _PM hasta que se seleccione un plan
+    const pmCont = document.getElementById('membPmContainer');
+    if (pmCont) pmCont.innerHTML = '<div style="font-size:12px;color:#aaa;padding:8px;border:1px dashed #ddd;border-radius:8px;text-align:center">Selecciona un plan para elegir el método de pago</div>';
     actualizarResumenCuotas();
 }
 
@@ -789,15 +1521,17 @@ function _autoSetNumCuotas() {
     const cuotasEl   = document.getElementById('membNumCuotas');
 
     if (!fraccion || maxCuotas <= 1 || pago1 >= monto || monto <= 0) {
-        // Pago completo o plan sin fracionamiento → forzar 1 cuota
         cuotasEl.value = '1';
     } else if (parseInt(cuotasEl.value) <= 1) {
-        // Pago parcial y usuario aún no eligió cuotas → auto-sugerir el máximo
         cuotasEl.value = String(maxCuotas);
     }
-    // Si cuotas > 1 ya (elección manual), mantenerla y solo actualizar el resumen
 
     onNumCuotasChange();
+
+    // Actualizar total del componente _PM cuando cambia el pago inicial
+    if (pago1 > 0 && document.getElementById('membPmContainer')) {
+        _PM.updateTotal(pago1);
+    }
 }
 
 // Valida que el pago1 no genere cuotas inferiores al mínimo del plan y muestra aviso
@@ -884,15 +1618,15 @@ function onPlanChange() {
     const renovBadge = document.getElementById('membRenovBadge');
     if (renovBadge) renovBadge.style.display = usarRenov ? 'block' : 'none';
 
-    // Panel cuotas
-    const fraccionWrap = document.getElementById('membFraccionInfo');
-    const mostrarCuotas = fraccion && maxCuotas > 1;
-    fraccionWrap.style.display = mostrarCuotas ? 'block' : 'none';
-    _populateCuotasSelect(mostrarCuotas ? maxCuotas : 1);
+    // El fraccionamiento es ahora de monto libre — el selector de N cuotas no se usa
+    document.getElementById('membFraccionInfo').style.display = 'none';
     document.getElementById('membNumCuotas').value = '1';
 
     _actualizarEstadoPago1();
     _autoSetNumCuotas();
+
+    // Inicializar componente de pago mixto con el precio del plan
+    _PM.init('membPmContainer', precio);
 
     const unidad = opt.dataset.unidad || 'meses';
     const durLabel = { dias: `${meses} día${meses > 1 ? 's' : ''}`, meses: `${meses} mes${meses > 1 ? 'es' : ''}`, anos: `${meses} año${meses > 1 ? 's' : ''}` }[unidad] || `${meses}`;
@@ -931,62 +1665,51 @@ function actualizarResumenCuotas() {
     const opt      = sel?.options[sel.selectedIndex];
     const monto    = parseFloat(document.getElementById('membMonto')?.value) || 0;
     const pago1    = parseFloat(document.getElementById('membPago1')?.value) || monto;
-    const numC     = parseInt(document.getElementById('membNumCuotas')?.value) || 1;
     const fi       = document.getElementById('membFechaInicio')?.value;
     const resumen  = document.getElementById('membResumenCuotas');
     if (!resumen) return;
 
-    if (!opt || !opt.value || numC <= 1) {
+    const saldo = Math.max(0, monto - pago1);
+    if (!opt || !opt.value || saldo <= 0) {
         resumen.style.display = 'none';
         return;
     }
 
-    const diasEntre   = parseInt(opt.dataset.diasEntre) || 30;
-    const diasLimite  = parseInt(opt.dataset.diasLimite) || 20;
-    const saldo       = Math.max(0, monto - pago1);
-    const cuotasRest  = numC - 1;
+    const dark       = document.body.dataset.theme === 'dark';
+    const diasLimite = parseInt(opt.dataset.diasLimite) || 20;
 
-    const aplInteres  = opt.dataset.aplicaInteres === 'true';
-    const tasa        = parseFloat(opt.dataset.tasaInteres) || 0;
-    const tipoI       = opt.dataset.tipoInteres || 'porcentaje';
+    const aplInteres = opt.dataset.aplicaInteres === 'true';
+    const tasa       = parseFloat(opt.dataset.tasaInteres) || 0;
+    const tipoI      = opt.dataset.tipoInteres || 'porcentaje';
 
-    const baseAmount  = cuotasRest > 0 ? saldo / cuotasRest : 0;
-    let montoCuota;
-    if (aplInteres && tasa > 0 && cuotasRest > 0) {
-        montoCuota = tipoI === 'porcentaje' ? baseAmount * (1 + tasa / 100) : baseAmount + tasa;
-    } else {
-        montoCuota = baseAmount;
+    let saldoConInteres = saldo;
+    if (aplInteres && tasa > 0) {
+        saldoConInteres = tipoI === 'porcentaje'
+            ? +(saldo * (1 + tasa / 100)).toFixed(2)
+            : +(saldo + tasa).toFixed(2);
     }
-    const totalSaldoEfectivo = montoCuota * cuotasRest;
 
-    const dark = document.body.dataset.theme === 'dark';
     let html = `<div style="font-size:12px;font-weight:700;color:${dark ? '#79b8ff' : '#0f3460'};margin-bottom:8px">
-        <i class="bi bi-calendar3 me-1"></i>Calendario de pagos
+        <i class="bi bi-calendar3 me-1"></i>Desglose de pago
     </div>`;
 
-    // Cuota 1
     html += cuotaRow(1, pago1, fi, fi ? addDiasStr(fi, diasLimite) : null, true);
 
-    // Cuotas restantes
-    if (fi && saldo > 0) {
-        let acum = 0;
-        for (let n = 2; n <= numC; n++) {
-            const offset   = (n - 1) * diasEntre;
-            const fechaP   = addDiasStr(fi, offset);
-            const fechaL   = addDiasStr(fechaP, diasLimite);
-            const esUltima = n === numC;
-            const mc       = esUltima
-                ? (totalSaldoEfectivo - acum).toFixed(2)
-                : montoCuota.toFixed(2);
-            acum += parseFloat(mc);
-            html += cuotaRow(n, mc, fechaP, fechaL, false);
-        }
-    }
+    const saldoClr = dark ? '#ffb74d' : '#e65100';
+    const saldoBg  = dark ? 'rgba(255,255,255,.05)' : '#fff8e1';
+    html += `
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:${saldoBg};border-radius:8px;margin-bottom:4px;border:1px solid ${dark ? 'rgba(255,165,0,.2)' : '#ffe082'}">
+        <div style="width:24px;height:24px;border-radius:50%;background:#ff8f00;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">⏳</div>
+        <div style="flex:1">
+            <span style="font-weight:700;font-size:13px;color:${dark ? '#e6edf3' : '#111'}">S/ ${saldoConInteres.toFixed(2)}</span>
+            <span style="font-size:11px;color:${saldoClr};margin-left:6px">Saldo pendiente — abono libre</span>
+        </div>
+    </div>`;
 
-    if (aplInteres && tasa > 0 && cuotasRest > 0) {
+    if (aplInteres && tasa > 0) {
         const label = tipoI === 'porcentaje' ? `${tasa}%` : `S/ ${tasa.toFixed(2)}`;
         html += `<div style="font-size:11px;color:#bf360c;margin-top:6px;padding:6px 8px;background:#fff3e0;border-radius:6px">
-            <i class="bi bi-percent me-1"></i>Incluye ${label} de interés en cuotas diferidas
+            <i class="bi bi-percent me-1"></i>Incluye ${label} de interés sobre el saldo diferido
         </div>`;
     }
 
@@ -1097,47 +1820,42 @@ async function seleccionarClienteMemb(id, nombre, dni) {
 //  El backend decide si es INSERT (nuevo) o UPDATE (renovación).
 //  Responde 201 para nueva matrícula, 200 para renovación.
 async function saveMembresia() {
-    const id_cliente    = document.getElementById('membClienteId').value;
-    const id_plan       = document.getElementById('membPlan').value;
-    const fecha_inicio  = document.getElementById('membFechaInicio').value;
-    const monto         = document.getElementById('membMonto').value;
-    const pago1         = document.getElementById('membPago1').value || monto;
-    const numCuotas     = document.getElementById('membNumCuotas').value || '1';
-    const metodo        = document.getElementById('membMetodoPago').value;
-    const id_asesor     = document.getElementById('membAsesor').value;
-    const obs           = document.getElementById('membObservaciones').value;
+    const id_cliente   = document.getElementById('membClienteId').value;
+    const id_plan      = document.getElementById('membPlan').value;
+    const fecha_inicio = document.getElementById('membFechaInicio').value;
+    const monto        = document.getElementById('membMonto').value;
+    const pago1        = document.getElementById('membPago1').value || monto;
+    const numCuotas    = document.getElementById('membNumCuotas').value || '1';
+    const id_asesor    = document.getElementById('membAsesor').value;
+    const obs          = document.getElementById('membObservaciones').value;
 
-    if (!id_cliente)   { showAlert('alertMembresia', 'Selecciona un cliente'); return; }
-    if (!id_plan)      { showAlert('alertMembresia', 'Selecciona un plan'); return; }
+    if (!id_cliente)  { showAlert('alertMembresia', 'Selecciona un cliente'); return; }
+    if (!id_plan)     { showAlert('alertMembresia', 'Selecciona un plan'); return; }
     if (!monto || !fecha_inicio) { showAlert('alertMembresia', 'Completa todos los campos requeridos'); return; }
     if (parseFloat(pago1) <= 0) { showAlert('alertMembresia', 'El pago inicial debe ser mayor a 0'); return; }
     if (parseFloat(pago1) > parseFloat(monto)) {
         showAlert('alertMembresia', 'El pago inicial no puede superar el monto total'); return;
     }
 
-    // Validar cuota mínima del plan
-    const _selPlan   = document.getElementById('membPlan');
-    const _optPlan   = _selPlan?.options[_selPlan.selectedIndex];
-    const _minimo    = parseFloat(_optPlan?.dataset?.minimo) || 0;
-    const _numC      = parseInt(numCuotas) || 1;
-    if (_minimo > 0 && _numC > 1) {
-        const _saldo      = Math.max(0, parseFloat(monto) - parseFloat(pago1));
-        const _cuotasRest = _numC - 1;
-        const _montoCuota = _cuotasRest > 0 ? _saldo / _cuotasRest : 0;
-        if (_montoCuota > 0 && _montoCuota < _minimo) {
-            showAlert('alertMembresia',
-                `La cuota resultante (S/ ${_montoCuota.toFixed(2)}) es menor al mínimo del plan (S/ ${_minimo.toFixed(2)}). Ajusta el pago inicial o el N° de cuotas.`);
-            return;
-        }
-        if (parseFloat(pago1) < _minimo) {
-            showAlert('alertMembresia',
-                `El pago inicial (S/ ${parseFloat(pago1).toFixed(2)}) debe ser al menos S/ ${_minimo.toFixed(2)}.`);
-            return;
-        }
+    // Validar pago mínimo del plan
+    const _selPlan = document.getElementById('membPlan');
+    const _optPlan = _selPlan?.options[_selPlan.selectedIndex];
+    const _minimo  = parseFloat(_optPlan?.dataset?.minimo) || 0;
+    const _saldo   = Math.max(0, parseFloat(monto) - parseFloat(pago1));
+    if (_minimo > 0 && _saldo > 0 && parseFloat(pago1) < _minimo) {
+        showAlert('alertMembresia',
+            `El pago inicial (S/ ${parseFloat(pago1).toFixed(2)}) debe ser al menos S/ ${_minimo.toFixed(2)}.`);
+        return;
     }
 
+    // Validar método de pago con _PM
+    const pmError = _PM.validate();
+    if (pmError) { showAlert('alertMembresia', pmError); return; }
+
+    const pagos_detalle = _PM.getDetalles();
+    const metodo        = _PM.getPrimaryMetodo();
+
     try {
-        // El backend devuelve 200 si es renovación, 201 si es nueva matrícula
         await api('POST', '/api/membresias', {
             id_cliente:             Number(id_cliente),
             id_plan:                Number(id_plan),
@@ -1146,6 +1864,7 @@ async function saveMembresia() {
             monto_pagado_ahora:     parseFloat(pago1),
             num_cuotas_solicitadas: parseInt(numCuotas),
             metodo_pago:            metodo,
+            pagos_detalle,
             id_asesor:              id_asesor ? Number(id_asesor) : null,
             observaciones:          obs || null
         });
@@ -1213,15 +1932,6 @@ async function saveMembresia() {
       if (card) seleccionarPlan(card.dataset.id);
     });
 
-    // Método de pago
-    document.querySelectorAll('.memb-metodo-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.memb-metodo-btn').forEach(b => b.classList.remove('activo'));
-        btn.classList.add('activo');
-        document.getElementById('memb-metodo-pago').value = btn.dataset.metodo;
-      });
-    });
-
     // Navegación entre pasos
     document.getElementById('btn-paso-2')?.addEventListener('click', irPaso2);
     document.getElementById('btn-paso-3')?.addEventListener('click', irPaso3);
@@ -1281,8 +1991,6 @@ async function saveMembresia() {
 
     document.getElementById('btn-buscar-dni').disabled = true;
     document.querySelectorAll('.memb-plan-card').forEach(c => c.classList.remove('seleccionado'));
-    document.querySelectorAll('.memb-metodo-btn').forEach(b => b.classList.remove('activo'));
-    document.getElementById('memb-metodo-pago').value = '';
 
     const fraccionWrap = document.getElementById('memb-fraccion-wrap');
     if (fraccionWrap) fraccionWrap.style.display = 'none';
@@ -1567,15 +2275,21 @@ async function saveMembresia() {
     }
     helpEl.style.color = '#9199ab';
 
-    // Selector de cuotas
+    // El fraccionamiento es de monto libre — el selector de N cuotas no se usa
     const fraccionWrap = document.getElementById('memb-fraccion-wrap');
-    if (plan.fraccion && plan.maxCuotas > 1) {
-      fraccionWrap.style.display = 'block';
-      wiz_poblarCuotas(plan.maxCuotas);
-      document.getElementById('memb-num-cuotas').value = '1';
-    } else {
-      fraccionWrap.style.display = 'none';
-    }
+    if (fraccionWrap) fraccionWrap.style.display = 'none';
+
+    // Inicializar componente de pago mixto con el monto del pago1
+    const pago1 = parseFloat(pago1El.value) || plan.precio;
+    _PM.init('memb-pm-container', pago1);
+
+    // Cuando cambia pago1, actualizar el total del componente _PM
+    pago1El.oninput = function() {
+      wiz_autoSetNumCuotas();
+      wiz_validarMinimos();
+      _PM.updateTotal(parseFloat(this.value) || 0);
+      wiz_actualizarResumenCuotas();
+    };
 
     // Resumen cliente+plan
     wiz_actualizarResumenPlan();
@@ -1663,29 +2377,20 @@ async function saveMembresia() {
     if (!plan || !plan.fraccion) return true;
     const monto  = plan.precio;
     const pago1  = parseFloat(document.getElementById('memb-pago1').value) || monto;
-    const numC   = parseInt(document.getElementById('memb-num-cuotas').value) || 1;
     const minimo = plan.minCuota;
+    const saldo  = Math.max(0, monto - pago1);
 
-    if (numC <= 1 || minimo <= 0) {
-      helpEl.textContent = 'Lo que paga hoy. El resto se fracciona en cuotas.';
+    if (minimo <= 0 || saldo <= 0) {
+      helpEl.textContent = 'Lo que paga hoy. El resto se fracciona libremente.';
       helpEl.style.color = '#9199ab';
       return true;
     }
-    const saldo      = Math.max(0, monto - pago1);
-    const cuotasRest = numC - 1;
-    const montoCuota = cuotasRest > 0 ? saldo / cuotasRest : 0;
-
     if (pago1 < minimo) {
       helpEl.textContent = `⚠ El pago inicial debe ser ≥ S/ ${minimo.toFixed(2)}.`;
       helpEl.style.color = '#e65100';
       return false;
     }
-    if (montoCuota > 0 && montoCuota < minimo) {
-      helpEl.textContent = `⚠ Cuota resultante S/ ${montoCuota.toFixed(2)} < mínimo S/ ${minimo.toFixed(2)}. Ajusta el pago o N° cuotas.`;
-      helpEl.style.color = '#e65100';
-      return false;
-    }
-    helpEl.textContent = 'Lo que paga hoy. El resto se fracciona en cuotas.';
+    helpEl.textContent = 'Lo que paga hoy. El resto se fracciona libremente.';
     helpEl.style.color = '#9199ab';
     return true;
   }
@@ -1708,46 +2413,39 @@ async function saveMembresia() {
     const resumen = document.getElementById('memb-resumen-cuotas');
     if (!resumen || !plan) return;
 
-    const monto  = plan.precio;
-    const pago1  = parseFloat(document.getElementById('memb-pago1')?.value) || monto;
-    const numC   = parseInt(document.getElementById('memb-num-cuotas')?.value) || 1;
-    const fi     = document.getElementById('memb-fecha-inicio')?.value;
+    const monto = plan.precio;
+    const pago1 = parseFloat(document.getElementById('memb-pago1')?.value) || monto;
+    const fi    = document.getElementById('memb-fecha-inicio')?.value;
+    const saldo = Math.max(0, monto - pago1);
 
-    if (numC <= 1) { resumen.style.display = 'none'; return; }
+    if (saldo <= 0) { resumen.style.display = 'none'; return; }
 
-    const saldo      = Math.max(0, monto - pago1);
-    const cuotasRest = numC - 1;
-    const base       = cuotasRest > 0 ? saldo / cuotasRest : 0;
-    let montoCuota   = base;
-    if (plan.aplInteres && plan.tasaInteres > 0 && cuotasRest > 0) {
-      montoCuota = plan.tipoInteres === 'porcentaje'
-        ? base * (1 + plan.tasaInteres / 100)
-        : base + plan.tasaInteres;
+    let saldoConInteres = saldo;
+    if (plan.aplInteres && plan.tasaInteres > 0) {
+      saldoConInteres = plan.tipoInteres === 'porcentaje'
+        ? +(saldo * (1 + plan.tasaInteres / 100)).toFixed(2)
+        : +(saldo + plan.tasaInteres).toFixed(2);
     }
-    const totalSaldo = montoCuota * cuotasRest;
 
     let html = `<div style="font-size:12px;font-weight:700;color:#0f3460;margin-bottom:8px">
-      <i class="bi bi-calendar3 me-1"></i>Calendario de pagos</div>`;
+      <i class="bi bi-calendar3 me-1"></i>Desglose de pago</div>`;
 
     html += wiz_cuotaRow(1, pago1, fi, fi ? wiz_addDias(fi, plan.diasLimite) : null, true);
 
-    if (fi && saldo > 0) {
-      let acum = 0;
-      for (let n = 2; n <= numC; n++) {
-        const fechaP = wiz_addDias(fi, (n - 1) * plan.diasEntre);
-        const fechaL = wiz_addDias(fechaP, plan.diasLimite);
-        const esUlt  = n === numC;
-        const mc     = esUlt ? (totalSaldo - acum).toFixed(2) : montoCuota.toFixed(2);
-        acum += parseFloat(mc);
-        html += wiz_cuotaRow(n, mc, fechaP, fechaL, false);
-      }
-    }
+    html += `
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:#fff8e1;border-radius:8px;margin-bottom:4px;border:1px solid #ffe082">
+      <div style="width:24px;height:24px;border-radius:50%;background:#ff8f00;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">⏳</div>
+      <div style="flex:1">
+        <span style="font-weight:700;font-size:13px">S/ ${saldoConInteres.toFixed(2)}</span>
+        <span style="font-size:11px;color:#e65100;margin-left:6px">Saldo pendiente — abono libre</span>
+      </div>
+    </div>`;
 
-    if (plan.aplInteres && plan.tasaInteres > 0 && cuotasRest > 0) {
+    if (plan.aplInteres && plan.tasaInteres > 0) {
       const label = plan.tipoInteres === 'porcentaje'
         ? `${plan.tasaInteres}%` : `S/ ${plan.tasaInteres.toFixed(2)}`;
       html += `<div style="font-size:11px;color:#bf360c;margin-top:6px;padding:6px 8px;background:#fff3e0;border-radius:6px">
-        <i class="bi bi-percent me-1"></i>Incluye ${label} de interés en cuotas diferidas</div>`;
+        <i class="bi bi-percent me-1"></i>Incluye ${label} de interés sobre el saldo diferido</div>`;
     }
 
     resumen.innerHTML = html;
@@ -1779,21 +2477,27 @@ async function saveMembresia() {
 
   function wiz_fmtFecha(f) {
     if (!f) return '—';
-    const d = new Date(f + 'T12:00:00');
+    // Si ya trae parte horaria (ISO completo), parsear directo; si es solo fecha, añadir mediodía para evitar desfase UTC
+    const d = String(f).includes('T') ? new Date(f) : new Date(f + 'T12:00:00');
+    if (isNaN(d.getTime())) return '—';
     return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
   async function confirmarMembresia() {
-    const metodo  = document.getElementById('memb-metodo-pago').value;
     const monto   = parseFloat(document.getElementById('memb-monto-total').value) || 0;
     const pago1   = parseFloat(document.getElementById('memb-pago1').value) || 0;
-    const numC    = parseInt(document.getElementById('memb-num-cuotas')?.value) || 1;
+    const numC    = pago1 < monto ? 2 : 1;
 
-    if (!metodo) { mostrarError('memb-paso4-error', 'Selecciona un método de pago.'); return; }
+    // Validar _PM
+    const pmError = _PM.validate();
+    if (pmError) { mostrarError('memb-paso4-error', pmError); return; }
     if (pago1 <= 0) { mostrarError('memb-paso4-error', 'Ingresa un monto de pago inicial válido.'); return; }
     if (pago1 > monto) { mostrarError('memb-paso4-error', 'El pago inicial no puede superar el monto total.'); return; }
     if (!wiz_validarMinimos()) { mostrarError('memb-paso4-error', document.getElementById('memb-pago1-help').textContent); return; }
     limpiarError('memb-paso4-error');
+
+    const pagos_detalle = _PM.getDetalles();
+    const metodo        = _PM.getPrimaryMetodo();
 
     const btn = document.getElementById('btn-confirmar');
     btn.disabled = true;
@@ -1850,6 +2554,7 @@ async function saveMembresia() {
           monto_pagado_ahora:     pago1,
           num_cuotas_solicitadas: numC,
           metodo_pago:            metodo,
+          pagos_detalle,
           observaciones:          document.getElementById('memb-observacion').value || null
         })
       });
@@ -1873,18 +2578,356 @@ async function saveMembresia() {
   function wiz_mostrarExito(data) {
     const c = document.getElementById('memb-exito-contenido');
     if (!c) return;
+
+    // Recopilar todos los datos para la boleta
     const cuotas = data.cuotas || [];
     const pendientes = cuotas.filter(q => q.estado_cuota === 'pendiente').length;
+    const montoTotal = parseFloat(document.getElementById('memb-monto-total')?.value) || 0;
+    const montoPagado = parseFloat(document.getElementById('memb-pago1')?.value) || montoTotal;
+    const celular = document.getElementById('memb-celular')?.value.trim() || '—';
+
+    estado.ultimaBoletaDatos = {
+      id_membresia:   data.id_membresia,
+      num_comprobante: `B001-${String(data.id_membresia).padStart(4, '0')}`,
+      fecha_emision:  new Date().toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+      nombre:         document.getElementById('memb-nombre')?.value.trim() || '—',
+      apellido:       document.getElementById('memb-apellido')?.value.trim() || '—',
+      dni:            document.getElementById('memb-dni-input')?.value.trim() || '—',
+      celular,
+      plan:           data.nombre_plan || estado.planSeleccionado?.nombre || data.plan || '—',
+      duracion:       estado.planSeleccionado ? _fmtDuracion(estado.planSeleccionado.meses, estado.planSeleccionado.unidad) : '—',
+      fecha_inicio:   wiz_fmtFecha(data.fecha_inicio),
+      fecha_fin:      wiz_fmtFecha(data.fecha_fin),
+      monto_total:    montoTotal,
+      monto_pagado:   montoPagado,
+      metodo_pago:    _PM.getPrimaryMetodo() || '—',
+      cuotas,
+      observaciones:  document.getElementById('memb-observacion')?.value?.trim() || ''
+    };
+
+    const d = estado.ultimaBoletaDatos;
+
     c.innerHTML = `
       <div class="memb-exito-icono">✅</div>
       <h3>¡Membresía activada!</h3>
       <div class="memb-exito-detalles">
-        <div class="memb-resumen-item"><span>Membresía #</span><strong>${data.id_membresia}</strong></div>
-        <div class="memb-resumen-item"><span>Plan</span><strong>${data.plan_nombre || data.plan || '—'}</strong></div>
-        <div class="memb-resumen-item"><span>Vigencia</span><strong>${data.fecha_inicio} → ${data.fecha_fin}</strong></div>
+        <div class="memb-resumen-item"><span>Membresía #</span><strong>${d.id_membresia}</strong></div>
+        <div class="memb-resumen-item"><span>Plan</span><strong>${d.plan}</strong></div>
+        <div class="memb-resumen-item"><span>Vigencia</span><strong>${d.fecha_inicio} → ${d.fecha_fin}</strong></div>
         ${pendientes > 0 ? `<div class="memb-resumen-item"><span>Cuotas pendientes</span><strong>${pendientes}</strong></div>` : ''}
       </div>
+
+      <div class="memb-exito-acciones">
+        <div class="memb-acciones-titulo">Comprobante de servicio</div>
+        <div class="memb-acciones-grid">
+          <button class="memb-btn-accion memb-btn-imprimir" onclick="memb_imprimirBoleta()">
+            🖨️ Imprimir boleta
+          </button>
+          <button class="memb-btn-accion memb-btn-whatsapp" onclick="memb_enviarWhatsApp()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:4px"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            WhatsApp
+          </button>
+        </div>
+        <div class="memb-email-section">
+          <div class="memb-email-label">Enviar comprobante por correo</div>
+          <div class="memb-email-row">
+            <input type="email" id="memb-email-destinatario" placeholder="correo@ejemplo.com" class="memb-email-input">
+            <button class="memb-btn-accion memb-btn-email" onclick="memb_enviarCorreo()">
+              ✉️ Enviar
+            </button>
+          </div>
+          <div id="memb-email-feedback" class="memb-feedback-msg"></div>
+        </div>
+      </div>
     `;
+  }
+
+  // ─── Imprimir boleta (desde modal de nueva membresía) ────────────────────
+  window.memb_imprimirBoleta = function() {
+    const datos = estado.ultimaBoletaDatos;
+    if (!datos) return;
+    memb_abrirVentanaImpresion(datos);
+  };
+
+  // ─── Imprimir boleta con datos externos (ej: historial de clientes) ───────
+  window.memb_imprimirBoletaConDatos = function(datos) {
+    memb_abrirVentanaImpresion(datos);
+  };
+
+  // ─── Generar PDF desde datos externos (historial, etc.) ──────────────────
+  window.memb_generarYDescargarPDF = memb_generarYDescargarPDF;
+
+  // ─── Formatear fecha y duración (expuestos para uso desde otros módulos) ──
+  window.memb_fmtFecha    = wiz_fmtFecha;
+  window.memb_fmtDuracion = _fmtDuracion;
+
+  function memb_abrirVentanaImpresion(datos) {
+    const html = memb_generarBoletaHTML(datos);
+    const ventana = window.open('', '_blank', 'width=420,height=700');
+    ventana.document.write(html);
+    ventana.document.close();
+    ventana.focus();
+    setTimeout(() => ventana.print(), 400);
+  }
+
+  // ─── Generar contenido de boleta con estilos INLINE (para html2canvas/PDF) ─
+  function memb_boletaContenidoInline(d) {
+    const cuotasHTML = _buildCuotasSection(d.cuotas, d.monto_total, d.monto_pagado, true);
+
+    const saldo     = (parseFloat(d.monto_total || 0) - parseFloat(d.monto_pagado || 0)).toFixed(2);
+    const tieneSaldo = parseFloat(saldo) > 0;
+    const row = (lbl, val) =>
+      `<div style="display:flex;justify-content:space-between;font-size:11px;margin:2px 0;">
+         <span style="color:#666">${lbl}</span>
+         <span style="font-weight:600;text-align:right;max-width:56%">${val}</span>
+       </div>`;
+    const secLabel = txt =>
+      `<div style="font-size:9px;font-weight:bold;color:#777;text-transform:uppercase;letter-spacing:1px;margin:7px 0 3px">${txt}</div>`;
+    const hr = `<hr style="border:none;border-top:1px dashed #bbb;margin:7px 0">`;
+
+    return `<div style="font-family:Arial,sans-serif;font-size:12px;color:#222;background:#fff;width:300px;padding:14px 12px;box-sizing:border-box;">
+      <div style="text-align:center;margin-bottom:4px">
+        <img src="/icono.png" style="height:52px;width:auto;filter:invert(1) brightness(0.15);object-fit:contain" alt="Volcano Gym" crossorigin="anonymous">
+      </div>
+      <div style="font-size:17px;font-weight:bold;color:#c62828;text-align:center;letter-spacing:2px;margin:2px 0">VOLCANO GYM</div>
+      <div style="font-size:9px;color:#666;text-align:center">Av. Balta 2340 – Urb. Latina – José Leonardo Ortiz – Chiclayo</div>
+      <div style="font-size:9px;color:#666;text-align:center">volcanogym21@gmail.com</div>
+      <div style="font-size:9px;font-weight:bold;color:#444;text-align:center;margin-bottom:2px">RUC: 20604869201</div>
+      ${hr}
+      <div style="font-size:11px;font-weight:bold;text-align:center;letter-spacing:1px;color:#444">COMPROBANTE DE SERVICIO</div>
+      <div style="font-size:13px;font-weight:bold;text-align:center;color:#c62828;margin:2px 0">${d.num_comprobante}</div>
+      <div style="font-size:9px;text-align:center;color:#777">Fecha de emisión: ${d.fecha_emision}</div>
+      ${hr}
+      ${secLabel('Datos del cliente')}
+      ${row('Señor(a):', `${d.nombre} ${d.apellido}`)}
+      ${row('DNI:', d.dni)}
+      ${d.celular && d.celular !== '—' ? row('Celular:', d.celular) : ''}
+      ${hr}
+      ${secLabel('Detalle del servicio')}
+      ${row('Plan:', d.plan)}
+      ${row('F. Matrícula:', d.fecha_inicio)}
+      ${row('F. Inicio:', d.fecha_inicio)}
+      ${row('F. Vencimiento:', d.fecha_fin)}
+      ${row('Tiempo contratado:', d.duracion)}
+      ${row('Método de pago:', d.metodo_pago)}
+      ${hr}
+      ${secLabel('Detalle de pagos')}
+      ${cuotasHTML}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding:8px 10px;background:#fef3f2;border:1px solid #fca5a5;border-radius:5px;">
+        <span style="font-weight:bold;font-size:12px">TOTAL PAGADO:</span>
+        <span style="font-weight:bold;font-size:16px;color:#c62828">S/ ${parseFloat(d.monto_pagado).toFixed(2)}</span>
+      </div>
+      ${hr}
+      <div style="font-size:8px;color:#999;text-align:center;line-height:1.5">
+        Boleta basada en el contrato físico del gimnasio con todas las cláusulas legales.<br>
+        Cláusula 5a: Las membresías se renuevan automáticamente al vencimiento.<br>
+        Cláusula 6a: No aplica devolución de matrícula o cualquier tipo de pago.
+      </div>
+    </div>`;
+  }
+
+  // ─── Generar y descargar PDF de la boleta ────────────────────────────────
+  async function memb_generarYDescargarPDF(datos) {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;z-index:-999;';
+    wrapper.innerHTML = memb_boletaContenidoInline(datos);
+    document.body.appendChild(wrapper);
+
+    await new Promise(r => setTimeout(r, 250));
+
+    const canvas = await html2canvas(wrapper.firstElementChild, {
+      scale: 3,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false
+    });
+
+    document.body.removeChild(wrapper);
+
+    const imgData = canvas.toDataURL('image/png');
+    const { jsPDF } = window.jspdf;
+    const pdfW = 80;
+    const pdfH = (canvas.height * pdfW) / canvas.width;
+
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [pdfW, pdfH] });
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
+    pdf.save(`Comprobante-${datos.num_comprobante}.pdf`);
+  }
+
+  // ─── Enviar por WhatsApp (con PDF adjunto) ────────────────────────────────
+  window.memb_enviarWhatsApp = async function() {
+    const datos = estado.ultimaBoletaDatos;
+    if (!datos) return;
+    const tel = (datos.celular || '').replace(/\D/g, '');
+    if (!tel) { alert('El cliente no tiene número de teléfono registrado.'); return; }
+
+    const btn = document.querySelector('.memb-btn-whatsapp');
+    const originalHTML = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Generando PDF…'; }
+
+    try {
+      // 1. Generar y descargar el PDF automáticamente
+      await memb_generarYDescargarPDF(datos);
+
+      // 2. Mostrar aviso al staff sobre adjuntar el PDF
+      const aviso = document.createElement('div');
+      aviso.style.cssText = `
+        position:fixed;top:20px;right:20px;z-index:9999;
+        background:#1a1a1a;color:#fff;padding:14px 18px;border-radius:10px;
+        font-size:13px;max-width:320px;line-height:1.5;
+        box-shadow:0 4px 16px rgba(0,0,0,.3);animation:memb-fadein .25s ease;
+      `;
+      aviso.innerHTML = `
+        <div style="font-weight:700;margin-bottom:4px">📎 PDF descargado</div>
+        <div style="color:#ddd;font-size:12px">Se abrirá WhatsApp. Adjunta el PDF desde tus descargas para enviarlo al cliente.</div>
+      `;
+      document.body.appendChild(aviso);
+      setTimeout(() => aviso.remove(), 5000);
+
+      // 3. Abrir WhatsApp con mensaje breve
+      const mensaje =
+`🌋 *VOLCANO GYM*
+Hola ${datos.nombre}, te compartimos tu comprobante de membresía.
+
+N° ${datos.num_comprobante} | ${datos.fecha_emision}
+Plan: ${datos.plan}
+Vigencia: ${datos.fecha_inicio} → ${datos.fecha_fin}
+Total pagado: S/ ${parseFloat(datos.monto_pagado).toFixed(2)}
+
+📎 _Revisa el PDF adjunto con el detalle completo._
+_¡Gracias por confiar en Volcano Gym! 💪_`;
+
+      setTimeout(() => {
+        window.open(`https://wa.me/51${tel}?text=${encodeURIComponent(mensaje)}`, '_blank');
+      }, 600);
+
+    } catch (err) {
+      console.error('Error generando PDF:', err);
+      alert('No se pudo generar el PDF. Intenta de nuevo.');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
+    }
+  };
+
+  // ─── Enviar por correo ────────────────────────────────────────────────────
+  window.memb_enviarCorreo = async function() {
+    const datos = estado.ultimaBoletaDatos;
+    const emailInput = document.getElementById('memb-email-destinatario');
+    const feedback   = document.getElementById('memb-email-feedback');
+    const email = emailInput?.value.trim();
+
+    if (!email) { feedback.innerHTML = '<span class="mef-error">Ingresa un correo electrónico.</span>'; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { feedback.innerHTML = '<span class="mef-error">Correo electrónico inválido.</span>'; return; }
+
+    const btnEnviar = emailInput.nextElementSibling;
+    if (btnEnviar) { btnEnviar.disabled = true; btnEnviar.textContent = 'Enviando…'; }
+    feedback.innerHTML = '<span class="mef-info">Enviando correo…</span>';
+
+    try {
+      const token = localStorage.getItem('token');
+      const resp = await fetch('/api/membresias/enviar-boleta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ email, datos })
+      });
+      const result = await resp.json();
+      if (resp.ok) {
+        feedback.innerHTML = '<span class="mef-ok">✅ Correo enviado exitosamente.</span>';
+        if (emailInput) emailInput.value = '';
+      } else {
+        feedback.innerHTML = `<span class="mef-error">Error: ${result.mensaje || 'No se pudo enviar.'}</span>`;
+      }
+    } catch {
+      feedback.innerHTML = '<span class="mef-error">Error de conexión al enviar el correo.</span>';
+    } finally {
+      if (btnEnviar) { btnEnviar.disabled = false; btnEnviar.textContent = '✉️ Enviar'; }
+    }
+  };
+
+  // ─── Generar HTML de boleta para impresión ────────────────────────────────
+  function memb_generarBoletaHTML(datos) {
+    const cuotasHTML = _buildCuotasSection(datos.cuotas, datos.monto_total, datos.monto_pagado, true);
+
+    const saldo = (parseFloat(datos.monto_total || 0) - parseFloat(datos.monto_pagado || 0)).toFixed(2);
+    const tieneSaldo = parseFloat(saldo) > 0;
+
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Comprobante – Volcano Gym</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 12px; color: #222; background: #fff; }
+  .boleta { width: 80mm; margin: 0 auto; padding: 12px 10px; }
+  .gym-logo  { text-align: center; margin-bottom: 4px; }
+  .gym-logo img { height: 54px; width: auto; filter: invert(1) brightness(0.15); object-fit: contain; }
+  .gym-nombre { font-size: 18px; font-weight: bold; color: #c62828; text-align: center; letter-spacing: 2px; }
+  .gym-dir { font-size: 9.5px; color: #666; text-align: center; margin: 1px 0; }
+  hr { border: none; border-top: 1px dashed #bbb; margin: 7px 0; }
+  .titulo-comp { font-size: 11px; font-weight: bold; text-align: center; letter-spacing: 1px; color: #444; }
+  .num-comp { font-size: 13px; font-weight: bold; text-align: center; color: #c62828; margin: 2px 0; }
+  .fecha-em { font-size: 9.5px; text-align: center; color: #777; }
+  .sec-label { font-size: 9px; font-weight: bold; color: #777; text-transform: uppercase; letter-spacing: 1px; margin: 7px 0 3px; }
+  .info-row { display: flex; justify-content: space-between; font-size: 11px; margin: 2px 0; }
+  .info-row .lbl { color: #666; }
+  .info-row .val { font-weight: 600; text-align: right; max-width: 56%; }
+  .cuota-row { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 0; border-bottom: 1px solid #f0f0f0; }
+  .cuota-pagada { color: #2e7d32; font-weight: 600; }
+  .cuota-pend { color: #e65100; }
+  .total-box { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding: 8px 10px; background: #fef3f2; border: 1px solid #fca5a5; border-radius: 5px; }
+  .total-box .total-label { font-weight: bold; font-size: 12px; }
+  .total-box .total-amt { font-weight: bold; font-size: 16px; color: #c62828; }
+  .saldo-pend { font-size: 10px; color: #e65100; text-align: right; margin-top: 4px; }
+  .footer-note { font-size: 8.5px; color: #999; text-align: center; line-height: 1.5; margin-top: 10px; }
+  @media print {
+    @page { size: 80mm auto; margin: 0; }
+    body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .no-print { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="boleta">
+  <div class="gym-logo"><img src="/icono.png" alt="Volcano Gym"></div>
+  <div class="gym-nombre">VOLCANO GYM</div>
+  <div class="gym-dir">Av. Balta 2340 – Urb. Latina – José Leonardo Ortiz – Chiclayo</div>
+  <div class="gym-dir">volcanogym21@gmail.com</div>
+  <div class="gym-dir" style="font-weight:bold;color:#444">RUC: 20604869201</div>
+  <hr>
+  <div class="titulo-comp">COMPROBANTE DE SERVICIO</div>
+  <div class="num-comp">${datos.num_comprobante}</div>
+  <div class="fecha-em">Fecha de emisión: ${datos.fecha_emision}</div>
+  <hr>
+  <div class="sec-label">Datos del cliente</div>
+  <div class="info-row"><span class="lbl">Señor(a):</span><span class="val">${datos.nombre} ${datos.apellido}</span></div>
+  <div class="info-row"><span class="lbl">DNI:</span><span class="val">${datos.dni}</span></div>
+  ${datos.celular && datos.celular !== '—' ? `<div class="info-row"><span class="lbl">Celular:</span><span class="val">${datos.celular}</span></div>` : ''}
+  <hr>
+  <div class="sec-label">Detalle del servicio</div>
+  <div class="info-row"><span class="lbl">Plan:</span><span class="val">${datos.plan}</span></div>
+  <div class="info-row"><span class="lbl">F. Matrícula:</span><span class="val">${datos.fecha_inicio}</span></div>
+  <div class="info-row"><span class="lbl">F. Inicio:</span><span class="val">${datos.fecha_inicio}</span></div>
+  <div class="info-row"><span class="lbl">F. Vencimiento:</span><span class="val">${datos.fecha_fin}</span></div>
+  <div class="info-row"><span class="lbl">Tiempo contratado:</span><span class="val">${datos.duracion}</span></div>
+  <div class="info-row"><span class="lbl">Método de pago:</span><span class="val">${datos.metodo_pago}</span></div>
+  <hr>
+  <div class="sec-label">Detalle de pagos</div>
+  ${cuotasHTML}
+  <div class="total-box">
+    <span class="total-label">TOTAL PAGADO:</span>
+    <span class="total-amt">S/ ${parseFloat(datos.monto_pagado).toFixed(2)}</span>
+  </div>
+  ${tieneSaldo ? `<div class="saldo-pend">Saldo pendiente: S/ ${saldo}</div>` : ''}
+  <hr>
+  <div class="footer-note">
+    Boleta basada en el contrato físico del gimnasio con todas las cláusulas legales.<br>
+    Cláusula 5a: Las membresías se renuevan automáticamente al vencimiento.<br>
+    Cláusula 6a: No aplica devolución de matrícula o cualquier tipo de pago.
+  </div>
+</div>
+</body>
+</html>`;
   }
 
   // ─── Tabla de membresías ──────────────────────────────────────────────────

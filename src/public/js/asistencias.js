@@ -67,11 +67,15 @@ function renderAsistencias(data) {
 // ─── STATS ───────────────────────────────────────────────────────────────────
 async function cargarAsistenciasStats() {
     try {
-        const s  = await api('GET', '/api/asistencias/stats');
+        const s   = await api('GET', '/api/asistencias/stats');
         const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? 0; };
-        set('asist-hoy',    s.hoy);
-        set('asist-semana', s.esta_semana);
-        set('asist-mes',    s.este_mes);
+        set('asist-hoy',           s.hoy);
+        set('asist-semana',        s.esta_semana);
+        set('asist-mes',           s.este_mes);
+        set('kpi-asist-hoy',       s.hoy);
+        set('kpi-promedio-semanal', s.promedio_semanal ?? 0);
+        const horaPicoEl = document.getElementById('kpi-hora-pico');
+        if (horaPicoEl) horaPicoEl.textContent = s.hora_pico || '—';
         const home = document.getElementById('countAsistencias');
         if (home) home.textContent = s.hoy;
     } catch (e) { console.warn('stats asistencias:', e); }

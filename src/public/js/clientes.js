@@ -161,6 +161,15 @@ function renderClientes(data) {
         </button>`;
     }
 
+    let btnPagar = '';
+    if (c.memb_saldo > 0 && estadoEfectivo !== 'anulada' && c.id_membresia) {
+      btnPagar = `
+        <button class="btn-cl-pagar"
+          onclick="openModalCuotas(${c.id_membresia}, '${_nom}')">
+          <i class="bi bi-cash-coin"></i> Pagar
+        </button>`;
+    }
+
     return `<tr>
       <td>
         <button class="btn-cl-ver" title="Ver historial del cliente"
@@ -183,6 +192,7 @@ function renderClientes(data) {
       <td>
         <div style="display:flex;gap:5px;align-items:center">
         ${btnMemb}
+        ${btnPagar}
         <button class="btn-icon" title="Editar cliente" onclick="editCliente(${c.id_cliente})">
           <i class="bi bi-pencil"></i>
         </button>
@@ -227,6 +237,14 @@ function renderClientes(data) {
     .btn-cl-matricular:hover { background:#c8e6c9; }
     .btn-cl-congelada  { background:#e3f2fd;color:#1565c0;border-color:#90caf9; }
     .btn-cl-congelada:hover { background:#bbdefb; }
+    .btn-cl-pagar {
+      display:inline-flex;align-items:center;gap:4px;
+      padding:5px 11px;font-size:12px;font-weight:600;
+      background:#ffebee;color:#c62828;border:1px solid #ef9a9a;
+      border-radius:7px;cursor:pointer;white-space:nowrap;
+      transition:background .15s;
+    }
+    .btn-cl-pagar:hover { background:#ffcdd2; }
 
     /* ── Modal Membresía — header acciones rápidas (Renovar/Congelada) ── */
     #membAccionesRapidas .memb-btn-freeze:hover { filter: brightness(0.93); }
@@ -649,6 +667,11 @@ async function saveCliente() {
     return;
   }
 
+  if (dni && !/^\d{8}$/.test(dni)) {
+    showAlert('alertCliente', 'El DNI debe tener exactamente 8 dígitos numéricos');
+    return;
+  }
+
   // Validar que el DNI no esté ya registrado (solo al crear, no al editar)
   if (!id && dni) {
     const dniExistente = dataClientes.find(c => c.dni === dni);
@@ -822,8 +845,10 @@ async function _cargarHistorial(idCliente, fechaInicio = '', fechaFin = '') {
 
 let _hcAsistencias = [];
 let _calMes = null; // { year, month }
+let _historialActual = null; // datos del último historial cargado (para boleta)
 
 function _renderHistorial(data) {
+  _historialActual = data; // cachear para que verBoletaMembresia pueda acceder
   const { cliente, membresias, ventas, asistencias, flujo_caja, total_pagado } = data;
 
   const hcAvatar = document.getElementById('hcAvatar');
@@ -1129,7 +1154,69 @@ function filtrarHistorial() {
 }
 
 function verBoletaMembresia(idMembresia) {
-  alert(`Boleta membresía #${idMembresia} — función de impresión próximamente`);
+  if (!_historialActual) return;
+
+  const m = _historialActual.membresias?.find(x => x.id_membresia === idMembresia);
+  if (!m) return;
+
+  const fmtFecha = typeof window.memb_fmtFecha === 'function'
+    ? window.memb_fmtFecha
+    : (f) => {
+        if (!f) return '—';
+        const d = String(f).includes('T') ? new Date(f) : new Date(f + 'T12:00:00');
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
+      };
+
+  const cliente   = _historialActual.cliente || {};
+  const cuotas    = m.cuotas || [];
+  const montoPagado = cuotas
+    .filter(c => c.estado_cuota === 'pagado')
+    .reduce((s, c) => s + parseFloat(c.monto || 0), 0);
+
+  // Calcular duración usando unidad correcta (dias/meses/años)
+  let duracion = '—';
+  if (m.duracion_meses) {
+    const fmtD = typeof window.memb_fmtDuracion === 'function' ? window.memb_fmtDuracion : null;
+    duracion = fmtD
+      ? fmtD(m.duracion_meses, m.duracion_unidad || 'meses')
+      : (() => {
+          const v = parseInt(m.duracion_meses);
+          const u = m.duracion_unidad || 'meses';
+          const s = { dias:'día', meses:'mes', anos:'año' }[u] || u;
+          const p = { dias:'días', meses:'meses', anos:'años' }[u] || u;
+          return `${v} ${v === 1 ? s : p}`;
+        })();
+  }
+
+  const fechaEmision = m.created_at
+    ? new Date(m.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : fmtFecha(m.fecha_inicio);
+
+  const boletaDatos = {
+    id_membresia:    m.id_membresia,
+    num_comprobante: `B001-${String(m.id_membresia).padStart(4, '0')}`,
+    fecha_emision:   fechaEmision,
+    nombre:          cliente.nombre  || '—',
+    apellido:        cliente.apellido || '—',
+    dni:             cliente.dni      || '—',
+    celular:         cliente.celular  || cliente.telefono || '—',
+    plan:            m.plan_nombre    || '—',
+    duracion,
+    fecha_inicio:    fmtFecha(m.fecha_inicio),
+    fecha_fin:       fmtFecha(m.fecha_fin),
+    monto_total:     parseFloat(m.monto_total  || 0),
+    monto_pagado:    montoPagado,
+    metodo_pago:     cuotas[0]?.metodo_pago || '—',
+    cuotas,
+    observaciones:   m.observaciones || ''
+  };
+
+  if (typeof window.memb_imprimirBoletaConDatos === 'function') {
+    window.memb_imprimirBoletaConDatos(boletaDatos);
+  } else {
+    alert('El módulo de membresías no está cargado. Recarga la página.');
+  }
 }
 
 function verBoletaVenta(idVenta) {

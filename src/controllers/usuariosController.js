@@ -82,13 +82,13 @@ export const createUsuario = async (req, res) => {
 
         const perfilDestinoNombre = perfilDestinoRes.rows[0].nombre.toLowerCase();
 
-        // Solo superAdmin puede crear usuarios con perfil superAdministrador
-        if (perfilDestinoNombre === 'superadministrador' && !ejecutorEsSuperAdmin)
-            return res.status(403).json({ message: 'No tienes permisos para asignar el perfil SuperAdministrador' });
+        // Nadie puede crear usuarios con perfil superAdministrador
+        if (perfilDestinoNombre === 'superadministrador')
+            return res.status(403).json({ message: 'No se puede asignar el perfil SuperAdministrador' });
 
-        // Solo admin o superAdmin puede crear usuarios con perfil Administrador
-        if (perfilDestinoNombre === 'administrador' && !ejecutorEsAdmin && !ejecutorEsSuperAdmin)
-            return res.status(403).json({ message: 'No tienes permisos para asignar el perfil Administrador' });
+        // Solo superAdmin puede crear usuarios con perfil Administrador
+        if (perfilDestinoNombre === 'administrador' && !ejecutorEsSuperAdmin)
+            return res.status(403).json({ message: 'Solo el SuperAdministrador puede asignar el perfil Administrador' });
 
         const existe = await pool.query(
             'SELECT id_usuario, estado FROM usuarios WHERE username=$1 OR email=$2',
@@ -220,6 +220,13 @@ export const updateUsuario = async (req, res) => {
         const mismosPerfil       = target_perfil_id === ejecutor_perfil_id;
         const esSelf             = Number(id) === req.usuario.id;
 
+        // Solo admin o superAdmin pueden editar otros usuarios
+        if (!ejecutorEsAdmin && !ejecutorEsSuperAdmin && !esSelf) {
+            return res.status(403).json({
+                message: 'No tienes permisos para editar otros usuarios'
+            });
+        }
+
         // SuperAdmin solo puede ser editado por otro superAdmin (o por sí mismo)
         if (targetEsSuperAdmin && !ejecutorEsSuperAdmin) {
             return res.status(403).json({
@@ -275,14 +282,17 @@ export const updateUsuario = async (req, res) => {
                 `SELECT nombre FROM perfiles WHERE id_perfil = $1`, [id_perfil]
             );
             const perfilDestinoNombre = perfilDestinoRes.rows[0]?.nombre?.toLowerCase();
-            if (perfilDestinoNombre === 'superadministrador' && !ejecutorEsSuperAdmin) {
+            const perfilCambia = Number(id_perfil) !== target_perfil_id;
+            // Nadie puede asignar superAdministrador (solo aplica si el perfil cambia)
+            if (perfilDestinoNombre === 'superadministrador' && perfilCambia) {
                 return res.status(403).json({
-                    message: 'No tienes permisos para asignar el perfil SuperAdministrador'
+                    message: 'No se puede asignar el perfil SuperAdministrador'
                 });
             }
-            if (perfilDestinoNombre === 'administrador' && !ejecutorEsAdmin && !ejecutorEsSuperAdmin) {
+            // Solo superAdmin puede asignar Administrador
+            if (perfilDestinoNombre === 'administrador' && !ejecutorEsSuperAdmin && perfilCambia) {
                 return res.status(403).json({
-                    message: 'No tienes permisos para asignar el perfil Administrador'
+                    message: 'Solo el SuperAdministrador puede asignar el perfil Administrador'
                 });
             }
         }
@@ -448,7 +458,15 @@ export const deleteUsuario = async (req, res) => {
 
         const targetEsAdmin      = target_perfil_nombre?.toLowerCase() === 'administrador';
         const targetEsSuperAdmin = target_perfil_nombre?.toLowerCase() === 'superadministrador';
+        const ejecutorEsAdmin    = ejecutor_perfil_nombre?.toLowerCase() === 'administrador';
         const ejecutorEsSuperAdmin = ejecutor_perfil_nombre?.toLowerCase() === 'superadministrador';
+
+        // Solo admin o superAdmin pueden eliminar usuarios
+        if (!ejecutorEsAdmin && !ejecutorEsSuperAdmin) {
+            return res.status(403).json({
+                message: 'No tienes permisos para eliminar usuarios'
+            });
+        }
 
         // SuperAdmin no puede ser eliminado por nadie
         if (targetEsSuperAdmin) {

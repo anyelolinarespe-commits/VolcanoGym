@@ -72,7 +72,7 @@ function _planCard(p) {
             ${fraccionDetalle}
             ${p.descripcion ? `<div style="font-size:11px;color:#888;margin-top:6px">${p.descripcion}</div>` : ''}
             <div style="margin-top:14px;display:flex;gap:6px">
-                <button class="btn-icon" onclick="editPlan(${p.id_plan})">
+                <button class="btn-icon edit" onclick="editPlan(${p.id_plan})">
                     <i class="bi bi-pencil"></i>
                 </button>
                 <button class="btn-icon danger"

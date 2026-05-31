@@ -52,15 +52,35 @@ export const getAsistencias = async (req, res) => {
 // GET /api/asistencias/stats
 export const getAsistenciasStats = async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT
-                COUNT(*)                                                          AS total,
-                COUNT(*) FILTER (WHERE fecha_hora::date = CURRENT_DATE)          AS hoy,
-                COUNT(*) FILTER (WHERE fecha_hora >= date_trunc('week',  NOW())) AS esta_semana,
-                COUNT(*) FILTER (WHERE fecha_hora >= date_trunc('month', NOW())) AS este_mes
-            FROM asistencia
-        `);
-        res.json(result.rows[0]);
+        const [mainRes, horaPicoRes] = await Promise.all([
+            pool.query(`
+                SELECT
+                    COUNT(*)                                                                       AS total,
+                    COUNT(*) FILTER (WHERE fecha_hora::date = CURRENT_DATE)                       AS hoy,
+                    COUNT(*) FILTER (WHERE fecha_hora >= date_trunc('week',  NOW()))              AS esta_semana,
+                    COUNT(*) FILTER (WHERE fecha_hora >= date_trunc('month', NOW()))              AS este_mes,
+                    ROUND(COUNT(*) FILTER (WHERE fecha_hora >= NOW() - INTERVAL '7 days') / 7.0) AS promedio_semanal
+                FROM asistencia
+            `),
+            pool.query(`
+                SELECT EXTRACT(HOUR FROM fecha_hora AT TIME ZONE 'America/Lima')::int AS h
+                FROM asistencia
+                GROUP BY h
+                ORDER BY COUNT(*) DESC
+                LIMIT 1
+            `)
+        ]);
+
+        const stats = mainRes.rows[0];
+
+        let hora_pico = '—';
+        if (horaPicoRes.rows.length) {
+            const h   = horaPicoRes.rows[0].h;
+            const fmt = (n) => String(n).padStart(2, '0') + ':00';
+            hora_pico = `${fmt(h)} – ${fmt((h + 2) % 24)}`;
+        }
+
+        res.json({ ...stats, hora_pico });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error al obtener estadísticas de asistencias' });

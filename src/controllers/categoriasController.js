@@ -4,7 +4,7 @@ import { pool } from '../config/bd.js';
 export const getCategorias = async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT id_categoria, nombre, descripcion, estado, created_at
+            SELECT id_categoria, nombre, descripcion, porcentaje_descuento, estado, created_at
             FROM categoria_producto
             WHERE estado != 2
             ORDER BY created_at DESC
@@ -18,7 +18,7 @@ export const getCategorias = async (req, res) => {
 
 // POST /api/categorias
 export const createCategoria = async (req, res) => {
-    const { nombre, descripcion } = req.body;
+    const { nombre, descripcion, porcentaje_descuento } = req.body;
     if (!nombre) return res.status(400).json({ message: 'El nombre es requerido' });
     try {
         const existe = await pool.query(
@@ -29,9 +29,9 @@ export const createCategoria = async (req, res) => {
             return res.status(409).json({ message: 'Ya existe una categoría con ese nombre' });
 
         const result = await pool.query(
-            `INSERT INTO categoria_producto (nombre, descripcion, creado_por)
-             VALUES ($1, $2, $3) RETURNING *`,
-            [nombre.trim(), descripcion || null, req.usuario.id]
+            `INSERT INTO categoria_producto (nombre, descripcion, porcentaje_descuento, creado_por)
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [nombre.trim(), descripcion || null, Number(porcentaje_descuento ?? 0), req.usuario.id]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {
@@ -43,14 +43,14 @@ export const createCategoria = async (req, res) => {
 // PUT /api/categorias/:id
 export const updateCategoria = async (req, res) => {
     const { id } = req.params;
-    const { nombre, descripcion, estado } = req.body;
+    const { nombre, descripcion, porcentaje_descuento, estado } = req.body;
     if (!nombre) return res.status(400).json({ message: 'El nombre es requerido' });
     try {
         const result = await pool.query(
             `UPDATE categoria_producto
-             SET nombre=$1, descripcion=$2, estado=$3
-             WHERE id_categoria=$4 AND estado != 2 RETURNING *`,
-            [nombre.trim(), descripcion || null, estado ?? 1, id]
+             SET nombre=$1, descripcion=$2, porcentaje_descuento=$3, estado=$4
+             WHERE id_categoria=$5 AND estado != 2 RETURNING *`,
+            [nombre.trim(), descripcion || null, Number(porcentaje_descuento ?? 0), estado ?? 1, id]
         );
         if (result.rowCount === 0) return res.status(404).json({ message: 'Categoría no encontrada' });
         res.json(result.rows[0]);
