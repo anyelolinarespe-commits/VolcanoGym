@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planes - Vulcano Gym</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* =======================================================
+           CONTROL DE VISIBILIDAD DE PLATAFORMAS (PC vs MÓVIL)
+        ======================================================= */
+        @media (min-width: 769px) {
+            .mobile-only { display: none !important; }
+        }
+        @media (max-width: 768px) {
+            .pc-only { display: none !important; }
+            
+            /* Ajuste para que el contenido de los planes no quede tapado por la barra fija inferior */
+            body {
+                padding-bottom: 70px; 
+            }
+        }
+
+        /* =======================================================
+           ESTILOS PARA LA BARRA DE NAVEGACIÓN INFERIOR (MÓVIL)
+        ======================================================= */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 65px;
+            background-color: #ffffff;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.15);
+            z-index: 9999;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .bottom-nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            color: #555555;
+            font-size: 11px;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            flex: 1;
+            transition: color 0.2s ease;
+        }
+
+        .bottom-nav-item i {
+            font-size: 20px;
+            margin-bottom: 4px;
+        }
+
+        /* Estado activo o seleccionado (Resalta "Planes" en esta página) */
+        .bottom-nav-item.active {
+            color: #ff3333; 
+        }
+
+        /* =======================================================
+           ESTILOS: BOTONES DE WHATSAPP (MÓVIL Y PC)
+        ======================================================= */
+        .wsp-mobile {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background-color: #25d366;
+            color: white;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            z-index: 100000;
+            text-decoration: none;
+        }
+
+        .wsp-pc {
+            position: fixed;
+            bottom: 25px;
+            right: 25px;
+            background-color: #25d366;
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 32px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 9999;
+            text-decoration: none;
+            transition: transform 0.2s ease;
+        }
+        .wsp-pc:hover {
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body style="background-color: #000;">
+
+    <a href="https://wa.me/51963247284?text=Hola!%20Me%20gustaría%20recibir%20más%20información%20sobre%20los%20planes%20del%20gimnasio." target="_blank" class="wsp-mobile mobile-only">
+        <i class="fab fa-whatsapp"></i>
+    </a>
+
+    <a href="https://wa.me/51963247284?text=Hola!%20Me%20gustaría%20recibir%20más%20información%20sobre%20los%20planes%20del%20gimnasio." target="_blank" class="wsp-pc pc-only">
+        <i class="fab fa-whatsapp"></i>
+    </a>
+
+    <!-- MENÚ SUPERIOR -->
+    <header class="navbar">
+        <div class="logo">VULCANO <span>GYM</span></div>
+        
+        <input type="checkbox" id="menu-bar" class="pc-only">
+        <label for="menu-bar" class="menu-icon pc-only"><i class="fas fa-bars"></i></label>
+
+        <nav class="nav-links pc-only">
+            <a href="index.html">Inicio</a>
+            
+            <div class="dropdown mobile-accordion">
+                <a href="javascript:void(0)" class="dropbtn active">Nuestros Planes <i class="fas fa-chevron-down"></i></a>
+                <div class="dropdown-content">
+                    <a href="planes.html">Planes</a>
+                    <a href="#">Planes corporativos</a>
+                </div>
+            </div>
+
+            <a href="#">Trabaja con nosotros</a>
+        </nav>
+        
+        <button class="btn-autogestion pc-only" onclick="window.location.href='https://pa.com'">INICIAR SESIÓN</button>
+    </header>
+
+    <nav class="bottom-nav mobile-only">
+        <a href="index.html" class="bottom-nav-item">
+            <i class="fas fa-home"></i>
+            <span>Inicio</span>
+        </a>
+        <a href="planes.html" class="bottom-nav-item active">
+            <i class="fas fa-dumbbell"></i>
+            <span>Planes</span>
+        </a>
+        <a href="https://pa.com" class="bottom-nav-item">
+            <i class="fas fa-user"></i>
+            <span>Iniciar sesión</span>
+        </a>
+    </nav>
+
+    <section class="container">
+        <h1 class="section-title" style="color: white; text-align: center; margin-bottom: 40px;">ELIGE TU <span>PLAN</span></h1>
+        
+        <div class="planes-container">
+            <!-- PLAN TRIMESTRAL -->
+            <div class="card-plan">
+                <div class="card-header">
+                    <h3>TRIMESTRAL</h3>
+                    <p class="sede-info">Sede San Pedro</p>
+                </div>
+                <div class="card-body">
+                    <div class="price-box">
+                        <span class="currency">S/</span>
+                        <span class="amount">250</span>
+                    </div>
+                    <ul class="features-list">
+                        <li><i class="fas fa-check"></i> Acceso total a máquinas</li>
+                        <li><i class="fas fa-check"></i> Evaluación física inicial</li>
+                        <li><i class="fas fa-check"></i> Clases grupales</li>
+                    </ul>
+                    <button onclick="window.location.href='https://wa.me/51963247284?text=Hola!%20Quiero%20adquirir%20el%20Plan%20TRIMESTRAL%20(S/%20250)%20para%20la%20Sede%20San%20Pedro.'" class="btn-buy">COMPRAR AHORA</button>
+                </div>
+            </div>
+
+            <!-- PLAN SEMESTRAL -->
+            <div class="card-plan featured">
+                <div class="card-header">
+                    <span class="tag-popular">MÁS POPULAR</span>
+                    <h3>SEMESTRAL</h3>
+                    <p class="sede-info">Sede San Pedro</p>
+                </div>
+                <div class="card-body">
+                    <div class="price-box">
+                        <span class="currency">S/</span>
+                        <span class="amount">450</span>
+                    </div>
+                    <ul class="features-list">
+                        <li><i class="fas fa-check"></i> Todo lo del Trimestral</li>
+                        <li><i class="fas fa-check"></i> 1 mes invitado gratis</li>
+                        <li><i class="fas fa-check"></i> Plan nutricional</li>
+                    </ul>
+                    <button onclick="window.location.href='https://wa.me/51963247284?text=Hola!%20Quiero%20adquirir%20el%20Plan%20SEMESTRAL%20(S/%20450)%20para%20la%20Sede%20San%20Pedro.'" class="btn-buy">COMPRAR AHORA</button>
+                </div>
+            </div>
+
+            <!-- PLAN ANUAL -->
+            <div class="card-plan">
+                <div class="card-header">
+                    <h3>ANUAL</h3>
+                    <p class="sede-info">Sede San Pedro</p>
+                </div>
+                <div class="card-body">
+                    <div class="price-box">
+                        <span class="currency">S/</span>
+                        <span class="amount">800</span>
+                    </div>
+                    <ul class="features-list">
+                        <li><i class="fas fa-check"></i> Acceso ilimitado 1 año</li>
+                        <li><i class="fas fa-check"></i> 2 evaluaciones</li>
+                        <li><i class="fas fa-check"></i> Kit bienvenida</li>
+                    </ul>
+                    <button onclick="window.location.href='https://wa.me/51963247284?text=Hola!%20Quiero%20adquirir%20el%20Plan%20ANUAL%20(S/%20800)%20para%20la%20Sede%20San%20Pedro.'" class="btn-buy">COMPRAR AHORA</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</body>
+</html>
