@@ -20,6 +20,7 @@ import presentacionesRoutes  from './routes/presentacionesRoutes.js';
 import asistenciasRoutes     from './routes/asistenciasRoutes.js';
 import inventarioRoutes from './routes/inventarioRoutes.js';
 import fotosRoutes from './routes/fotosRoutes.js';
+import ventasRoutes from './routes/ventasRoutes.js';
 
 dotenv.config();
 
@@ -46,6 +47,7 @@ app.use('/api/presentaciones', presentacionesRoutes);
 app.use('/api/asistencias',   asistenciasRoutes);
 app.use('/api/inventario', inventarioRoutes);
 app.use('/api/productos/:id/fotos', fotosRoutes);
+app.use('/api/ventas', ventasRoutes);
 
 // Upload de capturas de comprobantes de pago
 app.post('/api/uploads/comprobante',
