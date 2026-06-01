@@ -1059,10 +1059,22 @@ function _renderHistorial(data) {
   if (!ventas || !ventas.length) {
     contVentas.innerHTML = '<div class="hc-empty">Sin ventas registradas</div>';
   } else {
+    const _sunatBadge = (estado) => {
+      const map = {
+        sin_emitir: ['#fff3e0','#e65100','Nota de Venta'],
+        enviado:    ['#e3f2fd','#1565c0','Enviado'],
+        aceptado:   ['#e8f5e9','#2e7d32','Aceptado'],
+        rechazado:  ['#fce4ec','#c62828','Rechazado'],
+        anulado:    ['#f3e5f5','#6a1b9a','Anulado'],
+      };
+      const [bg, color, label] = map[estado] || ['#f5f5f5','#888', estado || '—'];
+      return `<span style="background:${bg};color:${color};font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;white-space:nowrap">${label}</span>`;
+    };
     contVentas.innerHTML = `
-      <table class="hc-table">
+      <div style="overflow-x:auto">
+      <table class="hc-table" style="min-width:580px">
         <thead><tr>
-          <th>Fecha</th><th>Monto</th><th>Método</th><th>Boleta</th>
+          <th>Fecha</th><th>Documento</th><th>Productos</th><th>Método</th><th>Total</th><th>Estado</th><th></th>
         </tr></thead>
         <tbody>
           ${ventas.map(v => {
@@ -1075,20 +1087,31 @@ function _renderHistorial(data) {
             const metodo = v.metodo_pago
               ? v.metodo_pago.charAt(0).toUpperCase() + v.metodo_pago.slice(1)
               : '—';
+            const numDoc = v.serie_electronica && v.numero_electronico
+              ? `${v.serie_electronica}-${String(v.numero_electronico).padStart(6,'0')}`
+              : (v.numero_venta || '—');
+            const deuda = parseFloat(v.saldo_pendiente || 0);
+            const deudaHtml = deuda > 0
+              ? `<br><span style="color:#e53935;font-size:10px;font-weight:600">Debe S/${deuda.toFixed(2)}</span>`
+              : '';
             return `<tr>
-              <td style="font-size:12px;color:#555">${fv}</td>
-              <td><strong>S/. ${parseFloat(v.monto || 0).toFixed(2)}</strong></td>
+              <td style="font-size:11px;color:#777;white-space:nowrap">${fv}</td>
+              <td style="font-size:12px;font-weight:600;white-space:nowrap">${numDoc}</td>
+              <td style="font-size:11px;color:#555;max-width:180px;line-height:1.4">${v.productos || '—'}</td>
               <td style="font-size:12px">${metodo}</td>
+              <td style="white-space:nowrap"><strong>S/ ${parseFloat(v.monto || 0).toFixed(2)}</strong>${deudaHtml}</td>
+              <td>${_sunatBadge(v.estado_sunat)}</td>
               <td>
-                <button class="hc-btn-boleta" title="Imprimir boleta venta"
+                <button class="hc-btn-boleta" title="Ver detalle de venta"
                   onclick="verBoletaVenta(${v.id_venta})">
-                  <i class="bi bi-printer"></i>
+                  <i class="bi bi-eye"></i>
                 </button>
               </td>
             </tr>`;
           }).join('')}
         </tbody>
-      </table>`;
+      </table>
+      </div>`;
   }
 
   // ── Asistencias ──
@@ -1220,7 +1243,11 @@ function verBoletaMembresia(idMembresia) {
 }
 
 function verBoletaVenta(idVenta) {
-  alert(`Boleta venta #${idVenta} — función de impresión próximamente`);
+  if (typeof verDetalleVenta === 'function') {
+    verDetalleVenta(idVenta);
+  } else {
+    alert('El módulo de ventas no está cargado. Recarga la página.');
+  }
 }
 
 function _buildModalHistorial() {

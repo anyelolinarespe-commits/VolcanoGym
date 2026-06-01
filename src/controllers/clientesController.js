@@ -557,21 +557,31 @@ export const getHistorialCliente = async (req, res) => {
         `, asistParams);
 
         // ── 4. Historial de ventas de productos ──────────────────────────
-        let ventasWhere = 'vp.id_cliente = $1';
+        let ventasWhere = 'v.id_cliente = $1 AND v.estado_venta <> \'anulada\'';
         const ventasParams = [id];
         let vi = 2;
-        if (fecha_inicio) { ventasWhere += ` AND vp.created_at::date >= $${vi++}`; ventasParams.push(fecha_inicio); }
-        if (fecha_fin)    { ventasWhere += ` AND vp.created_at::date <= $${vi++}`; ventasParams.push(fecha_fin); }
+        if (fecha_inicio) { ventasWhere += ` AND v.created_at::date >= $${vi++}`; ventasParams.push(fecha_inicio); }
+        if (fecha_fin)    { ventasWhere += ` AND v.created_at::date <= $${vi++}`; ventasParams.push(fecha_fin); }
 
         const ventasRes = await pool.query(`
             SELECT
-                vp.id_venta,
-                vp.created_at                           AS fecha,
-                vp.total                                AS monto,
-                vp.metodo_pago
-            FROM venta_producto vp
+                v.id                                                        AS id_venta,
+                v.numero_venta,
+                v.serie_electronica,
+                v.numero_electronico,
+                v.created_at                                                AS fecha,
+                v.total                                                     AS monto,
+                v.saldo_pendiente,
+                v.metodo_pago,
+                v.estado_venta,
+                v.estado_sunat,
+                (SELECT STRING_AGG(
+                    vd.nombre_snapshot || ' x' || vd.cantidad, ', '
+                    ORDER BY vd.id
+                 ) FROM venta_detalle vd WHERE vd.id_venta = v.id)         AS productos
+            FROM venta v
             WHERE ${ventasWhere}
-            ORDER BY vp.created_at DESC
+            ORDER BY v.created_at DESC
         `, ventasParams);
 
         // ── 5. Flujo de caja general del cliente ──────────────────────────
@@ -609,14 +619,15 @@ export const getHistorialCliente = async (req, res) => {
 
                 -- Ventas de productos
                 SELECT
-                    vp.created_at                                      AS fecha_hora,
-                    vp.created_at::date::text                          AS fecha,
+                    v.created_at                                       AS fecha_hora,
+                    v.created_at::date::text                           AS fecha,
                     'VENTA'                                            AS tipo,
-                    'Venta de Productos (ID: ' || vp.id_venta || ')'  AS concepto,
-                    vp.metodo_pago::text                               AS metodo_pago,
-                    vp.total                                           AS monto_pagado
-                FROM venta_producto vp
-                WHERE vp.id_cliente = $1
+                    'Venta ' || v.numero_venta                         AS concepto,
+                    v.metodo_pago::text                                AS metodo_pago,
+                    v.total                                            AS monto_pagado
+                FROM venta v
+                WHERE v.id_cliente = $1
+                  AND v.estado_venta <> 'anulada'
             ) sub
             WHERE 1=1 ${cajaFechaWhere}
             ORDER BY sub.fecha_hora DESC

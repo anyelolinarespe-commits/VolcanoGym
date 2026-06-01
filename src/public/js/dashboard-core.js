@@ -38,9 +38,10 @@ const MODULOS_CONFIG = {
   'planes':         { icon: 'bi-grid-3x3-gap',   label: 'Planes',         seccion: 'Gestión',          color: '#7c4dff' },
   'asistencias':    { icon: 'bi-calendar-check', label: 'Asistencias',    seccion: 'Gestión',          color: '#26a69a' },
   'categorias':     { icon: 'bi-tag',            label: 'Categorías',     seccion: 'Tienda',           color: '#26a69a' },
-  'presentaciones': { icon: 'bi-box2',           label: 'Presentaciones', seccion: 'Tienda',           color: '#00897b' }, // ← NUEVO
+  'presentaciones': { icon: 'bi-box2',           label: 'Presentaciones', seccion: 'Tienda',           color: '#00897b' },
   'productos':      { icon: 'bi-box-seam',       label: 'Productos',      seccion: 'Tienda',           color: '#ff7043' },
   'inventario':     { icon: 'bi-clipboard-data', label: 'Inventario',     seccion: 'Tienda',           color: '#1565c0' },
+  'ventas':         { icon: 'bi-receipt',        label: 'Ventas',         seccion: 'Tienda',           color: '#0f9d58' },
   'perfiles':       { icon: 'bi-shield-check',   label: 'Perfiles',       seccion: 'Administración',   color: '#e94560' },
   'usuarios':       { icon: 'bi-people',         label: 'Usuarios',       seccion: 'Administración',   color: '#0f3460' },
 };
@@ -289,6 +290,7 @@ function buildHomeCards() {
     { ruta: 'inventario',     color: '#1565c0', icon: 'bi-clipboard-data', label: 'Inventario',     countId: 'countInventario'     },
     { ruta: 'presentaciones', color: '#00897b', icon: 'bi-box2',           label: 'Presentaciones', countId: 'countPresentaciones' },
     { ruta: 'productos',      color: '#ff7043', icon: 'bi-box-seam',       label: 'Productos',      countId: 'countProductos'      },
+    { ruta: 'ventas',         color: '#0f9d58', icon: 'bi-receipt',         label: 'Ventas',         countId: 'countVentas'         },
     { ruta: 'perfiles',       color: '#e94560', icon: 'bi-shield-check',   label: 'Perfiles',       countId: 'countPerfiles'       },
     { ruta: 'usuarios',       color: '#0f3460', icon: 'bi-people',         label: 'Usuarios',       countId: 'countUsuarios'       },
   ];
@@ -326,6 +328,7 @@ function goTo(view) {
   if (view === 'productos')      loadProductos();
   if (view === 'inventario')     loadInventario();
   if (view === 'asistencias')    loadAsistencias();
+  if (view === 'ventas')         loadVentas();
 }
 
 // CARGA INICIAL
@@ -351,6 +354,7 @@ function goTo(view) {
     productos:      async () => { const s           = await api('GET', '/api/productos/stats');    const el = document.getElementById('countProductos');      if (el) el.textContent = s.activos; },
     inventario:     async () => { const d           = await api('GET', '/api/inventario');         const el = document.getElementById('countInventario');     if (el) el.textContent = d.kpis.stock_critico + ' críticos'; },
     asistencias:    async () => { const s           = await api('GET', '/api/asistencias/stats'); const el = document.getElementById('countAsistencias');    if (el) el.textContent = s.hoy; },
+    ventas:         async () => { const v           = await api('GET', '/api/ventas?limit=1');    const el = document.getElementById('countVentas');         if (el) el.textContent = v.total + ' ventas'; },
   };
 
   for (const [ruta, fn] of Object.entries(accesos)) {

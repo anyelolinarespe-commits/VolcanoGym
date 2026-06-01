@@ -338,7 +338,7 @@
                   <th>NOMBRE</th>
                   <th>CATEGORÍA</th>
                   <th style="text-align:right">PRECIO COSTO</th>
-                  <th style="text-align:right">PRECIO</th>
+                  <th style="text-align:right">PRECIO VENTA</th>
                   <th style="text-align:center">OFERTA</th>
                   <th style="text-align:center">STOCK MÍN.</th>
                   <th style="text-align:center">ESTADO</th>
@@ -530,8 +530,864 @@
       </div>
       <!-- ══ /ASISTENCIAS ═════════════════════════════════════════════════════ -->
 
+      <!-- ══ VENTAS ══════════════════════════════════════════════════════════ -->
+      <div class="view" id="view-ventas">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-receipt me-2"></i>Ventas</span>
+          <button class="btn-save" onclick="abrirNuevaVenta()">
+            <i class="bi bi-plus-lg me-1"></i>Nueva Venta
+          </button>
+        </div>
+
+        <div class="stats-row" id="ventaStatsRow">
+          <div class="stat-pill active" onclick="filtroEstadoSunat('',this)">Todas</div>
+          <div class="stat-pill" onclick="filtroEstadoSunat('sin_emitir',this)">
+            <span class="sp-num" style="color:#e94560" id="vt-sin-emitir">—</span> sin emitir
+          </div>
+          <div class="stat-pill" onclick="filtroEstadoSunat('aceptado',this)">
+            <span class="sp-num" style="color:#2e7d32" id="vt-aceptado">—</span> aceptadas
+          </div>
+          <div class="stat-pill" onclick="filtroEstadoSunat('enviado',this)">
+            <span class="sp-num" style="color:#1565c0" id="vt-enviado">—</span> enviadas
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="table-toolbar">
+            <span id="ventaContador" style="font-size:13px;color:#888">—</span>
+            <input type="text" id="buscarVenta" placeholder="🔍 Buscar documento o cliente..."
+              oninput="loadVentas(1)" style="width:260px;margin-left:auto">
+          </div>
+          <div style="overflow-x:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nº DOCUMENTO</th>
+                  <th>CLIENTE</th>
+                  <th>VENDEDOR</th>
+                  <th>FECHA</th>
+                  <th>TOTAL</th>
+                  <th>FORMA PAGO</th>
+                  <th>DEUDA</th>
+                  <th>ESTADO VENTA</th>
+                  <th>ESTADO SUNAT</th>
+                  <th>ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyVentas">
+                <tr class="loading-row"><td colspan="11">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="paginacionVentas" class="vt-paginacion"></div>
+        </div>
+      </div>
+      <!-- ══ /VENTAS ══════════════════════════════════════════════════════════ -->
+
     </div>
   </div>
+
+<!-- ════════════════════════════ MODALES VENTAS ════════════════════════════ -->
+
+<!-- Modal: Nueva Venta -->
+<div class="modal-overlay" id="modalNuevaVenta">
+  <div class="vt-modal-shell">
+    <div class="vt-modal-header">
+      <div>
+        <i class="bi bi-receipt" style="font-size:20px;margin-right:8px"></i>
+        <strong>Nueva Venta</strong>
+      </div>
+      <button class="vt-btn-x" onclick="closeModal('modalNuevaVenta')"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="vt-modal-body">
+
+      <!-- CLIENTE -->
+      <div class="vt-section-label">
+        <i class="bi bi-person-circle"></i> CLIENTE
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <div style="flex:1">
+          <label class="form-label">DNI / RUC</label>
+          <input type="text" id="nv-dni" class="form-control" placeholder="Ej. 41981377"
+            maxlength="11" oninput="this.value=this.value.replace(/\D/g,'')"
+            onkeydown="if(event.key==='Enter')buscarClienteVenta()">
+        </div>
+        <button class="vt-btn-buscar" onclick="buscarClienteVenta()" style="margin-top:20px">
+          <i class="bi bi-search me-1"></i>Buscar
+        </button>
+        <button class="vt-btn-sin-cliente" onclick="usarSinCliente()" style="margin-top:20px">
+          <i class="bi bi-person-dash me-1"></i>Sin Cliente
+        </button>
+      </div>
+      <div id="nv-cliente-info"></div>
+
+      <!-- COMPROBANTE Y PAGO -->
+      <div class="vt-section-label" style="margin-top:18px">
+        <i class="bi bi-file-earmark-text"></i> COMPROBANTE Y PAGO
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:6px">
+        <div>
+          <label class="form-label">Serie de Comprobante</label>
+          <input type="text" id="nv-serie" class="form-control" value="Nota de Venta" readonly>
+        </div>
+        <div>
+          <label class="form-label">Número de Venta</label>
+          <input type="text" id="nv-numero" class="form-control" readonly>
+        </div>
+        <div>
+          <label class="form-label">Forma de Pago</label>
+          <select id="nv-metodo-pago" class="form-control">
+            <option value="efectivo">Efectivo</option>
+            <option value="yape">Yape</option>
+            <option value="plin">Plin</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="tarjeta">Tarjeta (Débito/Crédito)</option>
+          </select>
+        </div>
+      </div>
+      <!-- Sección Efectivo: monto recibido + vuelto -->
+      <div id="nv-efectivo-section" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin-top:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end">
+          <div>
+            <label class="form-label">Monto Recibido (S/)</label>
+            <input type="number" id="nv-monto-recibido" class="form-control"
+              min="0" step="0.10" placeholder="0.00"
+              oninput="calcularVuelto()" style="font-size:16px;font-weight:700">
+          </div>
+          <div id="nv-vuelto-box" style="padding:10px 14px;border-radius:8px;text-align:center;background:#fff;border:1px solid #d1fae5">
+            <div style="font-size:11px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Vuelto</div>
+            <div id="nv-vuelto-valor" style="font-size:22px;font-weight:800;color:#16a34a">S/ 0.00</div>
+          </div>
+        </div>
+        <div id="nv-vuelto-alerta" style="display:none;margin-top:8px;padding:6px 10px;background:#fef2f2;border-radius:6px;font-size:12.5px;color:#dc2626;font-weight:600">
+          ⚠ El monto recibido es menor al total
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;display:none" id="nv-grid-pago-oculto">
+      </div>
+
+      <!-- PRODUCTOS -->
+      <div class="vt-section-label" style="margin-top:18px">
+        <i class="bi bi-box-seam"></i> PRODUCTOS
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <button class="vt-btn-agregar-prod" onclick="abrirModalProducto()">
+          <i class="bi bi-plus-circle me-1"></i>Agregar Producto
+        </button>
+        <button class="vt-btn-cotizacion" disabled title="Próximamente">
+          <i class="bi bi-file-earmark-check me-1"></i>Cargar Cotización
+        </button>
+      </div>
+
+      <!-- Tabla carrito -->
+      <div style="overflow-x:auto">
+        <table class="vt-tabla-carrito">
+          <thead>
+            <tr>
+              <th>PRODUCTO</th>
+              <th>PRECIO</th>
+              <th>CANTIDAD</th>
+              <th>SUBTOTAL</th>
+              <th>ACCIÓN</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyCarrito">
+            <tr><td colspan="5" class="text-center" style="padding:1rem;color:#888">Sin productos agregados</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Total -->
+      <div class="vt-total-box" id="nv-total-box" style="display:none">
+        <div>
+          <div style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:.5px">TOTAL A PAGAR</div>
+          <div class="vt-total-num" id="nv-total-pagar">S/ 0.00</div>
+        </div>
+        <div style="text-align:right;font-size:13px;color:#666">
+          Forma de Pago<br>
+          <strong id="nv-label-metodo">Contado</strong>
+        </div>
+      </div>
+
+      <!-- Descuento general -->
+      <div style="margin-top:16px">
+        <label class="form-label">DESCUENTO GENERAL (S/)</label>
+        <input type="number" id="nv-descuento-general" class="form-control"
+          value="0" min="0" step="0.01" style="max-width:200px">
+        <p style="font-size:11.5px;color:#b45309;margin-top:6px">
+          ⚠ Solo debe ser completado con autorización del Administrador o Dueño del Negocio.
+          De ser aplicado, detallar el motivo en la sección de Observaciones.
+        </p>
+      </div>
+
+      <!-- Observación -->
+      <div style="margin-top:12px">
+        <label class="form-label">OBSERVACIÓN</label>
+        <textarea id="nv-observacion" class="form-control" rows="2"
+          placeholder="Observaciones de la venta..."></textarea>
+      </div>
+
+    </div>
+    <div id="alertVenta" style="display:none;margin:0 24px 4px;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:500"></div>
+    <div class="vt-modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modalNuevaVenta')">
+        <i class="bi bi-x me-1"></i>Cancelar
+      </button>
+      <button class="btn-save" id="btnGuardarVenta" data-original="Guardar Venta"
+        onclick="guardarVenta()">
+        <i class="bi bi-check-lg me-1"></i>Guardar Venta
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Seleccionar Producto -->
+<div class="modal-overlay" id="modalSeleccionarProducto">
+  <div class="vt-modal-shell" style="max-width:680px">
+    <div class="vt-modal-header" style="background:linear-gradient(135deg,#6a11cb,#2575fc)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <i class="bi bi-box-seam" style="font-size:22px"></i>
+        <div>
+          <div style="font-size:16px;font-weight:700">Seleccionar Producto</div>
+          <div style="font-size:12px;opacity:.8">Busca y agrega productos a tu venta</div>
+        </div>
+      </div>
+      <button class="vt-btn-x" onclick="closeModal('modalSeleccionarProducto')"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="vt-modal-body">
+      <div style="position:relative;margin-bottom:12px">
+        <input type="text" id="buscarProductoVenta" class="form-control"
+          placeholder="🔍 Busca por nombre, código o ID..."
+          style="padding-left:14px">
+      </div>
+      <div id="listaProductosVenta" style="max-height:420px;overflow-y:auto">
+        <div style="text-align:center;padding:30px;color:#aaa">Escribe para buscar productos...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Emitir Comprobante -->
+<div class="modal-overlay" id="modalEmitirComprobante">
+  <div class="vt-modal-shell" style="max-width:720px">
+    <div class="vt-modal-header" style="background:linear-gradient(135deg,#1565c0,#1976d2)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <i class="bi bi-file-earmark-check" style="font-size:22px"></i>
+        <div>
+          <div style="font-size:16px;font-weight:700">Emitir Comprobante Electrónico</div>
+          <div style="font-size:12px;opacity:.8">Tipo de documento y datos de facturación</div>
+        </div>
+      </div>
+      <button class="vt-btn-x" onclick="closeModal('modalEmitirComprobante')"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="vt-modal-body">
+      <input type="hidden" id="emitir-id-venta">
+
+      <!-- Tipo comprobante -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+        <label class="vt-tipo-comp-card" id="card-factura">
+          <input type="radio" name="tipo-comprobante" value="FAC" id="rb-factura">
+          <div class="vt-tipo-inner">
+            <i class="bi bi-file-earmark-text" style="font-size:28px;color:#1976d2"></i>
+            <div>
+              <div style="font-weight:700;font-size:15px">Factura</div>
+              <div style="font-size:12px;color:#666">RUC · Formal</div>
+            </div>
+            <span class="vt-tipo-badge">Tipo 01</span>
+          </div>
+          <div class="vt-tipo-check" id="check-factura"><i class="bi bi-check-circle-fill"></i></div>
+        </label>
+        <label class="vt-tipo-comp-card selected" id="card-boleta">
+          <input type="radio" name="tipo-comprobante" value="BOL" id="rb-boleta" checked>
+          <div class="vt-tipo-inner">
+            <i class="bi bi-receipt" style="font-size:28px;color:#ff8f00"></i>
+            <div>
+              <div style="font-weight:700;font-size:15px">Boleta</div>
+              <div style="font-size:12px;color:#666">DNI/RUC · Simple</div>
+            </div>
+            <span class="vt-tipo-badge" style="background:#ff8f00">Tipo 03</span>
+          </div>
+          <div class="vt-tipo-check visible" id="check-boleta"><i class="bi bi-check-circle-fill" style="color:#2e7d32"></i></div>
+        </label>
+      </div>
+
+      <!-- Op tributaria + tipo pago -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div>
+          <label class="form-label">OP. TRIBUTARIA</label>
+          <input class="form-control" value="Gravada (0101)" readonly>
+        </div>
+        <div>
+          <label class="form-label">TIPO DE PAGO</label>
+          <input class="form-control" id="emitir-tipo-pago" value="Contado" readonly>
+        </div>
+      </div>
+
+      <!-- Serie / número -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1.6fr;gap:14px;margin-bottom:18px">
+        <div>
+          <label class="form-label">SERIE</label>
+          <input class="form-control" id="emitir-serie" readonly>
+        </div>
+        <div>
+          <label class="form-label">NÚMERO</label>
+          <input class="form-control" id="emitir-num-solo" readonly>
+        </div>
+        <div>
+          <label class="form-label">NÚMERO COMPLETO</label>
+          <input class="form-control vt-input-num-completo" id="emitir-numero" readonly>
+        </div>
+      </div>
+
+      <!-- Cliente -->
+      <div class="vt-section-label"><i class="bi bi-person-circle"></i> CLIENTE</div>
+      <div style="margin-bottom:16px">
+        <div style="font-weight:700;font-size:15px" id="emitir-cliente">—</div>
+        <div style="font-size:13px;color:#666" id="emitir-dni">—</div>
+      </div>
+
+      <!-- Productos -->
+      <div style="margin-bottom:12px">
+        <table class="vt-tabla-carrito">
+          <thead>
+            <tr>
+              <th>PRODUCTO</th>
+              <th style="text-align:center">CANT.</th>
+              <th style="text-align:right">P. UNIT.</th>
+              <th style="text-align:right">TOTAL</th>
+            </tr>
+          </thead>
+          <tbody id="emitir-detalle"></tbody>
+        </table>
+      </div>
+
+      <!-- Totales -->
+      <div class="vt-totales-grid">
+        <div class="vt-total-row">
+          <span>Subtotal (base imponible)</span>
+          <strong id="emitir-subtotal">S/ 0.00</strong>
+        </div>
+        <div class="vt-total-row">
+          <span>IGV (18%)</span>
+          <strong id="emitir-igv">S/ 0.00</strong>
+        </div>
+        <div class="vt-total-row" id="emitir-descuento-row" style="display:none;color:#c62828">
+          <span>Descuento</span>
+          <strong id="emitir-descuento">— S/ 0.00</strong>
+        </div>
+        <div id="emitir-observacion-row" style="display:none;padding:6px 0;border-top:1px dashed #e0e0e0;margin-top:2px">
+          <div style="font-size:11px;font-weight:700;color:#888;letter-spacing:.5px;text-transform:uppercase;margin-bottom:3px">Observación del descuento</div>
+          <div id="emitir-observacion" style="font-size:12.5px;color:#555;font-style:italic"></div>
+        </div>
+        <div class="vt-total-row vt-total-final">
+          <span>TOTAL</span>
+          <strong id="emitir-total">S/ 0.00</strong>
+        </div>
+      </div>
+    </div>
+    <div class="vt-modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modalEmitirComprobante')">Cancelar</button>
+      <button class="btn-save" id="btnEmitirConfirmar" data-original="Emitir"
+        onclick="confirmarEmision()" style="background:linear-gradient(135deg,#2e7d32,#388e3c)">
+        <i class="bi bi-check-lg me-1"></i>Emitir
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Comprobante Emitido (éxito) -->
+<div class="modal-overlay" id="modalComprobanteEmitido">
+  <div class="modal-box" style="max-width:440px;text-align:center;padding:40px 32px">
+    <div style="font-size:56px;color:#2e7d32;margin-bottom:12px"><i class="bi bi-check-circle-fill"></i></div>
+    <h3 style="font-weight:800;color:#1a1a2e;margin-bottom:6px">Emisión Exitosa</h3>
+    <p style="color:#555;font-size:14px;margin-bottom:24px">
+      Comprobante <strong id="comp-emitido-numero">—</strong> generado correctamente.
+    </p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn-cancel" onclick="closeModal('modalComprobanteEmitido')">Cerrar</button>
+      <button class="btn-save" id="btnEnviarSunat"
+        style="background:linear-gradient(135deg,#2e7d32,#388e3c)">
+        <i class="bi bi-send me-1"></i>Enviar a SUNAT
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Confirmar Enviar a SUNAT -->
+<div class="modal-overlay" id="modalConfirmSunat">
+  <div class="modal-box" style="max-width:420px;text-align:center;padding:40px 32px">
+    <div style="font-size:52px;color:#1565c0;margin-bottom:12px"><i class="bi bi-info-circle-fill"></i></div>
+    <h4 style="font-weight:800;margin-bottom:8px">¿Enviar a SUNAT?</h4>
+    <p style="color:#555;font-size:13.5px;margin-bottom:8px">
+      Este comprobante se enviará a los servidores de SUNAT para su validación.
+    </p>
+    <p style="font-size:12px;color:#888;margin-bottom:24px" id="sunat-numero-comp"></p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn-save" id="btnConfirmarSunat" data-original="Sí, enviar"
+        style="background:linear-gradient(135deg,#2e7d32,#388e3c)">
+        <i class="bi bi-send me-1"></i>Sí, enviar
+      </button>
+      <button class="btn-cancel" onclick="closeModal('modalConfirmSunat')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Preguntar emitir tras guardar -->
+<div class="modal-overlay" id="modalConfirmEmitir">
+  <div class="modal-box" style="max-width:420px;text-align:center;padding:36px 28px">
+    <div style="font-size:46px;color:#1976d2;margin-bottom:10px"><i class="bi bi-file-earmark-check-fill"></i></div>
+    <h4 style="font-weight:700;margin-bottom:8px">Venta registrada</h4>
+    <p style="color:#555;font-size:13.5px;margin-bottom:20px">
+      Nota de Venta <strong id="confirm-emitir-num">—</strong> guardada correctamente.<br>
+      ¿Desea emitir un comprobante electrónico (boleta/factura)?
+    </p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn-save" id="btnConfirmEmitir">
+        <i class="bi bi-file-earmark-check me-1"></i>Emitir comprobante
+      </button>
+      <button class="btn-cancel" onclick="closeModal('modalConfirmEmitir')">
+        Ahora no
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Enviar Comprobante por Email -->
+<div class="modal-overlay" id="modalEnviarEmail">
+  <div class="modal-box" style="max-width:460px;padding:28px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+      <i class="bi bi-envelope-fill" style="font-size:24px;color:#1565c0"></i>
+      <div>
+        <div style="font-size:16px;font-weight:700;color:#1a1a2e">Enviar Comprobante</div>
+        <div style="font-size:12px;color:#888" id="email-num-comp">—</div>
+      </div>
+    </div>
+    <div style="background:#f0f7ff;border:1px solid #bbdefb;border-radius:8px;padding:10px 14px;font-size:12.5px;color:#1565c0;margin-bottom:16px">
+      <i class="bi bi-info-circle me-1"></i>
+      Se enviará el comprobante completo con el detalle de productos al correo indicado.
+    </div>
+    <div id="alertEmail" style="display:none;padding:8px 12px;border-radius:8px;font-size:12.5px;margin-bottom:12px"></div>
+    <label class="form-label">Correo electrónico del destinatario *</label>
+    <input type="email" id="emailDestinatario" class="form-control"
+      placeholder="ejemplo@correo.com"
+      onkeydown="if(event.key==='Enter')confirmarEnvioEmail()">
+    <div id="email-cliente-hint" style="font-size:11.5px;color:#888;margin-top:4px"></div>
+    <input type="hidden" id="emailVentaId">
+    <div class="modal-footer" style="margin-top:20px">
+      <button class="btn-cancel" onclick="closeModal('modalEnviarEmail')">Cancelar</button>
+      <button class="btn-save" id="btnEnviarEmail" onclick="confirmarEnvioEmail()"
+        style="background:linear-gradient(135deg,#1565c0,#1976d2)">
+        <i class="bi bi-send me-1"></i>Enviar correo
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Ver Detalle Venta -->
+<div class="modal-overlay" id="modalDetalleVenta">
+  <div class="vt-detalle-shell">
+
+    <!-- Header -->
+    <div class="vt-detalle-header">
+      <div style="display:flex;align-items:center;gap:10px">
+        <i class="bi bi-receipt" style="font-size:20px"></i>
+        <div>
+          <div style="font-size:16px;font-weight:700">Detalle de Venta</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+            <span id="dventa-num" style="font-size:13px;opacity:.8">—</span>
+            <span id="dventa-estado-badge"></span>
+          </div>
+        </div>
+      </div>
+      <button class="vt-btn-x" onclick="closeModal('modalDetalleVenta')"><i class="bi bi-x-lg"></i></button>
+    </div>
+
+    <!-- Body -->
+    <div class="vt-detalle-body" id="dventa-print-area">
+
+      <!-- Cliente -->
+      <div class="vt-dv-card">
+        <div class="vt-dv-label"><i class="bi bi-person-circle me-1"></i>CLIENTE</div>
+        <div id="dventa-cliente-nombre" style="font-size:16px;font-weight:800;color:#1a1a2e;margin-bottom:6px"></div>
+        <div id="dventa-cliente-dni" style="display:inline-flex;align-items:center;gap:4px;background:#e3f2fd;color:#1565c0;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:700;margin-bottom:6px"></div>
+        <div id="dventa-cliente-celular" style="font-size:13px;color:#555;margin-top:4px"></div>
+        <div id="dventa-cliente-telefono" style="font-size:13px;color:#555;margin-top:2px"></div>
+      </div>
+
+      <!-- Fecha + Forma de Pago -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div class="vt-dv-card">
+          <div class="vt-dv-label"><i class="bi bi-calendar3 me-1"></i>FECHA EMISIÓN</div>
+          <div id="dventa-fecha" style="font-size:15px;font-weight:600;color:#1a1a2e;margin-top:4px"></div>
+        </div>
+        <div class="vt-dv-card" style="background:#f0f7ff;border-color:#bbdefb">
+          <div class="vt-dv-label" style="color:#1565c0"><i class="bi bi-credit-card me-1"></i>FORMA DE PAGO</div>
+          <div id="dventa-metodo" style="font-size:15px;font-weight:700;color:#1565c0;margin-top:4px"></div>
+        </div>
+      </div>
+
+      <!-- Tabla productos -->
+      <table class="vt-dv-tabla">
+        <thead>
+          <tr>
+            <th style="width:36px;text-align:center">N°</th>
+            <th>PRODUCTO</th>
+            <th style="text-align:center">CANT.</th>
+            <th style="text-align:right">PRECIO UNIT.</th>
+            <th style="text-align:right">TOTAL</th>
+          </tr>
+        </thead>
+        <tbody id="dventa-detalle"></tbody>
+      </table>
+
+      <!-- Totales -->
+      <div class="vt-dv-totales">
+        <div class="vt-dv-total-row"><span>Subtotal (base imponible)</span><span id="dventa-subtotal"></span></div>
+        <div class="vt-dv-total-row"><span>IGV (18%)</span><span id="dventa-igv"></span></div>
+        <div id="dventa-descuento-row" class="vt-dv-total-row" style="display:none;color:#c62828">
+          <span>Descuento</span><span id="dventa-descuento"></span>
+        </div>
+        <div class="vt-dv-total-row vt-dv-total-final">
+          <span>TOTAL</span><span id="dventa-total"></span>
+        </div>
+      </div>
+
+      <!-- Vendedor -->
+      <div id="dventa-observacion-row" style="display:none;margin-bottom:10px">
+        <div class="vt-dv-card" style="border-left:3px solid #f59e0b;background:#fffbeb">
+          <div class="vt-dv-label" style="color:#b45309"><i class="bi bi-chat-left-text me-1"></i>OBSERVACIÓN</div>
+          <div id="dventa-observacion" style="font-size:13.5px;color:#555;font-style:italic"></div>
+        </div>
+      </div>
+
+      <div class="vt-dv-vendedor"><i class="bi bi-person-badge me-1"></i>Vendedor: <strong id="dventa-vendedor"></strong></div>
+
+    </div>
+
+    <!-- Footer acciones -->
+    <div class="vt-detalle-footer">
+      <button class="btn-cancel" onclick="closeModal('modalDetalleVenta')">
+        <i class="bi bi-x me-1"></i>Cerrar
+      </button>
+      <button class="vt-btn-print ticket" onclick="imprimirDetalleVenta('ticket')">
+        <i class="bi bi-printer me-1"></i>Ticket 80mm
+      </button>
+      <button class="vt-btn-print a4" onclick="imprimirDetalleVenta('a4')">
+        <i class="bi bi-printer-fill me-1"></i>Imprimir A4
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ CSS VENTAS ══════════════════════════════════ -->
+<style>
+/* ── VIEW VENTAS ─────────────────────────────────────────────── */
+.vt-paginacion { display:flex; gap:6px; padding:12px; justify-content:center; flex-wrap:wrap; }
+.btn-pag { background:#f0f2f7; border:none; border-radius:6px; padding:5px 11px;
+  font-size:13px; cursor:pointer; transition:background .15s; }
+.btn-pag:hover { background:#e0e4ef; }
+.btn-pag.activo { background:var(--accent); color:#fff; }
+
+/* Badges tabla */
+.vt-badge-metodo { display:inline-block; padding:3px 10px; border-radius:20px;
+  font-size:11.5px; font-weight:600; background:#e8f5e9; color:#2e7d32; }
+.vt-badge-metodo.yape { background:#f3e5f5; color:#7b1fa2; }
+.vt-badge-metodo.plin  { background:#e3f2fd; color:#1565c0; }
+.vt-badge-metodo.transferencia { background:#fff3e0; color:#e65100; }
+.vt-badge-metodo.tarjeta { background:#e8f5e9; color:#2e7d32; }
+
+.badge-estado { display:inline-block; padding:3px 10px; border-radius:20px;
+  font-size:11px; font-weight:700; }
+.badge-estado.sin-emitir  { background:#f5f5f5; color:#757575; }
+.badge-estado.enviado     { background:#e3f2fd; color:#1565c0; }
+.badge-estado.aceptado    { background:#e8f5e9; color:#2e7d32; }
+.badge-estado.rechazado   { background:#ffebee; color:#c62828; }
+.badge-estado.anulado     { background:#fce4ec; color:#880e4f; }
+.badge-estado.registrada  { background:#e8f5e9; color:#2e7d32; font-weight:700; }
+.badge-estado.anulada-v   { background:#ffebee; color:#c62828; }
+
+/* Botones acciones en tabla */
+.vt-btn-accion { background:#f0f2f7; border:none; border-radius:8px;
+  padding:5px 12px; font-size:12px; cursor:pointer; display:inline-flex;
+  align-items:center; gap:5px; transition:background .15s; }
+.vt-btn-accion:hover { background:#e0e4ef; }
+.vt-btn-accion.emitir { background:#e8f5e9; color:#2e7d32; }
+.vt-btn-accion.emitir:hover { background:#c8e6c9; }
+.vt-btn-accion.danger { color:#c62828; }
+.vt-btn-accion.danger:hover { background:#ffebee; }
+.vt-row-actions { display:flex; gap:5px; align-items:center; flex-wrap:wrap; }
+
+/* ── MODAL SHELL ─────────────────────────────────────────────── */
+.vt-modal-shell {
+  background:#fff; border-radius:18px; width:680px; max-width:97vw;
+  max-height:92vh; display:flex; flex-direction:column;
+  box-shadow:0 32px 80px rgba(0,0,0,.28);
+  animation:slideUp .2s ease;
+  overflow:hidden;
+}
+.vt-modal-header {
+  background:linear-gradient(135deg,#1a1a2e,#0f3460);
+  color:#fff; padding:18px 22px; display:flex;
+  justify-content:space-between; align-items:center;
+  flex-shrink:0; font-size:16px; font-weight:700;
+}
+.vt-modal-body { padding:22px 24px; overflow-y:auto; flex:1; }
+.vt-modal-footer {
+  padding:14px 22px; border-top:1px solid #eef0f4;
+  display:flex; justify-content:flex-end; gap:10px;
+  flex-shrink:0; background:#fff;
+}
+.vt-btn-x {
+  background:rgba(255,255,255,.15); border:none; color:#fff;
+  border-radius:8px; padding:6px 10px; cursor:pointer; font-size:14px;
+  transition:background .15s;
+}
+.vt-btn-x:hover { background:rgba(255,255,255,.3); }
+
+/* ── SECTIONS ─────────────────────────────────────────────────── */
+.vt-section-label {
+  font-size:11.5px; font-weight:700; color:#1565c0; letter-spacing:.8px;
+  text-transform:uppercase; margin-bottom:10px;
+  display:flex; align-items:center; gap:6px;
+  padding-bottom:6px; border-bottom:1px solid #e3f2fd;
+}
+
+/* ── CLIENTE FOUND ─────────────────────────────────────────────── */
+.nv-cliente-found {
+  padding:12px 16px; border-radius:10px; margin-bottom:2px;
+  display:flex; align-items:center; gap:12px; font-size:14px;
+}
+.nv-cliente-found.found {
+  background:#e8f5e9; border:1px solid #a5d6a7;
+}
+.nv-cliente-found.api {
+  background:#e3f2fd; border:1px solid #90caf9;
+}
+.nv-cliente-found strong { font-size:15px; font-weight:700; display:block; }
+.nv-cliente-found small  { color:#666; font-size:12px; }
+.nv-cliente-not-found {
+  padding:10px 14px; border-radius:10px;
+  background:#fff3cd; border:1px solid #ffe082;
+  font-size:13px; color:#856404; display:flex; align-items:center; gap:8px;
+}
+.vt-btn-link { background:none; border:none; color:#1565c0; cursor:pointer;
+  font-size:13px; text-decoration:underline; padding:0 4px; }
+
+/* ── BOTONES MODAL ─────────────────────────────────────────────── */
+.vt-btn-buscar {
+  background:linear-gradient(135deg,#1565c0,#1976d2);
+  color:#fff; border:none; border-radius:8px; padding:9px 18px;
+  font-size:13.5px; font-weight:600; cursor:pointer; white-space:nowrap;
+  display:flex; align-items:center; gap:4px;
+}
+.vt-btn-buscar:hover { background:linear-gradient(135deg,#0d47a1,#1565c0); }
+.vt-btn-sin-cliente {
+  background:#f0f2f7; border:1px solid #dde1eb; color:#333;
+  border-radius:8px; padding:9px 14px; font-size:13px; cursor:pointer;
+  white-space:nowrap; display:flex; align-items:center; gap:4px;
+}
+.vt-btn-sin-cliente:hover { background:#e0e4ef; }
+.vt-btn-agregar-prod {
+  background:linear-gradient(135deg,#1565c0,#1976d2);
+  color:#fff; border:none; border-radius:8px; padding:9px 20px;
+  font-size:13.5px; font-weight:600; cursor:pointer; flex:1;
+  display:flex; align-items:center; justify-content:center; gap:5px;
+}
+.vt-btn-agregar-prod:hover { background:linear-gradient(135deg,#0d47a1,#1565c0); }
+.vt-btn-cotizacion {
+  background:linear-gradient(135deg,#6a11cb,#2575fc);
+  color:#fff; border:none; border-radius:8px; padding:9px 20px;
+  font-size:13.5px; font-weight:600; cursor:not-allowed; flex:1; opacity:.5;
+  display:flex; align-items:center; justify-content:center; gap:5px;
+}
+
+/* ── TABLA CARRITO ─────────────────────────────────────────────── */
+.vt-tabla-carrito { width:100%; border-collapse:collapse; font-size:13.5px; }
+.vt-tabla-carrito thead tr { background:linear-gradient(90deg,#1565c0,#1976d2); color:#fff; }
+.vt-tabla-carrito thead th { padding:9px 12px; text-align:left; font-size:12px;
+  font-weight:700; letter-spacing:.5px; }
+.vt-tabla-carrito tbody td { padding:9px 12px; border-bottom:1px solid #f0f2f7; }
+.vt-tabla-carrito tbody tr:last-child td { border-bottom:none; }
+.vt-tabla-carrito tbody tr:hover td { background:#f8f9ff; }
+
+/* Qty control */
+.qty-control { display:flex; align-items:center; gap:4px; }
+.qty-control button {
+  background:#f0f2f7; border:none; border-radius:6px;
+  width:26px; height:26px; font-size:16px; line-height:1;
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+}
+.qty-control button:hover { background:#e0e4ef; }
+.qty-input { width:52px; text-align:center; border:1px solid #e0e0e0;
+  border-radius:6px; padding:3px 4px; font-size:13px; }
+
+.vt-btn-trash {
+  background:#ffebee; border:none; border-radius:6px;
+  padding:5px 8px; color:#c62828; cursor:pointer; font-size:14px;
+}
+.vt-btn-trash:hover { background:#ffcdd2; }
+
+/* Total box */
+.vt-total-box {
+  background:linear-gradient(135deg,#e3f2fd,#f8f9ff);
+  border:1px solid #bbdefb; border-radius:12px;
+  padding:14px 20px; margin-top:16px;
+  display:flex; justify-content:space-between; align-items:center;
+}
+.vt-total-num { font-size:26px; font-weight:800; color:#1565c0; }
+
+/* ── PRODUCTO CARD (selector modal) ─────────────────────────────── */
+.prod-card-venta {
+  border:1px solid #eef0f4; border-radius:10px; margin-bottom:10px;
+  overflow:hidden; transition:box-shadow .15s;
+}
+.prod-card-venta:hover { box-shadow:0 4px 14px rgba(0,0,0,.09); }
+.prod-header-venta {
+  padding:10px 14px; background:#f8f9ff;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.prod-header-venta strong { font-size:14.5px; color:#1a1a2e; }
+.cat-badge { font-size:11px; color:#666; background:#f0f2f7;
+  padding:2px 8px; border-radius:20px; margin-left:8px; }
+.pp-list { display:flex; flex-direction:column; }
+.pp-item {
+  padding:10px 14px; display:flex; align-items:center; justify-content:space-between;
+  cursor:pointer; transition:background .12s; border-top:1px solid #f0f2f7;
+  flex-wrap:wrap; gap:6px;
+}
+.pp-item:hover { background:#e3f2fd; }
+.pp-nombre { font-size:13.5px; font-weight:600; color:#333; }
+.pp-precios { display:flex; align-items:center; gap:6px; }
+.precio-tachado { font-size:12px; color:#aaa; text-decoration:line-through; }
+.precio-final { font-size:14px; font-weight:700; color:#1a1a2e; }
+.badge-oferta {
+  background:#e94560; color:#fff; font-size:10.5px; font-weight:700;
+  padding:2px 7px; border-radius:20px;
+}
+.pp-stock { font-size:12px; color:#555; display:flex; align-items:center; gap:4px; }
+.pp-stock.bajo { color:#e65100; }
+
+/* ── TIPO COMPROBANTE CARD ──────────────────────────────────────── */
+.vt-tipo-comp-card {
+  border:2px solid #e0e0e0; border-radius:12px; padding:16px;
+  cursor:pointer; transition:border .15s; position:relative; display:block;
+}
+.vt-tipo-comp-card:hover { border-color:#1976d2; }
+.vt-tipo-comp-card.selected { border-color:#2e7d32; background:#f1f8e9; }
+.vt-tipo-comp-card input[type=radio] { display:none; }
+.vt-tipo-inner { display:flex; align-items:center; gap:12px; }
+.vt-tipo-badge {
+  background:#1976d2; color:#fff; font-size:10.5px; font-weight:700;
+  padding:2px 8px; border-radius:20px; margin-left:auto; white-space:nowrap;
+}
+.vt-tipo-check { position:absolute; top:8px; right:8px;
+  font-size:18px; color:#2e7d32; display:none; }
+.vt-tipo-check.visible { display:block; }
+
+/* Input número completo */
+.vt-input-num-completo {
+  background:linear-gradient(135deg,#e3f2fd,#f3e5f5) !important;
+  font-weight:700 !important; color:#1a1a2e !important;
+  text-align:center; font-size:15px !important;
+}
+
+/* ── TOTALES GRID ───────────────────────────────────────────────── */
+.vt-totales-grid {
+  background:#f8f9ff; border-radius:10px; padding:14px 18px;
+  display:flex; flex-direction:column; gap:8px; margin-top:8px;
+}
+.vt-total-row { display:flex; justify-content:space-between;
+  font-size:13.5px; color:#444; }
+.vt-total-final { font-size:15.5px; font-weight:800; color:#1a1a2e;
+  padding-top:8px; border-top:1.5px solid #dde1eb; }
+
+/* ── DETALLE VENTA ──────────────────────────────────────────────── */
+/* Shell */
+.vt-detalle-shell {
+  background:#fff; border-radius:18px; width:680px; max-width:97vw;
+  max-height:93vh; display:flex; flex-direction:column;
+  box-shadow:0 32px 80px rgba(0,0,0,.28); animation:slideUp .2s ease; overflow:hidden;
+}
+.vt-detalle-header {
+  background:linear-gradient(135deg,#1a1a2e,#0f3460);
+  color:#fff; padding:18px 22px; display:flex;
+  justify-content:space-between; align-items:flex-start;
+  flex-shrink:0;
+}
+.vt-detalle-body {
+  padding:20px 24px; overflow-y:auto; flex:1;
+}
+.vt-detalle-footer {
+  padding:12px 22px; border-top:1px solid #eef0f4;
+  display:flex; justify-content:flex-end; gap:10px;
+  flex-shrink:0; background:#f8f9ff;
+}
+/* Cards internas */
+.vt-dv-card {
+  background:#fff; border:1px solid #e8ecf4; border-radius:12px;
+  padding:14px 16px; margin-bottom:14px;
+}
+.vt-dv-label {
+  font-size:11px; font-weight:700; color:#1565c0;
+  letter-spacing:.8px; text-transform:uppercase; margin-bottom:6px;
+  display:flex; align-items:center;
+}
+/* Tabla productos */
+.vt-dv-tabla { width:100%; border-collapse:collapse; font-size:13.5px; margin-bottom:14px; border-radius:10px; overflow:hidden; }
+.vt-dv-tabla thead tr { background:linear-gradient(90deg,#1a237e,#1565c0); color:#fff; }
+.vt-dv-tabla thead th { padding:9px 12px; font-size:11.5px; font-weight:700; letter-spacing:.4px; }
+.vt-dv-tabla tbody td { padding:10px 12px; border-bottom:1px solid #f0f2f7; }
+.vt-dv-tabla tbody tr:last-child td { border-bottom:none; }
+.vt-dv-tabla tbody tr:hover td { background:#f8f9ff; }
+.vt-dv-total-col { font-weight:700; color:#2e7d32; }
+/* Totales */
+.vt-dv-totales {
+  background:#f8f9ff; border:1px solid #e3f2fd;
+  border-radius:10px; padding:12px 16px; margin-bottom:14px;
+}
+.vt-dv-total-row {
+  display:flex; justify-content:space-between;
+  font-size:13.5px; color:#444; padding:4px 0;
+}
+.vt-dv-total-final {
+  font-size:16px; font-weight:800; color:#1a1a2e;
+  margin-top:6px; padding-top:8px; border-top:1.5px solid #dde1eb;
+}
+.vt-dv-total-final span:last-child { color:#1565c0; }
+/* Vendedor */
+.vt-dv-vendedor {
+  font-size:13px; color:#666;
+  padding:10px 14px; background:#f8f9ff; border-radius:8px;
+  border-left:3px solid #1565c0;
+}
+/* Botones imprimir */
+.vt-btn-print {
+  border:none; border-radius:8px; padding:9px 18px;
+  font-size:13px; font-weight:600; cursor:pointer;
+  display:flex; align-items:center; gap:6px; color:#fff;
+  transition:opacity .15s;
+}
+.vt-btn-print:hover { opacity:.88; }
+.vt-btn-print.ticket { background:linear-gradient(135deg,#37474f,#546e7a); }
+.vt-btn-print.a4     { background:linear-gradient(135deg,#1565c0,#1976d2); }
+/* Badge estado venta en header */
+.vt-estado-badge {
+  display:inline-block; padding:2px 9px; border-radius:20px;
+  font-size:11px; font-weight:700;
+}
+.vt-estado-badge.registrada { background:rgba(255,255,255,.2); color:#fff; }
+.vt-estado-badge.anulada    { background:#ffcdd2; color:#c62828; }
+/* ── PRINT STYLES ── */
+@media print {
+  body * { visibility:hidden !important; }
+  #dventa-print-content, #dventa-print-content * { visibility:visible !important; }
+  #dventa-print-content {
+    position:fixed; inset:0; background:#fff;
+    padding:10px; font-family:Arial,sans-serif;
+  }
+}
+</style>
 
 <style>
 /* ═══════════════════════════════════════════════════
@@ -2708,6 +3564,7 @@
   <script src="js/fotos.js"></script>
   <script src="js/inventario.js"></script>
   <script src="js/asistencias.js"></script>
+  <script src="js/ventas.js"></script>
 </body>
 
 </html>
