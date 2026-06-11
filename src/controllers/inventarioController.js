@@ -1,4 +1,5 @@
 import { pool } from '../config/bd.js';
+import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  CONTROLLER: INVENTARIO
@@ -10,35 +11,66 @@ import { pool } from '../config/bd.js';
 // Vista general del módulo Inventario (tabla principal del dashboard)
 export const getInventarioResumen = async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT
-                id_producto,
-                producto,
-                categoria,
-                stock_minimo,
-                stock_total,
-                estado_stock,
-                valor_total_inventario,
-                ultima_actualizacion
-            FROM v_inventario_resumen
-        `);
+        const { q, id, filtro_stock, page, limit } = req.query;
+        const pageNum  = Math.max(1, parseInt(page)  || 1);
+        const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
+        const offset   = (pageNum - 1) * limitNum;
 
-        // Calcular KPIs para el header del módulo
-        const total     = result.rows.length;
-        const criticos  = result.rows.filter(r => r.estado_stock === 'CRÍTICO').length;
-        const optimos   = result.rows.filter(r => r.estado_stock === 'ÓPTIMO').length;
-        const valorTotal = result.rows.reduce(
-            (sum, r) => sum + parseFloat(r.valor_total_inventario || 0), 0
-        );
+        const conds  = [];
+        const params = [];
+        let i = 1;
+
+        if (id !== undefined) {
+            const idNum = parseInt(id, 10);
+            if (Number.isInteger(idNum) && idNum > 0) {
+                conds.push(`id_producto = $${i++}`);
+                params.push(idNum);
+            }
+        } else if (q) {
+            conds.push(`(LOWER(producto) LIKE $${i} OR LOWER(categoria) LIKE $${i})`);
+            params.push(`%${q.toLowerCase()}%`);
+            i++;
+        }
+        if (filtro_stock === 'critico') conds.push(`estado_stock = 'CRÍTICO'`);
+        if (filtro_stock === 'optimo')  conds.push(`estado_stock = 'ÓPTIMO'`);
+
+        const whereStr = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+
+        const [kpiRes, countRes, dataRes] = await Promise.all([
+            pool.query(`
+                SELECT
+                    COUNT(*)                                                 AS total,
+                    COUNT(*) FILTER (WHERE estado_stock = 'CRÍTICO')        AS criticos,
+                    COUNT(*) FILTER (WHERE estado_stock = 'ÓPTIMO')         AS optimos,
+                    COALESCE(SUM(valor_total_inventario), 0)                AS valor_total
+                FROM v_inventario_resumen
+            `),
+            pool.query(`SELECT COUNT(*) FROM v_inventario_resumen ${whereStr}`, params),
+            pool.query(`
+                SELECT id_producto, producto, categoria, stock_minimo,
+                       stock_total, estado_stock, valor_total_inventario, ultima_actualizacion
+                FROM v_inventario_resumen
+                ${whereStr}
+                ORDER BY estado_stock DESC, producto
+                LIMIT $${i} OFFSET $${i + 1}
+            `, [...params, limitNum, offset])
+        ]);
+
+        const kpi   = kpiRes.rows[0];
+        const total = parseInt(countRes.rows[0].count);
 
         res.json({
             kpis: {
-                total_productos:  total,
-                stock_critico:    criticos,
-                stock_optimo:     optimos,
-                valor_total:      valorTotal.toFixed(2)
+                total_productos: parseInt(kpi.total),
+                stock_critico:   parseInt(kpi.criticos),
+                stock_optimo:    parseInt(kpi.optimos),
+                valor_total:     parseFloat(kpi.valor_total).toFixed(2)
             },
-            productos: result.rows
+            data:  dataRes.rows,
+            total,
+            page:  pageNum,
+            pages: Math.ceil(total / limitNum),
+            limit: limitNum,
         });
     } catch (err) {
         console.error(err);
@@ -280,6 +312,15 @@ export const actualizarStock = async (req, res) => {
         );
 
         await client.query('COMMIT');
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Inventario',
+            descripcion:    `Stock ${tipo} — PP ID: ${id_pp} | Antes: ${stockAntes} → Después: ${stockDespues}${observacion ? ` | Obs: ${observacion}` : ''}`,
+            ip:             getIP(req)
+        });
 
         res.json({
             message:       'Stock actualizado correctamente',

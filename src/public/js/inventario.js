@@ -5,36 +5,59 @@
 //  - Modal "Actualizar Stock": ingreso / ajuste / devolución
 // ══════════════════════════════════════════════════════
 
-let dataInventario = [];
+let dataInventario    = [];
+let _invSearchTimer   = null;
+let _invFiltroStock   = 'todos';
 
 // ── CARGAR ────────────────────────────────────────────
-async function loadInventario() {
+async function loadInventario(page = 1) {
   const tbody = document.getElementById('tbodyInventario');
   if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="6">Cargando...</td></tr>';
 
   try {
-    const data = await api('GET', '/api/inventario');
-    dataInventario = data.productos;
+    const raw    = document.getElementById('searchInventario')?.value || '';
+    const parsed = parseSearchInput(raw);
+    const params = new URLSearchParams({ page, limit: 25 });
+    if (parsed.type === 'id')    params.set('id', parsed.value);
+    else if (parsed.value)       params.set('q', parsed.value);
+    if (_invFiltroStock !== 'todos') params.set('filtro_stock', _invFiltroStock);
 
-    // KPIs
+    const data = await api('GET', `/api/inventario?${params}`);
+    dataInventario = data.data;
+
     document.getElementById('inv-total').textContent   = data.kpis.total_productos;
     document.getElementById('inv-critico').textContent = data.kpis.stock_critico;
     document.getElementById('inv-optimo').textContent  = data.kpis.stock_optimo;
     document.getElementById('inv-valor').textContent   = `S/ ${parseFloat(data.kpis.valor_total).toFixed(2)}`;
 
-    renderInventario(dataInventario);
+    renderInventario(data.data, data);
   } catch (e) {
     if (tbody) tbody.innerHTML = `<tr class="empty-row"><td colspan="6">${e.message}</td></tr>`;
   }
 }
 
+function filtrarInventario() {
+  clearTimeout(_invSearchTimer);
+  // Si hay texto, quitar el filtro de stock para buscar en todos
+  const raw = document.getElementById('searchInventario')?.value || '';
+  if (raw.trim() && _invFiltroStock !== 'todos') {
+    _invFiltroStock = 'todos';
+    Object.values(_invKpiConfig).forEach(cfg => {
+      const card = document.getElementById(cfg.cardId);
+      if (card) { card.style.borderColor = '#e8e8f0'; card.style.borderWidth = '1px'; card.style.boxShadow = ''; }
+    });
+  }
+  _invSearchTimer = setTimeout(() => loadInventario(1), 300);
+}
+
 // ── RENDER TABLA ──────────────────────────────────────
-function renderInventario(data) {
+function renderInventario(data, pag = null) {
   const tbody = document.getElementById('tbodyInventario');
   if (!tbody) return;
 
   if (!data.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Sin productos en inventario</td></tr>';
+    _renderPagBar('tbodyInventario', null, 'loadInventario');
     return;
   }
 
@@ -49,7 +72,7 @@ function renderInventario(data) {
            <i class="bi bi-check-circle me-1"></i>ÓPTIMO
          </span>`;
 
-    return `<tr style="${esCritico ? 'background:#fff8f8' : ''}">
+    return `<tr style="${esCritico ? 'background:#fff8f8' : ''};cursor:pointer" ondblclick="abrirActualizarStock(${p.id_producto})">
       <td style="font-size:12px;color:var(--color-text-muted)">#${p.id_producto}</td>
       <td>
         <strong style="color:var(--color-secondary);cursor:pointer"
@@ -64,7 +87,7 @@ function renderInventario(data) {
       <td style="text-align:right;font-weight:600;color:var(--color-secondary)">
         S/ ${parseFloat(p.valor_total_inventario).toFixed(2)}
       </td>
-      <td style="display:flex;gap:5px">
+      <td style="display:flex;gap:5px" ondblclick="event.stopPropagation()">
         <button class="btn-icon" title="Ver detalle inventario"
           onclick="verInventarioProducto(${p.id_producto})">
           <i class="bi bi-eye"></i>
@@ -76,6 +99,8 @@ function renderInventario(data) {
       </td>
     </tr>`;
   }).join('');
+
+  _renderPagBar('tbodyInventario', pag, 'loadInventario');
 }
 
 // ══════════════════════════════════════════════════════
@@ -407,6 +432,36 @@ function limitarFilasInventario(limit) {
   rows.forEach((tr, i) => {
     tr.style.display = i < limit ? '' : 'none';
   });
+}
+
+// ── FILTRO POR KPI CARD ───────────────────────────────
+const _invKpiConfig = {
+  todos:   { cardId: 'inv-card-todos',   border: '#3949ab' },
+  critico: { cardId: 'inv-card-critico', border: '#c62828' },
+  optimo:  { cardId: 'inv-card-optimo',  border: '#2e7d32' },
+};
+
+function filtroInvKpi(tipo) {
+  // Si ya está activo, quitar el filtro (volver a todos)
+  if (_invFiltroStock === tipo && tipo !== 'todos') tipo = 'todos';
+  _invFiltroStock = tipo;
+
+  // Actualizar estilos de las tarjetas
+  Object.entries(_invKpiConfig).forEach(([key, cfg]) => {
+    const card = document.getElementById(cfg.cardId);
+    if (!card) return;
+    if (key === tipo) {
+      card.style.borderColor  = cfg.border;
+      card.style.borderWidth  = '2px';
+      card.style.boxShadow    = `0 0 0 3px ${cfg.border}22`;
+    } else {
+      card.style.borderColor  = '#e8e8f0';
+      card.style.borderWidth  = '1px';
+      card.style.boxShadow    = '0 1px 4px rgba(0,0,0,.06)';
+    }
+  });
+
+  loadInventario(1);
 }
 
 async function guardarMovimiento(idPp, stockActual) {

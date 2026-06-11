@@ -1,6 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════════
 //  MÓDULO: VENTAS
-//  Flujo: Nueva Venta → Nota de Venta → Emitir Comprobante → Enviar SUNAT
 // ══════════════════════════════════════════════════════════════════════════════
 
 let dataVentas          = [];
@@ -9,7 +8,6 @@ let _ventaTotalPages    = 1;
 let _carritoItems       = [];
 let _clienteSeleccionado = null;
 let _numeroSiguiente    = null;
-let _ventaFiltroSunat   = '';
 let _debounceTimeout    = null;
 
 // ── CARGAR LISTADO ────────────────────────────────────────────────────────────
@@ -17,13 +15,14 @@ async function loadVentas(page = 1) {
   _ventaPage = page;
   const tbody = document.getElementById('tbodyVentas');
   if (!tbody) return;
-  tbody.innerHTML = '<tr class="loading-row"><td colspan="11">Cargando...</td></tr>';
+  tbody.innerHTML = '<tr class="loading-row"><td colspan="10">Cargando...</td></tr>';
 
   try {
-    const buscar = document.getElementById('buscarVenta')?.value || '';
+    const raw    = document.getElementById('buscarVenta')?.value || '';
+    const parsed = parseSearchInput(raw);
     const params = new URLSearchParams({ page, limit: 10 });
-    if (buscar)           params.set('buscar', buscar);
-    if (_ventaFiltroSunat) params.set('estado_sunat', _ventaFiltroSunat);
+    if (parsed.type === 'id')    params.set('id', parsed.value);
+    else if (parsed.value)       params.set('buscar', parsed.value);
 
     const data = await api('GET', `/api/ventas?${params}`);
     dataVentas       = data.data;
@@ -36,27 +35,11 @@ async function loadVentas(page = 1) {
 
     renderTablaVentas(dataVentas);
     renderPaginacionVentas(data.totalPages, page);
-    actualizarStatsVenta(dataVentas);
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="11" class="text-center" style="color:#e94560;padding:20px">${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="text-center" style="color:#e94560;padding:20px">${e.message}</td></tr>`;
   }
 }
 
-function actualizarStatsVenta(ventas) {
-  document.getElementById('vt-sin-emitir').textContent =
-    ventas.filter(v => v.estado_sunat === 'sin_emitir').length;
-  document.getElementById('vt-aceptado').textContent =
-    ventas.filter(v => v.estado_sunat === 'aceptado').length;
-  document.getElementById('vt-enviado').textContent =
-    ventas.filter(v => v.estado_sunat === 'enviado').length;
-}
-
-function filtroEstadoSunat(valor, el) {
-  _ventaFiltroSunat = valor;
-  document.querySelectorAll('#ventaStatsRow .stat-pill').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
-  loadVentas(1);
-}
 
 function renderTablaVentas(ventas) {
   const tbody = document.getElementById('tbodyVentas');
@@ -77,50 +60,25 @@ function renderTablaVentas(ventas) {
       tarjeta:       '<span class="vt-badge-metodo tarjeta">Tarjeta</span>'
     }[metodoPago] || `<span class="vt-badge-metodo">${metodoPago}</span>`;
 
-    const badgeSunat = {
-      sin_emitir: '<span class="badge-estado sin-emitir">— SIN EMITIR</span>',
-      enviado:    '<span class="badge-estado enviado">ENVIADO</span>',
-      aceptado:   '<span class="badge-estado aceptado">✔ ACEPTADO</span>',
-      rechazado:  '<span class="badge-estado rechazado">✖ RECHAZADO</span>',
-      anulado:    '<span class="badge-estado anulado">ANULADO</span>'
-    }[v.estado_sunat] || '';
-
     const estadoVentaBadge = v.estado_venta === 'anulada'
       ? '<span class="badge-estado anulada-v">ANULADA</span>'
       : '<span class="badge-estado registrada">REGISTRADA</span>';
 
-    // Número a mostrar: si ya tiene electrónico usa ese, si no el de nota de venta
-    const numDoc = v.serie_electronica
-      ? `${v.serie_electronica}-${String(v.numero_electronico).padStart(6,'0')}`
-      : v.numero_venta;
-
-    // Botones de acción según estado
-    const esNota   = !v.serie_electronica && v.estado_venta !== 'anulada';
+    const numDoc = v.numero_venta;
     const esAnulada = v.estado_venta === 'anulada';
-    const btnEmitir = esNota
-      ? `<button class="vt-btn-accion emitir" onclick="abrirModalEmitir(${v.id})">
-           <i class="bi bi-file-earmark-check"></i> Emitir
-         </button>` : '';
-    const btnSunat = v.serie_electronica && v.estado_sunat === 'sin_emitir'
-      ? `<button class="vt-btn-accion" onclick="confirmarEnvioSunat(${v.id},'${numDoc}')" title="Enviar a SUNAT">
-           <i class="bi bi-send"></i>
-         </button>` : '';
 
     return `<tr>
-      <td>${v.id}</td>
-      <td><strong>${numDoc}</strong></td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cliente}">${cliente}</td>
-      <td>${v.vendedor}</td>
-      <td>${fecha}</td>
-      <td><strong>S/ ${parseFloat(v.total).toFixed(2)}</strong></td>
+      <td style="text-align:center;color:#aaa;font-size:12px">${v.id}</td>
+      <td><strong style="font-size:13px">${numDoc}</strong></td>
+      <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cliente}">${cliente}</td>
+      <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888;font-size:12px" title="${v.vendedor}">${v.vendedor}</td>
+      <td style="font-size:12px;color:#666;white-space:nowrap">${fecha}</td>
+      <td style="white-space:nowrap"><strong>S/ ${parseFloat(v.total).toFixed(2)}</strong></td>
       <td>${metodoBadge}</td>
-      <td>S/ ${parseFloat(v.saldo_pendiente).toFixed(2)}</td>
+      <td style="font-size:12px;color:#e53935;font-weight:600;white-space:nowrap">S/ ${parseFloat(v.saldo_pendiente).toFixed(2)}</td>
       <td>${estadoVentaBadge}</td>
-      <td>${badgeSunat}</td>
       <td>
         <div class="vt-row-actions">
-          ${btnEmitir}
-          ${btnSunat}
           <button class="vt-btn-accion" onclick="verDetalleVenta(${v.id})" title="Ver detalle">
             <i class="bi bi-eye"></i>
           </button>
@@ -176,14 +134,18 @@ async function abrirNuevaVenta() {
 
 // ── BUSCAR CLIENTE ────────────────────────────────────────────────────────────
 async function buscarClienteVenta() {
-  const dni   = document.getElementById('nv-dni').value.trim();
+  const dni    = document.getElementById('nv-dni').value.trim();
   const infoEl = document.getElementById('nv-cliente-info');
   if (!dni) { vtToast('Ingresa un DNI o RUC para buscar', 'warning'); return; }
 
-  infoEl.innerHTML = `<div style="padding:10px;color:#666;font-size:13px"><i class="bi bi-hourglass-split me-2"></i>Consultando...</div>`;
+  const esRuc  = /^\d{11}$/.test(dni);
+  const tipo   = esRuc ? 'RUC' : 'DNI';
+  const label  = esRuc ? 'RUC' : 'DNI';
+
+  infoEl.innerHTML = `<div style="padding:10px;color:#666;font-size:13px"><i class="bi bi-hourglass-split me-2"></i>Consultando ${label}...</div>`;
 
   try {
-    const r = await api('GET', `/api/membresias/dni/${dni}`);
+    const r = await api('GET', `/api/membresias/dni/${dni}?tipo=${tipo}`);
     if (r.ya_existe) {
       _clienteSeleccionado = r.cliente;
       infoEl.innerHTML = `
@@ -191,23 +153,29 @@ async function buscarClienteVenta() {
           <i class="bi bi-check-circle-fill" style="font-size:22px;color:#2e7d32"></i>
           <div>
             <strong>${r.cliente.nombre} ${r.cliente.apellido}</strong>
-            <small>DNI/RUC: ${r.cliente.dni}</small>
+            <small>${label}: ${r.cliente.dni}</small>
           </div>
         </div>`;
     } else if (r.datos_dni) {
+      const nombreCompleto = esRuc
+        ? r.datos_dni.nombre
+        : `${r.datos_dni.nombre} ${r.datos_dni.apellido}`.trim();
       _clienteSeleccionado = {
         id_cliente: null,
         nombre:   r.datos_dni.nombre,
-        apellido: r.datos_dni.apellido,
+        apellido: r.datos_dni.apellido || '',
         dni,
         _libre: true
       };
+      const extraInfo = esRuc && r.datos_dni.estado
+        ? ` · Estado: ${r.datos_dni.estado}`
+        : ' · No registrado en el sistema';
       infoEl.innerHTML = `
         <div class="nv-cliente-found api">
-          <i class="bi bi-info-circle-fill" style="font-size:22px;color:#1565c0"></i>
+          <i class="bi bi-${esRuc ? 'building' : 'info-circle'}-fill" style="font-size:22px;color:#1565c0"></i>
           <div>
-            <strong>${r.datos_dni.nombre} ${r.datos_dni.apellido}</strong>
-            <small>DNI: ${dni} · No registrado en el sistema</small>
+            <strong>${nombreCompleto}</strong>
+            <small>${label}: ${dni}${extraInfo}</small>
           </div>
         </div>`;
     } else {
@@ -218,7 +186,7 @@ async function buscarClienteVenta() {
     infoEl.innerHTML = `
       <div class="nv-cliente-not-found">
         <i class="bi bi-exclamation-circle"></i>
-        DNI/RUC no encontrado en RENIEC.
+        ${label} no encontrado en ${esRuc ? 'SUNAT' : 'RENIEC'}.
         <button class="vt-btn-link" onclick="usarSinCliente()">Continuar sin cliente</button>
       </div>`;
   }
@@ -262,8 +230,17 @@ document.addEventListener('DOMContentLoaded', () => {
     r.addEventListener('change', onChangeTipoComprobante)
   );
 
-  // Descuento general → recalcular
-  document.getElementById('nv-descuento-general')?.addEventListener('input', recalcularTotales);
+  // Descuento general → bloquear negativos y recalcular
+  document.getElementById('nv-descuento-general')?.addEventListener('input', function() {
+    if (parseFloat(this.value) < 0 || this.value === '-') this.value = '0';
+    recalcularTotales();
+  });
+
+  // Monto recibido → bloquear negativos
+  document.getElementById('nv-monto-recibido')?.addEventListener('input', function() {
+    if (parseFloat(this.value) < 0 || this.value === '-') this.value = '0';
+    calcularVuelto();
+  });
 });
 
 // ── MODAL SELECCIONAR PRODUCTO ────────────────────────────────────────────────
@@ -303,6 +280,7 @@ function renderProductosVenta(productos) {
             ${tieneOferta ? `<span class="precio-tachado">S/ ${parseFloat(pp.precio_venta).toFixed(2)}</span>` : ''}
             <span class="precio-final">S/ ${parseFloat(precioFinal).toFixed(2)}</span>
             ${tieneOferta ? `<span class="badge-oferta">${p.porcentaje_oferta}%</span>` : ''}
+            <span class="pp-igv-tag">Inc. IGV</span>
           </div>
           <span class="pp-stock ${pp.stock_actual <= 5 ? 'bajo' : ''}">
             <i class="bi bi-box-seam"></i> Stock: ${pp.stock_actual}
@@ -379,7 +357,10 @@ function cambiarCantidad(idx, delta) {
 
 function setCantidad(idx, val) {
   const it = _carritoItems[idx];
-  it.cantidad = Math.max(1, Math.min(it.stock, parseInt(val) || 1));
+  const parsed = parseInt(val) || 1;
+  if (parsed < 1) { vtToast('La cantidad no puede ser menor a 1', 'warning'); }
+  it.cantidad = Math.max(1, Math.min(it.stock, parsed));
+  renderCarritoModal();
   recalcularTotales();
 }
 
@@ -390,7 +371,7 @@ function eliminarDelCarrito(idx) {
 }
 
 function recalcularTotales() {
-  const descGen  = parseFloat(document.getElementById('nv-descuento-general')?.value) || 0;
+  const descGen  = Math.abs(parseFloat(document.getElementById('nv-descuento-general')?.value) || 0);
   let   bruto    = 0;
   for (const it of _carritoItems) bruto += it.precio_unitario * it.cantidad - (it.descuento || 0);
   const total    = Math.max(0, bruto - descGen); // precio con IGV incluido
@@ -435,16 +416,25 @@ async function guardarVenta() {
     return;
   }
 
-  const descGen      = parseFloat(document.getElementById('nv-descuento-general')?.value) || 0;
+  const descGenRaw = parseFloat(document.getElementById('nv-descuento-general')?.value) || 0;
+  if (descGenRaw < 0) {
+    vtAlertVenta('El descuento no puede ser negativo', 'error');
+    return;
+  }
+  const descGen      = descGenRaw;
   const montoRec     = metodo_pago === 'efectivo'
-    ? (parseFloat(document.getElementById('nv-monto-recibido')?.value) || null)
+    ? (parseFloat(document.getElementById('nv-monto-recibido')?.value) || 0)
     : null;
 
-  if (metodo_pago === 'efectivo' && montoRec !== null) {
+  if (metodo_pago === 'efectivo') {
     const totalTexto = document.getElementById('nv-total-pagar')?.textContent || 'S/ 0.00';
     const total      = parseFloat(totalTexto.replace('S/ ', '')) || 0;
+    if (!montoRec || montoRec <= 0) {
+      vtAlertVenta('Debes ingresar el monto recibido del cliente', 'error');
+      return;
+    }
     if (montoRec < total) {
-      vtAlertVenta('El monto recibido es menor al total a pagar', 'error');
+      vtAlertVenta(`El monto recibido (S/ ${montoRec.toFixed(2)}) es menor al total a pagar (S/ ${total.toFixed(2)})`, 'error');
       return;
     }
   }
@@ -475,182 +465,11 @@ async function guardarVenta() {
 
     closeModal('modalNuevaVenta');
     loadVentas();
-    setTimeout(() => preguntarEmitir(venta.id, venta.numero_venta), 300);
   } catch (e) {
     vtAlertVenta('Error: ' + (e.message || 'No se pudo guardar la venta'), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Guardar Venta'; }
   }
-}
-
-function preguntarEmitir(id_venta, numero_venta) {
-  document.getElementById('confirm-emitir-num').textContent = numero_venta;
-  document.getElementById('btnConfirmEmitir').onclick = () => {
-    closeModal('modalConfirmEmitir');
-    abrirModalEmitir(id_venta);
-  };
-  document.getElementById('modalConfirmEmitir').classList.add('open');
-}
-
-// ── MODAL EMITIR COMPROBANTE ──────────────────────────────────────────────────
-async function abrirModalEmitir(id_venta) {
-  document.getElementById('emitir-id-venta').value = id_venta;
-
-  try {
-    const v = await api('GET', `/api/ventas/${id_venta}`);
-
-    // ── Validar qué tipo de comprobante puede emitirse ───────────────────────
-    // DNI = 8 dígitos → solo BOLETA
-    // RUC = 11 dígitos → FACTURA o BOLETA
-    // Sin documento → solo BOLETA
-    const dni        = v.dni_cliente || '';
-    const esRuc      = dni.length === 11;
-    const soloBolete = !esRuc; // DNI u otro → solo boleta
-
-    const cardFac  = document.getElementById('card-factura');
-    const rbFac    = document.getElementById('rb-factura');
-
-    if (soloBolete) {
-      // Deshabilitar Factura
-      cardFac.style.opacity      = '0.4';
-      cardFac.style.cursor       = 'not-allowed';
-      cardFac.title              = 'Factura requiere RUC (11 dígitos). Este cliente tiene DNI.';
-      rbFac.disabled             = true;
-      // Forzar Boleta seleccionada
-      document.getElementById('rb-boleta').checked = true;
-    } else {
-      // Habilitar Factura
-      cardFac.style.opacity      = '1';
-      cardFac.style.cursor       = 'pointer';
-      cardFac.title              = '';
-      rbFac.disabled             = false;
-    }
-
-    // Reset visual → Boleta por defecto
-    document.getElementById('rb-boleta').checked = true;
-    document.getElementById('card-boleta').classList.add('selected');
-    document.getElementById('card-factura').classList.remove('selected');
-    document.getElementById('check-boleta').classList.add('visible');
-    document.getElementById('check-factura').classList.remove('visible');
-
-    document.getElementById('emitir-cliente').textContent = v.cliente || '— Sin cliente —';
-    document.getElementById('emitir-dni').textContent     = dni ? `DNI/RUC: ${dni}` : '';
-
-    const metodosLabel = { efectivo: 'Efectivo', yape: 'Yape', plin: 'Plin', transferencia: 'Transferencia', tarjeta: 'Tarjeta' };
-    document.getElementById('emitir-tipo-pago').value = metodosLabel[v.metodo_pago] || v.metodo_pago;
-
-    // Detalle productos (muestra precio_unitario que incluye IGV)
-    document.getElementById('emitir-detalle').innerHTML = (v.detalle || []).map(d => `
-      <tr>
-        <td>${d.nombre_snapshot}</td>
-        <td style="text-align:center">${d.cantidad}</td>
-        <td style="text-align:right">S/ ${parseFloat(d.precio_unitario).toFixed(2)}</td>
-        <td style="text-align:right">S/ ${parseFloat(d.subtotal).toFixed(2)}</td>
-      </tr>`).join('');
-
-    // subtotal = base imponible (sin IGV), igv = impuesto, total = lo que pagó el cliente
-    document.getElementById('emitir-subtotal').textContent = `S/ ${parseFloat(v.subtotal).toFixed(2)}`;
-    document.getElementById('emitir-igv').textContent      = `S/ ${parseFloat(v.igv).toFixed(2)}`;
-    document.getElementById('emitir-total').textContent    = `S/ ${parseFloat(v.total).toFixed(2)}`;
-
-    const descRow = document.getElementById('emitir-descuento-row');
-    const obsRow  = document.getElementById('emitir-observacion-row');
-    if (parseFloat(v.descuento_general) > 0) {
-      document.getElementById('emitir-descuento').textContent = `− S/ ${parseFloat(v.descuento_general).toFixed(2)}`;
-      descRow.style.display = 'flex';
-    } else {
-      descRow.style.display = 'none';
-    }
-    if (v.observacion) {
-      document.getElementById('emitir-observacion').textContent = v.observacion;
-      obsRow.style.display = 'block';
-    } else {
-      obsRow.style.display = 'none';
-    }
-
-  } catch (e) {
-    vtToast('Error cargando datos de la venta: ' + e.message, 'error'); return;
-  }
-
-  await actualizarSerieEmitir();
-  document.getElementById('modalEmitirComprobante').classList.add('open');
-}
-
-async function onChangeTipoComprobante() {
-  const rbFac = document.getElementById('rb-factura');
-  // Si Factura está deshabilitada, volver a Boleta
-  if (rbFac.disabled && rbFac.checked) {
-    document.getElementById('rb-boleta').checked = true;
-  }
-  const valor = document.querySelector('input[name="tipo-comprobante"]:checked')?.value;
-  document.getElementById('card-boleta').classList.toggle('selected', valor === 'BOL');
-  document.getElementById('card-factura').classList.toggle('selected', valor === 'FAC');
-  document.getElementById('check-boleta').classList.toggle('visible', valor === 'BOL');
-  document.getElementById('check-factura').classList.toggle('visible', valor === 'FAC');
-  await actualizarSerieEmitir();
-}
-
-async function actualizarSerieEmitir() {
-  const tipo  = document.querySelector('input[name="tipo-comprobante"]:checked')?.value || 'BOL';
-  const serie = tipo === 'BOL' ? 'B001' : 'F001';
-  try {
-    const r = await api('GET', `/api/ventas/numero-siguiente?serie=${serie}`);
-    document.getElementById('emitir-serie').value    = r.serie;
-    document.getElementById('emitir-num-solo').value = r.numero;
-    document.getElementById('emitir-numero').value   = r.numero_completo;
-  } catch { /* ignorar */ }
-}
-
-async function confirmarEmision() {
-  const id_venta = document.getElementById('emitir-id-venta').value;
-  const codigo   = document.querySelector('input[name="tipo-comprobante"]:checked')?.value || 'BOL';
-
-  const btn = document.getElementById('btnEmitirConfirmar');
-  btn.disabled  = true;
-  btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Emitiendo...';
-
-  try {
-    const r = await api('POST', `/api/ventas/${id_venta}/emitir`, { codigo });
-    closeModal('modalEmitirComprobante');
-    document.getElementById('comp-emitido-numero').textContent = r.numero_completo;
-    document.getElementById('modalComprobanteEmitido').classList.add('open');
-    document.getElementById('btnEnviarSunat').onclick = () => {
-      closeModal('modalComprobanteEmitido');
-      confirmarEnvioSunat(id_venta, r.numero_completo);
-    };
-    loadVentas();
-  } catch (e) {
-    vtToast(e.message, 'error');
-  } finally {
-    btn.disabled  = false;
-    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Emitir';
-  }
-}
-
-// ── ENVIAR A SUNAT ────────────────────────────────────────────────────────────
-function confirmarEnvioSunat(id_venta, numero_completo) {
-  document.getElementById('sunat-numero-comp').textContent = numero_completo;
-  const btn = document.getElementById('btnConfirmarSunat');
-  btn.onclick = async () => {
-    btn.disabled  = true;
-    btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Enviando...';
-    try {
-      const r = await api('POST', `/api/ventas/${id_venta}/enviar-sunat`);
-      closeModal('modalConfirmSunat');
-      if (r.aceptado) {
-        vtToast(`✔ Comprobante aceptado por SUNAT: ${r.descripcion}`, 'success');
-      } else {
-        vtToast(`✖ SUNAT rechazó: ${r.descripcion}`, 'error');
-      }
-      loadVentas();
-    } catch (e) {
-      vtToast(e.message, 'error');
-    } finally {
-      btn.disabled  = false;
-      btn.innerHTML = '<i class="bi bi-send me-1"></i>Sí, enviar';
-    }
-  };
-  document.getElementById('modalConfirmSunat').classList.add('open');
 }
 
 // ── VER DETALLE ───────────────────────────────────────────────────────────────
@@ -710,14 +529,15 @@ async function verDetalleVenta(id) {
         <td class="vt-dv-total-col" style="text-align:right">S/ ${parseFloat(d.subtotal).toFixed(2)}</td>
       </tr>`).join('');
 
-    // Totales
+    // Totales — subtotal e igv ya son netos (descuento absorbido), suman directamente al total
     document.getElementById('dventa-subtotal').textContent = `S/ ${parseFloat(v.subtotal).toFixed(2)}`;
     document.getElementById('dventa-igv').textContent      = `S/ ${parseFloat(v.igv).toFixed(2)}`;
     document.getElementById('dventa-total').textContent    = `S/ ${parseFloat(v.total).toFixed(2)}`;
 
-    const descRow = document.getElementById('dventa-descuento-row');
-    if (parseFloat(v.descuento_general) > 0) {
-      document.getElementById('dventa-descuento').textContent = `− S/ ${parseFloat(v.descuento_general).toFixed(2)}`;
+    const descuento = parseFloat(v.descuento_general) || 0;
+    const descRow   = document.getElementById('dventa-descuento-row');
+    if (descuento > 0) {
+      document.getElementById('dventa-descuento').textContent = `S/ ${descuento.toFixed(2)}`;
       descRow.style.display = 'flex';
     } else {
       descRow.style.display = 'none';
@@ -774,6 +594,8 @@ function imprimirDetalleVenta(formato) {
     </tr>`;
   }).join('');
 
+  const _desc = parseFloat(v.descuento_general) || 0;
+
   const esTicket = formato === 'ticket';
   const w        = esTicket ? '80mm' : '210mm';
   const fs       = esTicket ? '11px' : '13px';
@@ -817,9 +639,9 @@ function imprimirDetalleVenta(formato) {
       ${filasProd}
     </table>
     <div class="linea"></div>
+    ${_desc>0?`<div style="display:flex;justify-content:space-between;font-size:10px;color:#16a34a"><span>Dto. aplicado:</span><span>S/ ${_desc.toFixed(2)}</span></div>`:''}
     <div style="display:flex;justify-content:space-between"><span>Oper. Gravada:</span><span>S/ ${parseFloat(v.subtotal).toFixed(2)}</span></div>
     <div style="display:flex;justify-content:space-between"><span>I.G.V. (18%):</span><span>S/ ${parseFloat(v.igv).toFixed(2)}</span></div>
-    ${parseFloat(v.descuento_general)>0?`<div style="display:flex;justify-content:space-between"><span>Descuento:</span><span>-S/ ${parseFloat(v.descuento_general).toFixed(2)}</span></div>`:''}
     <div class="total-box" style="display:flex;justify-content:space-between"><span class="bold">TOTAL VENTA:</span><span class="bold">S/ ${parseFloat(v.total).toFixed(2)}</span></div>
     <div class="linea"></div>
     <div style="display:flex;justify-content:space-between"><span class="bold">Forma de Pago:</span><span>${metodo}</span></div>
@@ -859,9 +681,9 @@ function imprimirDetalleVenta(formato) {
       <tbody>${filasProd}</tbody>
     </table>
     <div class="sect" style="background:#f8f9ff">
+      ${_desc>0?`<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px;color:#16a34a"><span>Descuento aplicado:</span><span>S/ ${_desc.toFixed(2)}</span></div>`:''}
       <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px"><span>Operación Gravada:</span><span>S/ ${parseFloat(v.subtotal).toFixed(2)}</span></div>
       <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px"><span>I.G.V. (18%):</span><span>S/ ${parseFloat(v.igv).toFixed(2)}</span></div>
-      ${parseFloat(v.descuento_general)>0?`<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px;color:#c62828"><span>Descuento:</span><span>−S/ ${parseFloat(v.descuento_general).toFixed(2)}</span></div>`:''}
       <div style="display:flex;justify-content:space-between;padding:6px 0 2px;font-size:16px;font-weight:800;border-top:2px solid #ddd;margin-top:4px">
         <span>TOTAL VENTA</span><span style="color:#1565c0">S/ ${parseFloat(v.total).toFixed(2)}</span>
       </div>

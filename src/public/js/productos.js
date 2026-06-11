@@ -12,15 +12,29 @@ let _idProductoActivo        = null;
 let _idPPPrincipalActivo     = null;
 
 // ── CARGAR ────────────────────────────────────────────
-async function loadProductos() {
+let _prodSearchTimer = null;
+
+async function loadProductos(page = 1) {
   document.getElementById('tbodyProductos').innerHTML =
     '<tr class="loading-row"><td colspan="9">Cargando...</td></tr>';
   try {
-    const [productos, stats] = await Promise.all([
-      api('GET', '/api/productos'),
+    const raw    = document.getElementById('searchProductos')?.value || '';
+    const parsed = parseSearchInput(raw);
+    const params = new URLSearchParams({ page, limit: 25 });
+    if (parsed.type === 'id')    params.set('id', parsed.value);
+    else if (parsed.value)       params.set('q', parsed.value);
+    if (_filtroProductoEstado !== 'todos') {
+      if (_filtroProductoEstado === 'activos')    params.set('estado', '1');
+      if (_filtroProductoEstado === 'inactivos')  params.set('estado', '0');
+      if (_filtroProductoEstado === 'stock_bajo') params.set('stock_bajo', '1');
+    }
+    if (_filtroCategoria !== null) params.set('id_categoria', _filtroCategoria);
+
+    const [res, stats] = await Promise.all([
+      api('GET', `/api/productos?${params}`),
       api('GET', '/api/productos/stats')
     ]);
-    dataProductos = productos;
+    dataProductos = res.data;
 
     document.getElementById('prod-activos').textContent   = stats.activos;
     document.getElementById('prod-inactivos').textContent = stats.inactivos;
@@ -29,8 +43,7 @@ async function loadProductos() {
     const el = document.getElementById('countProductos');
     if (el) el.textContent = stats.activos;
 
-    filtroProducto(_filtroProductoEstado,
-      document.querySelector(`.chip-prod[data-fp="${_filtroProductoEstado}"]`));
+    renderProductos(res.data, res);
   } catch (e) {
     document.getElementById('tbodyProductos').innerHTML =
       `<tr class="empty-row"><td colspan="8">${e.message}</td></tr>`;
@@ -42,30 +55,12 @@ function filtroProducto(f, el) {
   _filtroProductoEstado = f;
   document.querySelectorAll('.chip-prod').forEach(c => c.classList.remove('active'));
   if (el) el.classList.add('active');
-  _aplicarFiltrosProductos();
+  loadProductos(1);
 }
 
-// Aplica los tres filtros combinados: chip de estado + categoría + búsqueda de texto
 function _aplicarFiltrosProductos() {
-  const q = (document.getElementById('searchProductos')?.value || '').toLowerCase().trim();
-
-  let data = dataProductos;
-  if (_filtroProductoEstado === 'activos')    data = data.filter(p => p.estado === 1);
-  if (_filtroProductoEstado === 'inactivos')  data = data.filter(p => p.estado === 0);
-  if (_filtroProductoEstado === 'stock_bajo') data = data.filter(p =>
-    parseInt(p.stock_total) <= parseInt(p.stock_minimo) && p.estado === 1
-  );
-  if (_filtroCategoria !== null) {
-    data = data.filter(p => p.id_categoria === _filtroCategoria);
-  }
-
-  renderProductos(data);
-
-  if (q) {
-    document.querySelectorAll('#tbodyProductos tr').forEach(tr => {
-      tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
-  }
+  clearTimeout(_prodSearchTimer);
+  _prodSearchTimer = setTimeout(() => loadProductos(1), 300);
 }
 
 // ── COMBOBOX CATEGORÍA ────────────────────────────────
@@ -148,10 +143,11 @@ function _comboCatLimpiar() {
 }
 
 // ── RENDER TABLA ──────────────────────────────────────
-function renderProductos(data) {
+function renderProductos(data, pag = null) {
   const tbody = document.getElementById('tbodyProductos');
   if (!data.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="9">Sin productos</td></tr>';
+    _renderPagBar('tbodyProductos', null, 'loadProductos');
     return;
   }
 
@@ -217,12 +213,13 @@ function renderProductos(data) {
     // Ganancia (solo admin)
     let gananciaHtml = '';
     if (esAdmin && precioCostoNum > 0 && precioFinal > 0) {
-      const ganancia = precioFinal - precioCostoNum;
+      const baseNeta = precioFinal / 1.18;
+      const ganancia = baseNeta - precioCostoNum;
       const ganPct   = (ganancia / precioCostoNum * 100).toFixed(1);
-      gananciaHtml   = `<div style="font-size:10px;color:${ganancia >= 0 ? '#2e7d32' : '#c62828'};white-space:nowrap">${ganancia >= 0 ? '+' : ''}S/ ${ganancia.toFixed(2)} (${ganPct}%)</div>`;
+      gananciaHtml   = `<div style="font-size:10px;color:${ganancia >= 0 ? '#2e7d32' : '#c62828'};white-space:nowrap">${ganancia >= 0 ? '+' : ''}S/ ${ganancia.toFixed(2)} (${ganPct}%)</div><div style="font-size:9px;color:#888;white-space:nowrap">excl. IGV</div>`;
     }
 
-    return `<tr>
+    return `<tr style="cursor:pointer" ondblclick="editProducto(${p.id_producto})">
       <td style="font-size:12px;color:var(--color-text-muted);text-align:center">${p.id_producto}</td>
       <td style="max-width:200px;overflow:hidden">
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:nowrap;overflow:hidden">
@@ -245,7 +242,7 @@ function renderProductos(data) {
           ${p.estado === 1 ? 'ACTIVO' : 'INACTIVO'}
         </span>
       </td>
-      <td>
+      <td ondblclick="event.stopPropagation()">
         <div style="display:flex;gap:5px;align-items:center;justify-content:center">
           <button class="btn-icon edit" title="Editar producto" onclick="editProducto(${p.id_producto})">
             <i class="bi bi-pencil"></i>
@@ -263,6 +260,8 @@ function renderProductos(data) {
       </td>
     </tr>`;
   }).join('');
+
+  _renderPagBar('tbodyProductos', pag, 'loadProductos');
 }
 
 // ── CALCULAR PRECIO CON OFERTA (preview en tiempo real) ──
@@ -285,10 +284,10 @@ function calcularPrecioOferta(pct) {
     previewEl.style.display = 'none';
   }
 
-  // Ganancia
+  // Ganancia (precio venta ya incluye IGV, se divide entre 1.18 para comparar vs costo)
   const precioBase = ofertaPct > 0 ? venta * (1 - ofertaPct / 100) : venta;
   if (costo > 0 && precioBase > 0 && ganEl) {
-    const gan    = precioBase - costo;
+    const gan    = (precioBase / 1.18) - costo;
     const ganPct = costo > 0 ? (gan / costo * 100).toFixed(1) : 0;
     ganEl.style.display    = 'block';
     ganValEl.textContent   = `${gan >= 0 ? '+' : ''}S/ ${gan.toFixed(2)}`;
@@ -580,6 +579,22 @@ async function saveProducto() {
     showAlert('alertProducto', 'Categoría y nombre son requeridos');
     return;
   }
+  if (!/[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ]/.test(nombre)) {
+    showAlert('alertProducto', 'El nombre debe contener al menos una letra, no puede ser solo números');
+    return;
+  }
+  if (precioCosto < 0) {
+    showAlert('alertProducto', 'El precio de costo no puede ser negativo');
+    return;
+  }
+  if (precioVenta < 0) {
+    showAlert('alertProducto', 'El precio de venta no puede ser negativo');
+    return;
+  }
+  if (precioCosto > 0 && precioVenta > 0 && (precioVenta / 1.18) < precioCosto) {
+    showAlert('alertProducto', 'El precio de venta (sin IGV) no puede ser menor al precio de costo');
+    return;
+  }
 
   const btn = document.getElementById('btnGuardarProducto');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass me-1"></i>Guardando...'; }
@@ -717,8 +732,8 @@ async function cargarPreciosPresentacion(idProducto) {
           ${pres.map(pr => {
             const costo  = parseFloat(pr.precio_costo ?? 0);
             const venta  = parseFloat(pr.precio_venta ?? 0);
-            const gan    = venta - costo;
-            const ganPct = venta > 0 ? (gan / venta * 100).toFixed(1) : 0;
+            const gan    = costo > 0 ? (venta / 1.18) - costo : venta - costo;
+            const ganPct = costo > 0 ? (gan / costo * 100).toFixed(1) : 0;
             return `<tr style="border-bottom:1px solid #f0f0f0">
               <td style="padding:11px 14px">
                 <strong>${pr.presentacion}</strong>
@@ -830,6 +845,10 @@ async function guardarPresentacionProducto() {
 
   if (venta <= 0) {
     showAlert('alertPreciosPresentacion', 'El precio de venta es requerido y debe ser mayor a 0');
+    return;
+  }
+  if (costo > 0 && venta < costo) {
+    showAlert('alertPreciosPresentacion', 'El precio de venta no puede ser menor al precio de costo');
     return;
   }
   if (!idPP && !idPres) {

@@ -5,7 +5,10 @@
 // ─── FILTER STATE ────────────────────────────────────────────────────────────
 let _filtroMembExtra      = 'todos';
 let _clienteEsRenovacion  = false;
-let _boletaModalDatos     = null; // datos del comprobante activo en el modal
+let _boletaModalDatos     = null;
+let _membPage             = 1;
+let _membTotal            = 0;
+let _membSearchTimer      = null;
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  COMPONENTE _PM — Payment Manager (pago mixto + captura + código)
@@ -32,6 +35,18 @@ const _PM = (() => {
         return _splits.reduce((s, sp) => s + parseFloat(sp.monto || 0), 0);
     }
 
+    function _updateTotalBar() {
+        const bar = document.getElementById('pm-total-bar');
+        if (!bar) return;
+        const totalCubierto = _sumSplits();
+        const ok = Math.abs(totalCubierto - _total) < 0.02;
+        bar.style.background   = ok ? '#e8f5e9' : '#fff3e0';
+        bar.style.borderColor  = ok ? '#a5d6a7' : '#ffcc80';
+        bar.innerHTML = `
+          <span>Total cubierto: <b style="color:${ok ? '#2e7d32' : '#e65100'}">${_fmtS(totalCubierto)}</b> / ${_fmtS(_total)}</span>
+          <span>${ok ? '✅' : '⚠️ No coincide'}</span>`;
+    }
+
     function _renderSplit(i) {
         const sp   = _splits[i];
         const info = _metodoInfo(sp.metodo);
@@ -52,6 +67,7 @@ const _PM = (() => {
               <input type="number" class="pm-monto" min="0.01" step="0.01"
                 value="${parseFloat(sp.monto || 0).toFixed(2)}"
                 oninput="_PM._setMonto(${i}, this.value)"
+                onfocus="this.select()"
                 style="width:120px;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-weight:700;color:#0f3460">
               <span class="pm-total-hint" style="font-size:11px;color:#888">de ${_fmtS(_total)}</span>
             </div>` : '';
@@ -125,7 +141,7 @@ const _PM = (() => {
             METODOS.some(m => !_splits.find(s => s.metodo === m.key));
 
         const totalBar = multi ? `
-            <div class="pm-total-bar" style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:${ok ? '#e8f5e9' : '#fff3e0'};border:1px solid ${ok ? '#a5d6a7' : '#ffcc80'};border-radius:8px;margin-top:4px;font-size:12px">
+            <div class="pm-total-bar" id="pm-total-bar" style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:${ok ? '#e8f5e9' : '#fff3e0'};border:1px solid ${ok ? '#a5d6a7' : '#ffcc80'};border-radius:8px;margin-top:4px;font-size:12px">
               <span>Total cubierto: <b style="color:${ok ? '#2e7d32' : '#e65100'}">${_fmtS(totalCubierto)}</b> / ${_fmtS(_total)}</span>
               <span>${ok ? '✅' : '⚠️ No coincide'}</span>
             </div>` : '';
@@ -179,7 +195,7 @@ const _PM = (() => {
 
         _setMonto(i, val) {
             _splits[i].monto = parseFloat(val) || 0;
-            _render();
+            _updateTotalBar();
         },
 
         _setField(i, field, val) { _splits[i][field] = val; },
@@ -203,11 +219,11 @@ const _PM = (() => {
                     _splits[i].url      = data.url;
                     _splits[i].uploading = false;
                 } else {
-                    alert('Error al subir imagen: ' + (data.message || 'Inténtalo de nuevo'));
+                    showToast('Error al subir imagen: ' + (data.message || 'Inténtalo de nuevo'), 'error');
                     _splits[i].uploading = false;
                 }
             } catch {
-                alert('Error de conexión al subir imagen.');
+                showToast('Error de conexión al subir imagen.', 'error');
                 _splits[i].uploading = false;
             }
             _render();
@@ -363,7 +379,66 @@ function _buildCuotasSection(cuotas, montoTotal, montoPagado, esCompacto = false
         <tbody>${rows}</tbody>
       </table>`;
 
-    return summary + table;
+    // Historial de movimientos agrupado por cuota
+    const capMetodo = m => m ? m.charAt(0).toUpperCase() + m.slice(1) : '—';
+    const cuotasConMovimientos = (cuotas || []).filter(c => {
+        const abonos = Array.isArray(c.abonos) ? c.abonos : [];
+        return abonos.length > 0 || (c.estado_cuota === 'pagado' && c.metodo_pago);
+    });
+
+    let desglose = '';
+    if (cuotasConMovimientos.length > 0) {
+        const pd3 = esCompacto ? '2px 0' : '3px 0';
+        const bloques = cuotasConMovimientos.map(c => {
+            const abonos    = Array.isArray(c.abonos) ? c.abonos : [];
+            const numCuota  = c.num_cuota || '?';
+            // Si tiene abonos, el monto original es la suma de ellos; si no, es c.monto directamente
+            const montoOrigVal = abonos.length > 0
+                ? abonos.reduce((s, a) => s + parseFloat(a.monto || 0), 0)
+                : parseFloat(c.monto || 0);
+            const montoOrig = fmtS(montoOrigVal);
+
+            let lineas = '';
+            let subtotalAbonado = 0;
+
+            if (abonos.length > 0) {
+                // Cuota pagada con múltiples abonos
+                lineas = abonos.map(a => {
+                    subtotalAbonado += parseFloat(a.monto || 0);
+                    return `<li style="margin:${pd3};font-size:${fs};color:#333">
+                        ${fmtF(a.fecha_pago)} &mdash; <b>${fmtS(a.monto)}</b> via ${capMetodo(a.metodo_pago)}
+                    </li>`;
+                }).join('');
+                lineas += `<li style="margin:${pd3};font-size:${fs};font-style:italic;color:#555;list-style:none;padding-left:0;border-top:1px dashed #ccc;margin-top:3px;padding-top:3px">
+                    Subtotal abonado a Cuota ${numCuota}: <b>${fmtS(subtotalAbonado)}</b>
+                </li>`;
+            } else {
+                // Pago directo de cuota en un solo movimiento
+                subtotalAbonado = parseFloat(c.monto || 0);
+                lineas = `<li style="margin:${pd3};font-size:${fs};color:#333">
+                    ${fmtF(c.fecha_pago)} &mdash; <b>${fmtS(c.monto)}</b> via ${capMetodo(c.metodo_pago)}
+                </li>`;
+            }
+
+            return `
+              <div style="margin-bottom:6px">
+                <div style="font-size:${fs};font-weight:700;margin-bottom:2px">
+                  &#9658; Referencia: Cuota ${numCuota} (Monto Orig: ${montoOrig})
+                </div>
+                <ul style="margin:0;padding-left:18px;list-style:circle">${lineas}</ul>
+              </div>`;
+        }).join('');
+
+        desglose = `
+          <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #ccc">
+            <div style="font-size:${fs};font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px">
+              Historial de movimientos por cuota:
+            </div>
+            ${bloques}
+          </div>`;
+    }
+
+    return summary + table + desglose;
 }
 
 function filtroMembresia(tipo, el) {
@@ -371,8 +446,8 @@ function filtroMembresia(tipo, el) {
     document.querySelectorAll('#membStatsRow .stat-pill').forEach(p => p.classList.remove('active'));
     el.classList.add('active');
     const estadoSel = document.getElementById('filtroMembEstado');
-    estadoSel.value = ['activa','vencida','anulada','congelada'].includes(tipo) ? tipo : 'todos';
-    loadMembresias();
+    estadoSel.value = ['activa','vencida','anulada','congelada','programada'].includes(tipo) ? tipo : 'todos';
+    loadMembresias(1);
 }
 
 function onMembFiltroChange() {
@@ -380,40 +455,52 @@ function onMembFiltroChange() {
     document.querySelectorAll('#membStatsRow .stat-pill').forEach(p => p.classList.remove('active'));
     const primer = document.querySelector('#membStatsRow .stat-pill');
     if (primer) primer.classList.add('active');
-    loadMembresias();
+    loadMembresias(1);
 }
 
 async function cargarMembStatsRow() {
     try {
         const s = await api('GET', '/api/membresias/stats');
         const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? 0; };
-        set('mb-activas',    s.activas);
-        set('mb-vencidas',   s.vencidas);
-        set('mb-congeladas', s.congeladas);
-        set('mb-deuda',      s.con_deuda);
-        set('mb-mes',        s.este_mes);
+        set('mb-activas',     s.activas);
+        set('mb-vencidas',    s.vencidas);
+        set('mb-congeladas',  s.congeladas);
+        set('mb-deuda',       s.con_deuda);
+        set('mb-mes',         s.este_mes);
+        set('mb-programadas', s.programadas);
+        set('mb-anuladas',    s.anuladas);
     } catch (e) { console.warn('stats memb:', e); }
 }
 
 // ─── CARGAR ───────────────────────────────────────────────────────────────────
-async function loadMembresias() {
+async function loadMembresias(page = 1) {
+    _membPage = page;
     document.getElementById('listadoMembresias').innerHTML =
         '<div style="text-align:center;padding:40px;color:#aaa">Cargando...</div>';
 
     const estado = document.getElementById('filtroMembEstado').value;
     const idPlan = document.getElementById('filtroMembPlan').value;
+    const rawMb  = document.getElementById('searchMembresias').value;
+    const parsed = parseSearchInput(rawMb);
 
     try {
-        let url = '/api/membresias?';
-        if (estado !== 'todos') url += `estado=${estado}&`;
-        if (idPlan !== 'todos') url += `id_plan=${idPlan}&`;
+        const params = new URLSearchParams({ page: _membPage, limit: 20 });
+        if (estado !== 'todos')              params.set('estado',     estado);
+        if (idPlan !== 'todos')              params.set('id_plan',    idPlan);
+        if (parsed.type === 'id')            params.set('id',         parsed.value);
+        else if (parsed.value)               params.set('q',          parsed.value);
+        if (_filtroMembExtra === 'deuda')    params.set('solo_deuda', '1');
+        if (_filtroMembExtra === 'este_mes') params.set('este_mes',   '1');
 
-        dataMembresias = await api('GET', url);
+        const res = await api('GET', `/api/membresias?${params}`);
+        dataMembresias = res.data;
+        _membTotal     = res.total;
+
         const el = document.getElementById('countMembresias');
-        if (el) el.textContent = dataMembresias.length;
+        if (el) el.textContent = _membTotal;
 
         cargarMembStatsRow();
-        filtrarMembresias();
+        renderMembresias(res.data, res);
     } catch (e) {
         document.getElementById('listadoMembresias').innerHTML =
             `<div style="text-align:center;padding:40px;color:#c62828">${e.message}</div>`;
@@ -421,25 +508,22 @@ async function loadMembresias() {
 }
 
 function filtrarMembresias() {
-    const q = document.getElementById('searchMembresias').value.toLowerCase();
-    let data = q
-        ? dataMembresias.filter(m => `${m.nombre_cliente} ${m.dni}`.toLowerCase().includes(q))
-        : [...dataMembresias];
-
-    if (_filtroMembExtra === 'deuda') {
-        data = data.filter(m => parseFloat(m.saldo_pendiente) > 0);
-    } else if (_filtroMembExtra === 'este_mes') {
-        const hoy = new Date();
-        data = data.filter(m => {
-            const d = new Date(m.created_at);
-            return d.getFullYear() === hoy.getFullYear() && d.getMonth() === hoy.getMonth();
-        });
+    clearTimeout(_membSearchTimer);
+    // Si hay texto, ignorar filtros de estado/plan para buscar en todos
+    const raw = document.getElementById('searchMembresias')?.value || '';
+    if (raw.trim()) {
+        const estadoSel = document.getElementById('filtroMembEstado');
+        const planSel   = document.getElementById('filtroMembPlan');
+        if (estadoSel) estadoSel.value = 'todos';
+        if (planSel)   planSel.value   = 'todos';
+        _filtroMembExtra = 'todos';
+        document.querySelectorAll('#membStatsRow .stat-pill').forEach(p => p.classList.remove('active'));
     }
-    renderMembresias(data);
+    _membSearchTimer = setTimeout(() => loadMembresias(1), 300);
 }
 
 // ─── RENDER CARDS ─────────────────────────────────────────────────────────────
-function renderMembresias(data) {
+function renderMembresias(data, pag = null) {
     const cont = document.getElementById('listadoMembresias');
     if (!data.length) {
         cont.innerHTML = `
@@ -447,6 +531,7 @@ function renderMembresias(data) {
             <i class="bi bi-card-checklist" style="font-size:40px;display:block;margin-bottom:10px"></i>
             Sin membresías con ese filtro
         </div>`;
+        _renderMembPaginacion(null);
         return;
     }
 
@@ -472,6 +557,14 @@ function renderMembresias(data) {
                 <div style="height:100%;background:${vencC > 0 ? '#c62828' : '#26a69a'};width:${progresoPct}%;border-radius:3px;transition:width .3s"></div>
             </div>
         </div>` : '';
+
+        // Chip "Próxima membresía programada"
+        const proximaChip = m.proxima_fecha_inicio ? (() => {
+            const d = new Date(String(m.proxima_fecha_inicio).split('T')[0] + 'T12:00:00');
+            const dd = String(d.getDate()).padStart(2,'0');
+            const mm = String(d.getMonth()+1).padStart(2,'0');
+            return `<div style="margin-top:3px"><span style="background:#e3f2fd;color:#1565c0;border:1px solid #90caf9;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap">→ Próxima: ${dd}/${mm}</span></div>`;
+        })() : '';
 
         // Saldo badge + días restantes para pagar
         let saldoHtml = '';
@@ -510,6 +603,7 @@ function renderMembresias(data) {
                 <div class="memb-precio">S/ ${parseFloat(m.monto_total).toFixed(2)}</div>
                 ${saldoHtml}
                 <div style="margin-top:4px">${estadoBadgeMini(m.estado, m.saldo_pendiente, vencC)}</div>
+                ${proximaChip}
             </div>
             <div class="memb-actions">
                 ${m.saldo_pendiente > 0 || pendC > 0 || vencC > 0 ? `
@@ -549,6 +643,38 @@ function renderMembresias(data) {
             </div>
         </div>`;
     }).join('');
+
+    _renderMembPaginacion(pag);
+}
+
+function _renderMembPaginacion(pag) {
+    let el = document.getElementById('membPaginacion');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'membPaginacion';
+        document.getElementById('listadoMembresias').insertAdjacentElement('afterend', el);
+    }
+    if (!pag || pag.pages <= 1) { el.innerHTML = ''; return; }
+
+    const inicio = (pag.page - 1) * 20 + 1;
+    const fin    = Math.min(pag.page * 20, pag.total);
+    el.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 4px;flex-wrap:wrap;gap:8px">
+            <span style="font-size:13px;color:#888">${inicio}–${fin} de <b>${pag.total}</b> membresías</span>
+            <div style="display:flex;gap:6px">
+                <button class="btn-pagmemb" onclick="loadMembresias(${pag.page - 1})"
+                    ${pag.page <= 1 ? 'disabled' : ''}>
+                    <i class="bi bi-chevron-left"></i> Anterior
+                </button>
+                <span style="padding:6px 12px;font-size:13px;color:#555">
+                    Pág. ${pag.page} / ${pag.pages}
+                </span>
+                <button class="btn-pagmemb" onclick="loadMembresias(${pag.page + 1})"
+                    ${pag.page >= pag.pages ? 'disabled' : ''}>
+                    Siguiente <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>`;
 }
 
 // ─── MODAL COMPROBANTE (historial de boletas) ─────────────────────────────────
@@ -674,11 +800,11 @@ function memb_mostrarModalBoleta(datos) {
       <!-- Formulario celular (aparece cuando no hay número registrado) -->
       <div id="memb-boleta-cel-form" style="display:none;border:1px solid #fde68a;background:#fffbeb;border-radius:8px;padding:12px;margin-bottom:12px">
         <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:4px">📱 Sin celular registrado</div>
-        <div style="font-size:12px;color:#78350f;margin-bottom:8px">Ingresa el número para enviarlo por WhatsApp y guardarlo en el perfil del cliente.</div>
+        <div style="font-size:12px;color:#78350f;margin-bottom:8px">Ingresa el número para guardarlo en el perfil del cliente y enviar el comprobante.</div>
         <div style="display:flex;gap:8px">
           <input type="tel" id="memb-boleta-cel-input" placeholder="9XXXXXXXX" maxlength="9"
             style="flex:1;padding:8px 12px;border:1px solid #fcd34d;border-radius:8px;font-size:13px;outline:none">
-          <button onclick="memb_guardarYEnviarWA()"
+          <button id="memb-cel-action-btn" onclick="memb_guardarYEnviarWA()"
               style="padding:8px 14px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">
             Guardar y enviar
           </button>
@@ -719,7 +845,6 @@ async function memb_boletaEnviarWA() {
     if (!datos) return;
     const tel = (datos.celular || '').replace(/\D/g, '');
     if (!tel) {
-        // Mostrar formulario inline para registrar el celular
         const form = document.getElementById('memb-boleta-cel-form');
         if (form) {
             form.style.display = 'block';
@@ -751,7 +876,7 @@ async function memb_boletaEnviarWA() {
         setTimeout(() => window.open(`https://wa.me/51${tel}?text=${encodeURIComponent(msg)}`, '_blank'), 600);
     } catch (err) {
         console.error('Error PDF:', err);
-        alert('No se pudo generar el PDF. Intenta de nuevo.');
+        showToast('No se pudo generar el PDF. Intenta de nuevo.', 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = orig; }
     }
@@ -803,18 +928,43 @@ async function memb_guardarYEnviarWA() {
         return;
     }
 
-    const btn = input?.nextElementSibling;
+    const btn = document.getElementById('memb-cel-action-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
     fb.innerHTML = '<span style="color:#666">Guardando número…</span>';
 
     try {
         const token = localStorage.getItem('token');
+
+        // Obtener datos actuales del cliente para no pisar otros campos
+        const getResp = await fetch(`/api/clientes/${datos.id_cliente}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!getResp.ok) { fb.innerHTML = '<span style="color:#dc2626">No se pudo obtener los datos del cliente.</span>'; return; }
+        const cliente = await getResp.json();
+
         const resp = await fetch(`/api/clientes/${datos.id_cliente}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ celular })
+            body: JSON.stringify({
+                nombre:           cliente.nombre,
+                apellido:         cliente.apellido,
+                telefono:         cliente.telefono,
+                celular,
+                fecha_nacimiento: cliente.fecha_nacimiento,
+                activo:           cliente.activo,
+                foto_perfil:      cliente.foto_perfil
+            })
         });
         const result = await resp.json();
+
+        if (resp.status === 409) {
+            const dup = result.cliente_duplicado;
+            const nombreDup = dup ? `${dup.nombre} ${dup.apellido}` : 'otro cliente';
+            fb.innerHTML = `
+              <span style="color:#b45309;font-weight:600">⚠️ Número duplicado</span><br>
+              <span style="color:#78350f">El ${celular} ya está registrado para <strong>${nombreDup}</strong>. Ingresa un número diferente.</span>`;
+            return;
+        }
 
         if (!resp.ok) {
             fb.innerHTML = `<span style="color:#dc2626">Error: ${result.message || 'No se pudo guardar.'}</span>`;
@@ -840,10 +990,11 @@ async function memb_guardarYEnviarWA() {
 }
 
 function estadoBadgeMini(estado, saldo, vencidas = 0) {
-    if (vencidas > 0)    return '<span class="tag-estado-vencida">Cuota vencida</span>';
-    if (saldo > 0)       return '<span class="tag-estado-pendiente">Saldo pend.</span>';
-    if (estado === 'activa')   return '<span class="tag-estado-activa">Activa</span>';
-    if (estado === 'vencida')  return '<span class="tag-estado-vencida">Vencida</span>';
+    if (vencidas > 0)           return '<span class="tag-estado-vencida">Cuota vencida</span>';
+    if (saldo > 0)              return '<span class="tag-estado-pendiente">Saldo pend.</span>';
+    if (estado === 'activa')    return '<span class="tag-estado-activa">Activa</span>';
+    if (estado === 'vencida')   return '<span class="tag-estado-vencida">Vencida</span>';
+    if (estado === 'programada') return '<span class="tag-estado-programada">Programada</span>';
     return `<span class="tag-estado-anulada">${estado}</span>`;
 }
 
@@ -853,6 +1004,7 @@ function estadoBadgeMini(estado, saldo, vencidas = 0) {
     const s = document.createElement('style');
     s.id = 'memb-anular-style';
     s.textContent = `
+    .tag-estado-programada { background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700; }
     .btn-anular-memb {
         display:inline-flex;align-items:center;gap:5px;
         padding:5px 11px;font-size:12px;font-weight:600;
@@ -867,6 +1019,7 @@ function estadoBadgeMini(estado, saldo, vencidas = 0) {
 
 // ─── MODAL CUOTAS (con pestaña de Historial) ──────────────────────────────────
 let _membresiaActivaCuotas = null;
+let _cuotasActivas = [];
 
 async function openModalCuotas(idMembresia, nombreCliente) {
     _membresiaActivaCuotas = idMembresia;
@@ -1010,6 +1163,7 @@ function toggleAbonos(id_pago) {
 }
 
 function renderCuotasModal(cuotas) {
+    _cuotasActivas = cuotas;
     const cont = document.getElementById('cuotasBody');
     if (!cuotas.length) {
         cont.innerHTML = '<div style="text-align:center;color:#bbb;padding:20px">Sin cuotas registradas</div>';
@@ -1053,6 +1207,12 @@ function renderCuotasModal(cuotas) {
                </button>`
             : '';
 
+        const btnBoleta = `<button title="Ver boleta de este pago"
+            style="background:#f3e8ff;color:#7c3aed;border:1px solid #ddd6fe;border-radius:8px;padding:4px 9px;font-size:11px;cursor:pointer"
+            onclick="abrirBoletaCuota(${c.id_pago})">
+            <i class="bi bi-receipt"></i>
+        </button>`;
+
         const accionHtml = (esPendiente || esVencido)
             ? `<div style="display:flex;gap:5px;justify-content:flex-end;align-items:center">
                 ${toggleBtn}
@@ -1061,9 +1221,10 @@ function renderCuotasModal(cuotas) {
                     <i class="bi bi-cash me-1"></i>Pagar
                 </button>
                </div>`
-            : tieneAbonos
-            ? `<div style="display:flex;justify-content:flex-end">${toggleBtn}</div>`
-            : `<span style="color:#bbb;font-size:12px">—</span>`;
+            : `<div style="display:flex;gap:5px;justify-content:flex-end;align-items:center">
+                ${toggleBtn}
+                ${btnBoleta}
+               </div>`;
 
         rowsHtml += `
         <tr style="border-bottom:1px solid #f0f0f0">
@@ -1230,6 +1391,54 @@ async function confirmarPagoCuota(idPago) {
     }
 }
 
+// ─── BOLETA DE CUOTA PAGADA ───────────────────────────────────────────────────
+function abrirBoletaCuota(idPago) {
+    const cuota = _cuotasActivas.find(c => c.id_pago === idPago);
+    if (!cuota) return;
+
+    const m = dataMembresias.find(x => x.id_membresia === _membresiaActivaCuotas);
+    if (!m) return;
+
+    const abonos = Array.isArray(cuota.abonos) ? cuota.abonos : [];
+    const montoPagado = abonos.length > 0
+        ? abonos.reduce((s, a) => s + parseFloat(a.monto || 0), 0)
+        : parseFloat(cuota.monto || 0);
+
+    const fmtF = f => {
+        if (!f) return '—';
+        const d = String(f).includes('T') ? new Date(f) : new Date(f + 'T12:00:00');
+        return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric' });
+    };
+
+    // Separar nombre y apellido desde nombre_cliente
+    const partesNombre = (m.nombre_cliente || '').trim().split(' ');
+    const nombre   = m.nombre   || partesNombre.slice(0, 2).join(' ') || '—';
+    const apellido = m.apellido || partesNombre.slice(2).join(' ')     || '';
+
+    const datos = {
+        id_membresia:    m.id_membresia,
+        id_cliente:      m.id_cliente,
+        num_comprobante: `C${String(cuota.num_cuota).padStart(2, '0')}-${String(idPago).padStart(4, '0')}`,
+        fecha_emision:   fmtF(cuota.fecha_pago || (abonos[0]?.fecha_pago)),
+        nombre,
+        apellido,
+        dni:       m.dni      || '—',
+        celular:   m.celular  || m.telefono || '—',
+        plan:      m.nombre_plan || '—',
+        duracion:  _fmtDuracion(m.duracion_meses, m.duracion_unidad || 'meses'),
+        fecha_inicio: fmtF(m.fecha_inicio),
+        fecha_fin:    fmtF(m.fecha_fin),
+        monto_total:  montoPagado,
+        monto_pagado: montoPagado,
+        metodo_pago:  cuota.metodo_pago || abonos[0]?.metodo_pago || '—',
+        cuotas:       [{ ...cuota, abonos }],
+        observaciones: ''
+    };
+
+    _boletaModalDatos = datos;
+    memb_mostrarModalBoleta(datos);
+}
+
 // ─── MODAL ESTADO MEMBRESÍA ───────────────────────────────────────────────────
 function openMembEstado(id, estado, saldo, obs) {
     document.getElementById('membEstadoId').value  = id;
@@ -1393,21 +1602,15 @@ function resetMembresiaForm() {
 // ─── SELECTS AUXILIARES ───────────────────────────────────────────────────────
 async function cargarPlanesSelect() {
     const sel = document.getElementById('membPlan');
-    sel.innerHTML = `<option value="">${_clienteEsRenovacion ? 'Seleccionar plan de renovación...' : 'Seleccionar plan...'}</option>`;
+    sel.innerHTML = '<option value="">Seleccionar plan...</option>';
     try {
-        const todos = dataPlanes.length
+        const planes = dataPlanes.length
             ? dataPlanes.filter(p => p.activo)
             : await api('GET', '/api/planes/activos');
 
-        // Filtrar según tipo de cliente: renovación ↔ nuevo/interdiario/rutina
-        const planes = todos.filter(p =>
-            _clienteEsRenovacion
-                ? p.tipo_cliente === 'renovacion'
-                : p.tipo_cliente !== 'renovacion'
-        );
-
         planes.forEach(p => {
             const precioRenov = p.precio_renovacion ? Number(p.precio_renovacion) : null;
+            const label       = { nuevo: 'Membresía', renovacion: 'Membresía', rutina: 'Rutina', interdiario: 'Interdiario' };
             sel.innerHTML += `<option value="${p.id_plan}"
                 data-precio="${p.precio}"
                 data-tipo="${p.tipo_cliente}"
@@ -1422,7 +1625,7 @@ async function cargarPlanesSelect() {
                 data-aplica-interes="${p.aplica_interes || false}"
                 data-tasa-interes="${p.tasa_interes || 0}"
                 data-tipo-interes="${p.tipo_interes || 'porcentaje'}">
-                ${p.nombre} — S/ ${p.precio}${precioRenov ? ` (renov. S/ ${precioRenov.toFixed(2)})` : ''}
+                [${label[p.tipo_cliente] || p.tipo_cliente}] ${p.nombre} — S/ ${p.precio}${precioRenov ? ` (renov. S/ ${precioRenov.toFixed(2)})` : ''}
             </option>`;
         });
     } catch (e) { console.warn(e); }
@@ -1888,13 +2091,19 @@ async function saveMembresia() {
     paso: 1,           // 1=DNI, 2=Datos cliente, 3=Plan, 4=Pago, 5=Confirmación
     clienteId: null,   // null = nuevo, número = existente
     clienteNuevo: true,
+    esRecurrente: false,
+    clienteEliminado: false,
     dniDatos: null,
     planSeleccionado: null,
     planes: [],
     membresias: [],
     pagina: 1,
     filtroEstado: '',
-    filtroBuscar: ''
+    filtroBuscar: '',
+    membresiaActiva: null,  // { fecha_inicio, fecha_fin, ... } | null
+    fechaSeleccionada: null,
+    calPagina: 0,
+    solapadoIgnorado: false
   };
 
   // ─── Inicialización ───────────────────────────────────────────────────────
@@ -1915,15 +2124,25 @@ async function saveMembresia() {
     });
     document.getElementById('btn-cerrar-memb-modal')?.addEventListener('click', cerrarModal);
 
-    // Búsqueda de DNI
+    // Búsqueda de documento (DNI / CE)
     document.getElementById('memb-dni-input')?.addEventListener('input', (e) => {
-      const v = e.target.value.replace(/\D/g, '').slice(0, 8);
-      e.target.value = v;
-      document.getElementById('btn-buscar-dni').disabled = v.length !== 8;
+      const tipo = document.getElementById('memb-tipo-doc')?.value || 'DNI';
+      let v = e.target.value;
+      if (tipo === 'DNI') {
+        v = v.replace(/\D/g, '').slice(0, 8);
+        e.target.value = v;
+        document.getElementById('btn-buscar-dni').disabled = v.length !== 8;
+      } else {
+        v = v.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toUpperCase();
+        e.target.value = v;
+        document.getElementById('btn-buscar-dni').disabled = v.length < 8;
+      }
     });
     document.getElementById('btn-buscar-dni')?.addEventListener('click', buscarDNI);
     document.getElementById('memb-dni-input')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && e.target.value.length === 8) buscarDNI();
+      const tipo = document.getElementById('memb-tipo-doc')?.value || 'DNI';
+      const len  = e.target.value.length;
+      if (e.key === 'Enter' && (tipo === 'DNI' ? len === 8 : len >= 4)) buscarDNI();
     });
 
     // Selección de plan
@@ -1971,8 +2190,15 @@ async function saveMembresia() {
     estado.paso = 1;
     estado.clienteId = null;
     estado.clienteNuevo = true;
+    estado.esRecurrente = false;
     estado.dniDatos = null;
     estado.planSeleccionado = null;
+
+    // Resetear selector de tipo de documento
+    const tipoDocSel = document.getElementById('memb-tipo-doc');
+    if (tipoDocSel) tipoDocSel.value = 'DNI';
+    const dniInput = document.getElementById('memb-dni-input');
+    if (dniInput) { dniInput.placeholder = 'Ej: 70123456'; dniInput.maxLength = 8; dniInput.inputMode = 'numeric'; }
 
     // Limpiar campos
     ['memb-dni-input', 'memb-nombre', 'memb-apellido',
@@ -2004,6 +2230,16 @@ async function saveMembresia() {
     const fi = document.getElementById('memb-fecha-inicio');
     if (fi) { fi.value = hoy; fi.min = hoy; }
 
+    estado.clienteEliminado = false;
+    estado.membresiaActiva = null;
+    estado.fechaSeleccionada = null;
+    estado.calPagina = 0;
+    const docInfo = document.getElementById('memb-p2-doc-info');
+    if (docInfo) docInfo.style.display = 'none';
+    const avisoReactivar = document.getElementById('memb-p2-reactivar-aviso');
+    if (avisoReactivar) avisoReactivar.style.display = 'none';
+    const calActiva = document.getElementById('memb-cal-activa');
+    if (calActiva) { calActiva.style.display = 'none'; calActiva.innerHTML = ''; }
     mostrarEstadoDNI('idle');
     irPaso(1);
   }
@@ -2019,49 +2255,92 @@ async function saveMembresia() {
       el.classList.toggle('completado', idx + 1 < n);
       el.classList.toggle('actual', idx + 1 === n);
     });
+    // Re-renderizar planes al llegar al paso 3 para aplicar precio de renovación si corresponde
+    if (n === 3) {
+      estado.solapadoIgnorado = false;
+      _actualizarCalendarioActiva();
+      if (estado.planes.length) renderizarPlanes(estado.planes);
+      const avisoSolap = document.getElementById('memb-solapamiento-aviso');
+      if (avisoSolap) { avisoSolap.style.display = 'none'; avisoSolap.innerHTML = ''; }
+    }
   }
 
-  // ─── Paso 1: Búsqueda DNI ─────────────────────────────────────────────────
+  // ─── Paso 1: Búsqueda DNI / CE ───────────────────────────────────────────
   async function buscarDNI() {
-    const dni = document.getElementById('memb-dni-input').value.trim();
-    if (dni.length !== 8) return;
+    const numero = document.getElementById('memb-dni-input').value.trim();
+    const tipo   = document.getElementById('memb-tipo-doc')?.value || 'DNI';
+    if (tipo === 'DNI' && numero.length !== 8) return;
+    if (tipo === 'CE'  && numero.length < 8)   return;
 
     mostrarEstadoDNI('cargando');
     document.getElementById('btn-buscar-dni').disabled = true;
 
     try {
       const token = localStorage.getItem('token');
+      const url   = `/api/membresias/dni/${numero}${tipo === 'CE' ? '?tipo=CE' : ''}`;
 
-      // Llama al backend propio que internamente consulta miapi.cloud
-      // El backend primero busca en BD local y luego en la API si no existe
-      const resp = await fetch(`/api/membresias/dni/${dni}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       const data = await resp.json();
 
       if (!data.ok) {
-        mostrarEstadoDNI('error', data.mensaje || 'No se encontró el DNI.');
+        if (tipo === 'CE') {
+          const contenedor = document.getElementById('memb-dni-estado');
+          contenedor.className = 'memb-dni-estado memb-dni-error';
+          contenedor.innerHTML = `
+            <span class="dni-icono">❌</span>
+            <span>${data.mensaje || 'CE no encontrado en el registro oficial.'}</span>
+            <button type="button" class="memb-btn-manual" onclick="membIngresarManual()">
+              Ingresar manualmente
+            </button>`;
+        } else {
+          mostrarEstadoDNI('error', data.mensaje || `No se encontró el ${tipo}.`);
+        }
         return;
       }
 
       estado.dniDatos = data;
 
       if (data.ya_existe) {
-        // Cliente registrado en BD — cargar datos y saltar a paso 3 (plan)
         const c = data.cliente;
+
+        // Bloquear si tiene deuda con plazo vigente
+        if (data.deuda_vigente) {
+          const dv = data.deuda_vigente;
+          const fechaStr = new Date(dv.fecha_limite).toLocaleDateString('es-PE');
+          const contenedor = document.getElementById('memb-dni-estado');
+          contenedor.className = 'memb-dni-estado memb-dni-error';
+          contenedor.innerHTML = `
+            <span class="dni-icono">⚠️</span>
+            <span><strong>${c.nombre} ${c.apellido}</strong> tiene una deuda pendiente de <strong>S/ ${dv.saldo.toFixed(2)}</strong>. Debe pagar antes del ${fechaStr} para continuar.</span>`;
+          return;
+        }
+
         estado.clienteId = c.id_cliente;
         estado.clienteNuevo = false;
+        estado.esRecurrente = !!data.es_recurrente;
+        estado.membresiaActiva = data.membresia_activa || null;
         rellenarDatosCliente(c.nombre, c.apellido, c.telefono, c.celular, c.fecha_nacimiento);
-        mostrarEstadoDNI('encontrado', `${c.nombre} ${c.apellido} — ya registrado, selecciona el plan`);
-        setTimeout(() => irPaso(3), 900);
+
+        if (data.cliente_eliminado) {
+          estado.clienteEliminado = true;
+          const aviso = document.getElementById('memb-p2-reactivar-aviso');
+          if (aviso) aviso.style.display = 'block';
+          mostrarEstadoDNI('nuevo', `${c.nombre} ${c.apellido} — cliente eliminado, datos precargados`);
+          setTimeout(() => { poblarDocInfoP2(); irPaso(2); }, 700);
+        } else {
+          const renovLabel = estado.esRecurrente ? ' · 🔄 Cliente recurrente' : '';
+          mostrarEstadoDNI('encontrado', `${c.nombre} ${c.apellido} — ya registrado${renovLabel}, selecciona el plan`);
+          setTimeout(() => irPaso(3), 900);
+        }
       } else {
-        // Cliente nuevo desde miapi.cloud — pre-rellenar nombre y apellido
-        const d = data.datos_dni;   // { nombre, apellido, dni }
+        const d = data.datos_dni;
+        const fuente = data.fuente === 'api_migraciones' ? 'Migraciones' : 'RENIEC';
         estado.clienteNuevo = true;
         estado.clienteId = null;
+        estado.membresiaActiva = null;
         rellenarDatosCliente(d.nombre, d.apellido, '', '', '');
-        mostrarEstadoDNI('nuevo', `Datos de RENIEC: ${d.nombre} ${d.apellido}`);
-        setTimeout(() => irPaso(2), 700);
+        mostrarEstadoDNI('nuevo', `Datos de ${fuente}: ${d.nombre} ${d.apellido}`);
+        setTimeout(() => { poblarDocInfoP2(); irPaso(2); }, 700);
       }
     } catch (err) {
       console.error('buscarDNI error:', err);
@@ -2069,6 +2348,25 @@ async function saveMembresia() {
     } finally {
       document.getElementById('btn-buscar-dni').disabled = false;
     }
+  }
+
+  function onMembTipoDocChange() {
+    const tipo  = document.getElementById('memb-tipo-doc')?.value || 'DNI';
+    const input = document.getElementById('memb-dni-input');
+    if (!input) return;
+    if (tipo === 'DNI') {
+      input.placeholder  = 'Ej: 70123456';
+      input.maxLength    = 8;
+      input.inputMode    = 'numeric';
+      input.value        = input.value.replace(/\D/g, '').slice(0, 8);
+    } else {
+      input.placeholder  = 'Ej: 000123456';
+      input.maxLength    = 12;
+      input.inputMode    = 'text';
+      input.value        = input.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toUpperCase();
+    }
+    document.getElementById('btn-buscar-dni').disabled = true;
+    mostrarEstadoDNI('idle');
   }
 
   function rellenarDatosCliente(nombre, apellido, telefono, celular, fechaNac) {
@@ -2094,7 +2392,18 @@ async function saveMembresia() {
   }
 
   // ─── Paso 2: Datos del cliente ────────────────────────────────────────────
+  function poblarDocInfoP2() {
+    const tipo    = document.getElementById('memb-tipo-doc')?.value || 'DNI';
+    const num     = document.getElementById('memb-dni-input')?.value || '';
+    const docInfo = document.getElementById('memb-p2-doc-info');
+    if (!docInfo) return;
+    document.getElementById('memb-p2-tipo-doc').textContent = tipo === 'CE' ? 'Carnet de Extranjería' : 'DNI';
+    document.getElementById('memb-p2-num-doc').textContent  = num;
+    docInfo.style.display = num ? 'block' : 'none';
+  }
+
   function irPaso2() {
+    poblarDocInfoP2();
     irPaso(2);
   }
 
@@ -2123,6 +2432,317 @@ async function saveMembresia() {
       if (telReq1)  telReq1.innerHTML      = '';
     }
   }
+
+  // ─── Calendario membresía activa en paso 3 ────────────────────────────────
+  function _actualizarCalendarioActiva() {
+    const fi   = document.getElementById('memb-fecha-inicio');
+    const wrap = document.getElementById('memb-cal-activa');
+    const ma   = estado.membresiaActiva;
+
+    const hoy = new Date(); hoy.setHours(12, 0, 0, 0);
+    let minDate = hoy.toISOString().split('T')[0];
+
+    // Primer día realmente disponible: hoy si no está bloqueado, o primer hueco / post-último bloque
+    if (ma && ma.memberships && ma.memberships.length > 0) {
+      const bloquesInit = ma.memberships.map(m => ({
+        ini: new Date(m.fecha_inicio + 'T12:00:00'),
+        fin: new Date(m.fecha_fin    + 'T12:00:00')
+      }));
+      let candidato = new Date(hoy);
+      for (let i = 0; i < 400; i++) {
+        if (!bloquesInit.some(b => candidato >= b.ini && candidato <= b.fin)) break;
+        candidato.setDate(candidato.getDate() + 1);
+      }
+      minDate = candidato.toISOString().split('T')[0];
+    }
+
+    // fi.min = hoy para que fechas en huecos (anteriores al último bloque) sean válidas
+    if (fi) { fi.min = hoy.toISOString().split('T')[0]; fi.value = minDate; }
+    estado.fechaSeleccionada = minDate;
+
+    // Navegar al mes del primer día disponible (puede ser un hueco cercano)
+    const dMin = new Date(minDate + 'T12:00:00');
+    const hoyY = hoy.getFullYear(), hoyM = hoy.getMonth();
+    estado.calPagina = Math.max(0, (dMin.getFullYear() - hoyY) * 12 + (dMin.getMonth() - hoyM));
+
+    if (wrap) {
+      wrap.style.display = 'block';
+      _renderCalActiva(wrap, ma);
+    }
+  }
+
+  function _renderCalActiva(wrap, ma) {
+    const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const DIAS  = ['L','M','M','J','V','S','D'];
+
+    const hoy = new Date(); hoy.setHours(12, 0, 0, 0);
+    const fmtCorta = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+
+    // Construir rangos de bloqueo desde la lista individual de membresías
+    const bloques = (ma && ma.memberships && ma.memberships.length > 0)
+      ? ma.memberships.map(m => ({
+          ini:    new Date(m.fecha_inicio + 'T12:00:00'),
+          fin:    new Date(m.fecha_fin    + 'T12:00:00'),
+          estado: m.estado,
+          plan:   m.plan
+        }))
+      : [];
+
+    let finBlocked = null;
+    if (bloques.length > 0) {
+      finBlocked = bloques.reduce((max, b) => b.fin > max ? b.fin : max, bloques[0].fin);
+    }
+
+    // Primer día realmente disponible: hoy si no está bloqueado, o primer hueco / post-último
+    let primerDispDate = new Date(hoy);
+    for (let i = 0; i < 400; i++) {
+      if (!bloques.some(b => primerDispDate >= b.ini && primerDispDate <= b.fin)) break;
+      primerDispDate.setDate(primerDispDate.getDate() + 1);
+    }
+
+    // Calcular rango del nuevo plan (preview)
+    let previewIni = null, previewFin = null;
+    if (estado.planSeleccionado && estado.fechaSeleccionada) {
+      previewIni = new Date(estado.fechaSeleccionada + 'T12:00:00');
+      const pFinStr = wiz_calcFechaFin(estado.fechaSeleccionada,
+        estado.planSeleccionado.meses, estado.planSeleccionado.unidad);
+      previewFin = new Date(pFinStr + 'T12:00:00');
+    }
+
+    // Encabezado con un badge por cada membresía en la cola
+    let headerHtml = '';
+    if (ma && bloques.length > 0) {
+      const badgeHtml = bloques.map(b => {
+        const fi = fmtCorta(b.ini), ff = fmtCorta(b.fin);
+        if (b.estado === 'activa' || b.estado === 'congelada') {
+          return `<div class="mca-badge">⛔ Activa — <strong>${b.plan}</strong> <span class="mca-badge-dates">${fi} → ${ff}</span></div>`;
+        }
+        return `<div class="mca-badge mca-badge-prog">📅 Reservada — <strong>${b.plan}</strong> <span class="mca-badge-dates">${fi} → ${ff}</span></div>`;
+      }).join('');
+      headerHtml = `<div class="mca-header">
+        ${badgeHtml}
+        <div class="mca-aviso">Puedes registrar desde el <strong>${fmtCorta(primerDispDate)}</strong></div>
+      </div>`;
+    }
+
+    // Meses a mostrar: página actual (1 mes por página)
+    const pagina = estado.calPagina || 0;
+    const base = new Date(hoy.getFullYear(), hoy.getMonth() + pagina, 1);
+    const meses = [
+      new Date(base.getFullYear(), base.getMonth(), 1)
+    ];
+
+    const renderMes = (mesStart) => {
+      const y = mesStart.getFullYear();
+      const m = mesStart.getMonth();
+      const totalDias = new Date(y, m + 1, 0).getDate();
+      let dow = new Date(y, m, 1).getDay();
+      dow = dow === 0 ? 6 : dow - 1;
+
+      let html = `<div class="memb-cal-month">
+        <div class="memb-cal-month-name">${MESES[m]} ${y}</div>
+        <div class="memb-cal-grid-dias">
+          ${DIAS.map(d => `<div class="memb-cal-dia-header">${d}</div>`).join('')}
+          ${Array(dow).fill('<div class="memb-cal-dia-vacio"></div>').join('')}`;
+
+      for (let day = 1; day <= totalDias; day++) {
+        const fecha = new Date(y, m, day, 12, 0, 0);
+        const fechaStr = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+
+        const isBlocked  = bloques.some(b => fecha >= b.ini && fecha <= b.fin);
+        const isPast     = fecha < hoy;
+        const isSelected = fechaStr === estado.fechaSeleccionada;
+        const isMinDisp  = !isSelected && !isBlocked && !isPast && fecha.toDateString() === primerDispDate.toDateString();
+        const isHoy      = !isBlocked && !isPast && !isSelected && fecha.toDateString() === hoy.toDateString();
+        const isPreview  = !isSelected && previewIni && previewFin && fecha >= previewIni && fecha <= previewFin;
+        const isConflicto = isPreview && isBlocked;
+        const isDisp     = !isBlocked && !isPast && !isSelected && !isMinDisp && !isHoy && !isPreview;
+
+        let cls = 'memb-cal-dia';
+        if (isSelected)         cls += ' mca-selected';
+        else if (isConflicto)   cls += ' mca-conflicto';
+        else if (isBlocked)     cls += ' mca-bloqueado';
+        else if (isPast)        cls += ' mca-pasado';
+        else if (isPreview)     cls += ' mca-preview';
+        else if (isMinDisp) cls += ' mca-primer';
+        else if (isHoy)         cls += ' mca-hoy';
+        else if (isDisp)        cls += ' mca-disponible';
+
+        const canClick  = !isBlocked && !isPast;
+        const onclick   = canClick ? ` onclick="window._mcaSelFecha('${fechaStr}')"` : '';
+        const title     = isBlocked ? 'Período ocupado' : isPast ? 'Fecha pasada' : isSelected ? 'Seleccionado' : isPreview ? 'Nueva membresía' : '';
+
+        html += `<div class="${cls}"${title ? ` title="${title}"` : ''}${onclick}>${day}</div>`;
+      }
+
+      html += `</div></div>`;
+      return html;
+    };
+
+    const selLabel = estado.fechaSeleccionada
+      ? (() => { const d = new Date(estado.fechaSeleccionada + 'T12:00:00'); return fmtCorta(d); })()
+      : '—';
+
+    const leyendaExtra = ma
+      ? `<span class="mca-leyenda-item"><span class="mca-dot mca-bloqueado"></span>Período ocupado</span>
+         <span class="mca-leyenda-item"><span class="mca-dot mca-primer"></span>Primer día libre</span>`
+      : '';
+    const leyendaPreview = previewIni
+      ? `<span class="mca-leyenda-item"><span class="mca-dot mca-preview-dot"></span>Nueva membresía</span>
+         <span class="mca-leyenda-item"><span class="mca-dot mca-conflicto-dot"></span>Cruce de fechas</span>`
+      : '';
+
+    wrap.innerHTML = `
+      <div class="mca-wrap${ma ? '' : ' mca-wrap-libre'}">
+        ${headerHtml}
+        <div class="mca-fecha-sel-label">📅 Fecha de inicio: <strong>${selLabel}</strong></div>
+        <div class="mca-nav-row">
+          <button type="button" class="mca-nav-btn" ${pagina === 0 ? 'disabled' : ''} onclick="window._mcaNavegar(-1)">&#8592;</button>
+          <div class="mca-meses-row">${meses.map(renderMes).join('')}</div>
+          <button type="button" class="mca-nav-btn" onclick="window._mcaNavegar(1)">&#8594;</button>
+        </div>
+        <div class="mca-leyenda">
+          ${leyendaExtra}
+          ${leyendaPreview}
+          <span class="mca-leyenda-item"><span class="mca-dot mca-selected"></span>Seleccionado</span>
+          <span class="mca-leyenda-item"><span class="mca-dot mca-disponible-dot"></span>Disponible</span>
+        </div>
+      </div>`;
+  }
+
+  window._mcaSelFecha = function(fechaStr) {
+    const fi = document.getElementById('memb-fecha-inicio');
+    if (fi) fi.value = fechaStr;
+    estado.fechaSeleccionada = fechaStr;
+    estado.solapadoIgnorado = false;
+    const wrap = document.getElementById('memb-cal-activa');
+    if (wrap) _renderCalActiva(wrap, estado.membresiaActiva);
+    if (estado.planSeleccionado) {
+      const solapados = _detectarSolapamiento(fechaStr, estado.planSeleccionado);
+      if (solapados && solapados.length > 0) _mostrarAvisoSolap(solapados);
+      else _ocultarAvisoSolap();
+    }
+  };
+
+  window._mcaNavegar = function(delta) {
+    estado.calPagina = Math.max(0, (estado.calPagina || 0) + delta);
+    const wrap = document.getElementById('memb-cal-activa');
+    if (wrap) _renderCalActiva(wrap, estado.membresiaActiva);
+  };
+
+  // ─── Detección de solapamiento ─────────────────────────────────────────────
+  function _detectarSolapamiento(fechaInicioStr, plan) {
+    if (!plan || !fechaInicioStr) return null;
+    const ma = estado.membresiaActiva;
+    if (!ma || !ma.memberships || ma.memberships.length === 0) return null;
+    const fechaFinStr = wiz_calcFechaFin(fechaInicioStr, plan.meses, plan.unidad);
+    const ini = new Date(fechaInicioStr + 'T12:00:00');
+    const fin = new Date(fechaFinStr + 'T12:00:00');
+    const solapados = ma.memberships.filter(m => {
+      const mIni = new Date(m.fecha_inicio + 'T12:00:00');
+      const mFin = new Date(m.fecha_fin    + 'T12:00:00');
+      return ini <= mFin && fin >= mIni;
+    });
+    return solapados.length > 0 ? solapados : null;
+  }
+
+  // Calcula la próxima fecha libre por desplazamiento en cascada
+  function _calcFechaAutoSlot() {
+    const plan = estado.planSeleccionado;
+    const ma   = estado.membresiaActiva;
+    const hoy  = new Date(); hoy.setHours(12, 0, 0, 0);
+    if (!plan) return null;
+    if (!ma || !ma.memberships || ma.memberships.length === 0) {
+      return hoy.toISOString().split('T')[0];
+    }
+    const bloques = ma.memberships
+      .map(m => ({ ini: new Date(m.fecha_inicio + 'T12:00:00'), fin: new Date(m.fecha_fin + 'T12:00:00') }))
+      .filter(b => b.fin >= hoy)
+      .sort((a, b) => a.ini - b.ini);
+    if (bloques.length === 0) return hoy.toISOString().split('T')[0];
+    let candidato = new Date(hoy);
+    for (let iter = 0; iter < 30; iter++) {
+      const cStr   = candidato.toISOString().split('T')[0];
+      const finStr = wiz_calcFechaFin(cStr, plan.meses, plan.unidad);
+      const finC   = new Date(finStr + 'T12:00:00');
+      const solap  = bloques.find(b => candidato <= b.fin && finC >= b.ini);
+      if (!solap) break;
+      candidato = new Date(solap.fin);
+      candidato.setDate(candidato.getDate() + 1);
+      candidato.setHours(12, 0, 0, 0);
+    }
+    return candidato.toISOString().split('T')[0];
+  }
+
+  // Actualiza el calendario con el preview del plan y verifica solapamiento
+  function _actualizarPreviewPlan() {
+    const plan = estado.planSeleccionado;
+    const fi   = estado.fechaSeleccionada;
+    const wrap = document.getElementById('memb-cal-activa');
+    if (!plan || !fi) return;
+    if (wrap) { wrap.style.display = 'block'; _renderCalActiva(wrap, estado.membresiaActiva); }
+    if (!estado.solapadoIgnorado) {
+      const solapados = _detectarSolapamiento(fi, plan);
+      if (solapados && solapados.length > 0) _mostrarAvisoSolap(solapados);
+      else _ocultarAvisoSolap();
+    }
+  }
+
+  function _mostrarAvisoSolap(solapados) {
+    const aviso = document.getElementById('memb-solapamiento-aviso');
+    if (!aviso) return;
+    const fmtC = str => {
+      const d = new Date(str + 'T12:00:00');
+      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+    };
+    const lista = solapados.map(m =>
+      `<li><strong>${m.plan}</strong> (${fmtC(m.fecha_inicio)} → ${fmtC(m.fecha_fin)}, ${m.estado})</li>`
+    ).join('');
+    aviso.innerHTML = `
+      <div class="memb-solap-aviso-wrap">
+        <div class="memb-solap-aviso-titulo">⚠️ Cruce de fechas detectado</div>
+        <p class="memb-solap-aviso-desc">La membresía nueva se cruza con:</p>
+        <ul class="memb-solap-aviso-lista">${lista}</ul>
+        <div class="memb-solap-aviso-acciones">
+          <button class="memb-solap-btn memb-solap-btn-manual" onclick="window._msSolapManual()">📅 Mover manualmente</button>
+          <button class="memb-solap-btn memb-solap-btn-auto"   onclick="window._msSolapAuto()">🔄 Mover automáticamente</button>
+          <button class="memb-solap-btn memb-solap-btn-anyway" onclick="window._msSolapAnyway()">✅ Matricular de todas formas</button>
+        </div>
+      </div>`;
+    aviso.style.display = 'block';
+  }
+
+  function _ocultarAvisoSolap() {
+    const aviso = document.getElementById('memb-solapamiento-aviso');
+    if (aviso) { aviso.style.display = 'none'; aviso.innerHTML = ''; }
+  }
+
+  window._msSolapManual = function() {
+    _ocultarAvisoSolap();
+    const wrap = document.getElementById('memb-cal-activa');
+    if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  window._msSolapAuto = function() {
+    const nuevaFecha = _calcFechaAutoSlot();
+    if (!nuevaFecha) return;
+    const fi = document.getElementById('memb-fecha-inicio');
+    if (fi) fi.value = nuevaFecha;
+    estado.fechaSeleccionada = nuevaFecha;
+    _ocultarAvisoSolap();
+    const wrap = document.getElementById('memb-cal-activa');
+    if (wrap) _renderCalActiva(wrap, estado.membresiaActiva);
+    // Navegar al mes correcto
+    const hoy = new Date(); hoy.setHours(12, 0, 0, 0);
+    const d   = new Date(nuevaFecha + 'T12:00:00');
+    estado.calPagina = Math.max(0, (d.getFullYear() - hoy.getFullYear()) * 12 + (d.getMonth() - hoy.getMonth()));
+    if (wrap) _renderCalActiva(wrap, estado.membresiaActiva);
+  };
+
+  window._msSolapAnyway = function() {
+    estado.solapadoIgnorado = true;
+    _ocultarAvisoSolap();
+  };
 
   function wiz_onFechaNacChange() {
     const fnac = document.getElementById('memb-fecha-nac').value;
@@ -2192,10 +2812,38 @@ async function saveMembresia() {
     }
 
     const etiqUnidad = { dias: 'día(s)', meses: 'mes(es)', anos: 'año(s)' };
-    grid.innerHTML = planes.map(p => `
+
+    const badgeLabel  = { nuevo: 'Membresía', renovacion: 'Membresía', rutina: 'Rutina', interdiario: 'Interdiario' };
+    const badgeColor  = { nuevo: '#1976d2', renovacion: '#1976d2', rutina: '#6d4c41', interdiario: '#6a1b9a' };
+
+    // Banner de cliente recurrente (se elimina/agrega en cada render)
+    const bannerPrev = document.getElementById('memb-renov-banner');
+    if (bannerPrev) bannerPrev.remove();
+    if (estado.esRecurrente) {
+      grid.insertAdjacentHTML('beforebegin',
+        `<div id="memb-renov-banner" style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 12px;font-size:12px;color:#2e7d32;margin-bottom:10px">
+           🔄 <strong>Cliente recurrente</strong> · Se aplica precio de renovación en los planes que lo tienen
+         </div>`
+      );
+    }
+
+    grid.innerHTML = planes.map(p => {
+      const tipo   = p.tipo_cliente || 'nuevo';
+      const badge  = badgeLabel[tipo] || tipo;
+      const bColor = badgeColor[tipo] || '#555';
+      const precioBase  = parseFloat(p.precio);
+      const precioRenov = parseFloat(p.precio_renovacion);
+      const usarRenov   = estado.esRecurrente && !isNaN(precioRenov) && precioRenov > 0;
+      const precioEfect = usarRenov ? precioRenov : precioBase;
+      const precioHtml  = usarRenov && precioRenov !== precioBase
+        ? `<div class="memb-plan-card-precio">S/ ${precioRenov.toFixed(2)}</div>
+           <div style="font-size:11px;color:#aaa;text-decoration:line-through;margin-top:-4px">S/ ${precioBase.toFixed(2)}</div>`
+        : `<div class="memb-plan-card-precio">S/ ${precioEfect.toFixed(2)}</div>`;
+      return `
       <div class="memb-plan-card"
            data-id="${p.id_plan}"
            data-precio="${p.precio}"
+           data-precio-renov="${p.precio_renovacion || ''}"
            data-nombre="${p.nombre}"
            data-meses="${p.duracion_meses}"
            data-unidad="${p.duracion_unidad || 'meses'}"
@@ -2206,25 +2854,30 @@ async function saveMembresia() {
            data-dias-limite="${p.dias_limite_fraccion || 20}"
            data-apl-interes="${p.aplica_interes || false}"
            data-tasa-interes="${p.tasa_interes || 0}"
-           data-tipo-interes="${p.tipo_interes || 'porcentaje'}">
+           data-tipo-interes="${p.tipo_interes || 'porcentaje'}"
+           data-tipo="${tipo}">
+        <span class="memb-plan-badge" style="background:${bColor}">${badge}</span>
         <div class="memb-plan-card-nombre">${p.nombre}</div>
         <div class="memb-plan-card-duracion">${p.duracion_meses} ${etiqUnidad[p.duracion_unidad || 'meses']}</div>
-        <div class="memb-plan-card-precio">S/ ${parseFloat(p.precio).toFixed(2)}</div>
+        ${precioHtml}
         ${p.permite_fraccion && p.max_cuotas > 1 ? `<div class="memb-plan-card-desc" style="color:#1976d2;font-weight:600">Hasta ${p.max_cuotas} cuotas</div>` : ''}
         ${p.descripcion ? `<div class="memb-plan-card-desc">${p.descripcion}</div>` : ''}
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   }
 
   function seleccionarPlan(idPlan) {
-    document.querySelectorAll('.memb-plan-card').forEach(c => c.classList.remove('seleccionado'));
     const card = document.querySelector(`.memb-plan-card[data-id="${idPlan}"]`);
-    if (!card) return;
+    if (!card || card.classList.contains('plan-deshabilitado')) return;
+    document.querySelectorAll('.memb-plan-card').forEach(c => c.classList.remove('seleccionado'));
     card.classList.add('seleccionado');
+    const precioBase  = parseFloat(card.dataset.precio);
+    const precioRenov = parseFloat(card.dataset.precioRenov);
+    const usarRenov   = estado.esRecurrente && !isNaN(precioRenov) && precioRenov > 0;
     estado.planSeleccionado = {
       id:          idPlan,
       nombre:      card.dataset.nombre,
-      precio:      parseFloat(card.dataset.precio),
+      precio:      usarRenov ? precioRenov : precioBase,
       meses:       parseInt(card.dataset.meses),
       unidad:      card.dataset.unidad || 'meses',
       fraccion:    card.dataset.fraccion === 'true',
@@ -2236,6 +2889,8 @@ async function saveMembresia() {
       tasaInteres: parseFloat(card.dataset.tasaInteres) || 0,
       tipoInteres: card.dataset.tipoInteres || 'porcentaje'
     };
+    estado.solapadoIgnorado = false;
+    _actualizarPreviewPlan();
   }
 
   function irPaso4() {
@@ -2317,7 +2972,7 @@ async function saveMembresia() {
   }
 
   function wiz_calcFechaFin(fi, valor, unidad) {
-    if (!fi || !valor) return '—';
+    if (!fi || valor == null) return '—';
     const d = new Date(fi + 'T12:00:00');
     if (unidad === 'dias')      d.setDate(d.getDate() + valor);
     else if (unidad === 'anos') d.setFullYear(d.getFullYear() + valor);
@@ -2503,14 +3158,47 @@ async function saveMembresia() {
     btn.disabled = true;
     btn.textContent = 'Procesando…';
 
-    const token = localStorage.getItem('token');
-    const dni   = document.getElementById('memb-dni-input').value;
+    const token     = localStorage.getItem('token');
+    const dni       = document.getElementById('memb-dni-input').value;
+    const tipo_documento = document.getElementById('memb-tipo-doc')?.value || 'DNI';
 
     try {
       let idCliente = estado.clienteId;
 
+      // Si el cliente estaba eliminado, reactivarlo con los datos actualizados del formulario
+      if (estado.clienteEliminado) {
+        const ce1Nom = document.getElementById('memb-ce1-nombre')?.value.trim();
+        const ce1Par = document.getElementById('memb-ce1-parentesco')?.value.trim();
+        const ce1Tel = document.getElementById('memb-ce1-telefono')?.value.trim();
+        const ce2Nom = document.getElementById('memb-ce2-nombre')?.value.trim();
+        const ce2Par = document.getElementById('memb-ce2-parentesco')?.value.trim();
+        const ce2Tel = document.getElementById('memb-ce2-telefono')?.value.trim();
+        const contactos_emergencia = [];
+        if (ce1Tel) contactos_emergencia.push({ nombre: ce1Nom, parentesco: ce1Par, telefono: ce1Tel });
+        if (ce2Tel) contactos_emergencia.push({ nombre: ce2Nom, parentesco: ce2Par, telefono: ce2Tel });
+
+        const respReactivar = await fetch('/api/clientes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            dni,
+            tipo_documento,
+            nombre:           document.getElementById('memb-nombre').value.trim(),
+            apellido:         document.getElementById('memb-apellido').value.trim(),
+            celular:          document.getElementById('memb-celular').value.trim() || null,
+            fecha_nacimiento: document.getElementById('memb-fecha-nac').value || null,
+            contactos_emergencia
+          })
+        });
+        const dataReactivar = await respReactivar.json();
+        if (!respReactivar.ok) {
+          mostrarError('memb-paso4-error', dataReactivar.message || 'Error al reactivar el cliente.');
+          return;
+        }
+        idCliente = dataReactivar.id_cliente;
+
       // Si es cliente nuevo, crearlo primero
-      if (estado.clienteNuevo) {
+      } else if (estado.clienteNuevo) {
         // Armar contactos de emergencia
         const ce1Nom = document.getElementById('memb-ce1-nombre')?.value.trim();
         const ce1Par = document.getElementById('memb-ce1-parentesco')?.value.trim();
@@ -2527,6 +3215,7 @@ async function saveMembresia() {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             dni,
+            tipo_documento,
             nombre:                document.getElementById('memb-nombre').value.trim(),
             apellido:              document.getElementById('memb-apellido').value.trim(),
             celular:               document.getElementById('memb-celular').value.trim() || null,
@@ -2562,7 +3251,7 @@ async function saveMembresia() {
       const data = await resp.json();
 
       if (resp.ok) {
-        wiz_mostrarExito(data);
+        wiz_mostrarExito(data, idCliente);
         irPaso(5);
       } else {
         mostrarError('memb-paso4-error', data.message || 'Error al crear la membresía.');
@@ -2575,7 +3264,7 @@ async function saveMembresia() {
     }
   }
 
-  function wiz_mostrarExito(data) {
+  function wiz_mostrarExito(data, idCliente) {
     const c = document.getElementById('memb-exito-contenido');
     if (!c) return;
 
@@ -2588,6 +3277,7 @@ async function saveMembresia() {
 
     estado.ultimaBoletaDatos = {
       id_membresia:   data.id_membresia,
+      id_cliente:     idCliente,
       num_comprobante: `B001-${String(data.id_membresia).padStart(4, '0')}`,
       fecha_emision:  new Date().toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
       nombre:         document.getElementById('memb-nombre')?.value.trim() || '—',
@@ -2705,7 +3395,7 @@ async function saveMembresia() {
       ${hr}
       ${secLabel('Detalle del servicio')}
       ${row('Plan:', d.plan)}
-      ${row('F. Matrícula:', d.fecha_inicio)}
+      ${row('F. Matrícula:', d.fecha_emision)}
       ${row('F. Inicio:', d.fecha_inicio)}
       ${row('F. Vencimiento:', d.fecha_fin)}
       ${row('Tiempo contratado:', d.duracion)}
@@ -2759,7 +3449,7 @@ async function saveMembresia() {
     const datos = estado.ultimaBoletaDatos;
     if (!datos) return;
     const tel = (datos.celular || '').replace(/\D/g, '');
-    if (!tel) { alert('El cliente no tiene número de teléfono registrado.'); return; }
+    if (!tel) { memb_mostrarModalRegistrarTel(); return; }
 
     const btn = document.querySelector('.memb-btn-whatsapp');
     const originalHTML = btn ? btn.innerHTML : '';
@@ -2803,11 +3493,100 @@ _¡Gracias por confiar en Volcano Gym! 💪_`;
 
     } catch (err) {
       console.error('Error generando PDF:', err);
-      alert('No se pudo generar el PDF. Intenta de nuevo.');
+      showToast('No se pudo generar el PDF. Intenta de nuevo.', 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
     }
   };
+
+  // ─── Modal registrar teléfono (nueva membresía sin celular) ───────────────
+  function memb_mostrarModalRegistrarTel() {
+    document.getElementById('memb-tel-reg-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'memb-tel-reg-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:14px;padding:26px 24px;width:340px;max-width:92vw;box-shadow:0 8px 32px rgba(0,0,0,.28)">
+        <div style="font-size:17px;font-weight:700;color:#111;margin-bottom:6px">📱 Registrar número de celular</div>
+        <div style="font-size:13px;color:#555;margin-bottom:18px">El cliente no tiene celular registrado. Ingresa el número para guardarlo y enviar el comprobante por WhatsApp.</div>
+        <input type="tel" id="memb-tel-reg-input" placeholder="9XXXXXXXX" maxlength="9"
+          style="width:100%;box-sizing:border-box;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:9px;font-size:14px;outline:none;margin-bottom:6px">
+        <div id="memb-tel-reg-fb" style="font-size:12px;color:#dc2626;min-height:18px;margin-bottom:14px"></div>
+        <div style="display:flex;gap:8px">
+          <button onclick="document.getElementById('memb-tel-reg-overlay').remove()"
+              style="flex:1;padding:10px;background:#f3f4f6;color:#374151;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+            Cancelar
+          </button>
+          <button id="memb-tel-reg-btn" onclick="memb_guardarTelYEnviarWA()"
+              style="flex:2;padding:10px;background:#25d366;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+            💾 Guardar y enviar WhatsApp
+          </button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    setTimeout(() => document.getElementById('memb-tel-reg-input')?.focus(), 50);
+  }
+
+  window.memb_guardarTelYEnviarWA = async function memb_guardarTelYEnviarWA() {
+    const datos  = estado.ultimaBoletaDatos;
+    const input  = document.getElementById('memb-tel-reg-input');
+    const fb     = document.getElementById('memb-tel-reg-fb');
+    const celular = (input?.value.trim() || '').replace(/\D/g, '');
+
+    if (!celular || celular.length < 9) {
+      if (fb) fb.textContent = 'Ingresa un número válido (9 dígitos, ej: 987654321).';
+      return;
+    }
+
+    const btn = document.getElementById('memb-tel-reg-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    if (fb) fb.innerHTML = '';
+
+    try {
+      const token = localStorage.getItem('token');
+
+      // Obtener datos actuales del cliente para no pisar otros campos
+      const getResp = await fetch(`/api/clientes/${datos.id_cliente}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!getResp.ok) { if (fb) fb.textContent = 'No se pudo obtener los datos del cliente.'; return; }
+      const cliente = await getResp.json();
+
+      const resp = await fetch(`/api/clientes/${datos.id_cliente}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          nombre:           cliente.nombre,
+          apellido:         cliente.apellido,
+          telefono:         cliente.telefono,
+          celular,
+          fecha_nacimiento: cliente.fecha_nacimiento,
+          activo:           cliente.activo,
+          foto_perfil:      cliente.foto_perfil
+        })
+      });
+      const result = await resp.json();
+
+      if (resp.status === 409) {
+        const dup = result.cliente_duplicado;
+        const nombreDup = dup ? `${dup.nombre} ${dup.apellido}` : 'otro cliente';
+        if (fb) fb.innerHTML = `
+          <span style="color:#b45309;font-weight:600">⚠️ Número duplicado</span><br>
+          <span style="color:#78350f">El ${celular} ya está registrado para <strong>${nombreDup}</strong>. Ingresa un número diferente.</span>`;
+        return;
+      }
+
+      if (!resp.ok) { if (fb) fb.textContent = result.message || 'No se pudo guardar el número.'; return; }
+
+      datos.celular = celular;
+      document.getElementById('memb-tel-reg-overlay')?.remove();
+      await window.memb_enviarWhatsApp();
+    } catch {
+      if (fb) fb.textContent = 'Error de conexión al guardar.';
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar y enviar WhatsApp'; }
+    }
+  }
 
   // ─── Enviar por correo ────────────────────────────────────────────────────
   window.memb_enviarCorreo = async function() {
@@ -2906,7 +3685,7 @@ _¡Gracias por confiar en Volcano Gym! 💪_`;
   <hr>
   <div class="sec-label">Detalle del servicio</div>
   <div class="info-row"><span class="lbl">Plan:</span><span class="val">${datos.plan}</span></div>
-  <div class="info-row"><span class="lbl">F. Matrícula:</span><span class="val">${datos.fecha_inicio}</span></div>
+  <div class="info-row"><span class="lbl">F. Matrícula:</span><span class="val">${datos.fecha_emision}</span></div>
   <div class="info-row"><span class="lbl">F. Inicio:</span><span class="val">${datos.fecha_inicio}</span></div>
   <div class="info-row"><span class="lbl">F. Vencimiento:</span><span class="val">${datos.fecha_fin}</span></div>
   <div class="info-row"><span class="lbl">Tiempo contratado:</span><span class="val">${datos.duracion}</span></div>
@@ -3044,6 +3823,16 @@ _¡Gracias por confiar en Volcano Gym! 💪_`;
   window.wiz_validarMinimos     = wiz_validarMinimos;
   window.wiz_onMayorEdadChange  = wiz_onMayorEdadChange;
   window.wiz_onFechaNacChange   = wiz_onFechaNacChange;
+  window.onMembTipoDocChange    = onMembTipoDocChange;
+  window.membIngresarManual     = function() {
+    estado.clienteNuevo  = true;
+    estado.esRecurrente  = false;
+    estado.clienteId     = null;
+    rellenarDatosCliente('', '', '', '', '');
+    mostrarEstadoDNI('idle');
+    poblarDocInfoP2();
+    irPaso(2);
+  };
 
   window.cambiarPagina = function (n) {
     estado.pagina = n;
@@ -3060,7 +3849,7 @@ _¡Gracias por confiar en Volcano Gym! 💪_`;
       if (data.ok) {
         // Implementar según tu modal de detalle existente
         console.log('Detalle membresía:', data.datos);
-        alert(`Membresía #${id}\nCliente: ${data.datos.cliente_nombre}\nPlan: ${data.datos.plan_nombre}\nEstado: ${data.datos.estado}`);
+        showToast(`Membresía #${id} · ${data.datos.cliente_nombre} · ${data.datos.plan_nombre} · ${data.datos.estado}`, 'info');
       }
     } catch (e) {
       console.error(e);

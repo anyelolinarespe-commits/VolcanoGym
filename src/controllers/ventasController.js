@@ -1,4 +1,5 @@
 import { pool } from '../config/bd.js';
+import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import path from 'path';
@@ -24,13 +25,19 @@ export const getTiposComprobante = async (req, res) => {
 // GET /api/ventas
 export const getVentas = async (req, res) => {
   try {
-    const { page = 1, limit = 10, buscar, estado_sunat } = req.query;
+    const { page = 1, limit = 10, buscar, id, estado_sunat } = req.query;
     const offset = (page - 1) * limit;
     const params = [];
     let i = 1;
     const filtros = [];
 
-    if (buscar) {
+    if (id !== undefined) {
+      const idNum = parseInt(id, 10);
+      if (Number.isInteger(idNum) && idNum > 0) {
+        filtros.push(`v.id = $${i++}`);
+        params.push(idNum);
+      }
+    } else if (buscar) {
       filtros.push(`(v.numero_venta ILIKE $${i} OR COALESCE(c.nombre||' '||c.apellido, v.nombre_cliente_libre) ILIKE $${i})`);
       params.push(`%${buscar}%`); i++;
     }
@@ -272,6 +279,16 @@ export const createVenta = async (req, res) => {
     }
 
     await client.query('COMMIT');
+
+    registrarAuditoria({
+      id_usuario:     req.usuario.id,
+      nombre_usuario: req.usuario.nombre || req.usuario.username,
+      accion:         'CREAR',
+      modulo:         'Ventas',
+      descripcion:    `Venta registrada: ${numeroVenta} — Total: S/ ${total}`,
+      ip:             getIP(req)
+    });
+
     res.status(201).json(await getVentaRaw(id_venta));
   } catch (err) {
     await client.query('ROLLBACK');
@@ -389,8 +406,22 @@ export const anularVenta = async (req, res) => {
         [d.cantidad, d.id_pp]
       );
     }
-    await client.query(`UPDATE venta SET estado_venta='anulada', updated_at=now() WHERE id=$1`, [id]);
+    await client.query(
+      `UPDATE venta SET estado_venta='anulada', anulado_por=$1, updated_at=now() WHERE id=$2`,
+      [req.usuario.id, id]
+    );
     await client.query('COMMIT');
+
+    const venta = vR.rows[0];
+    registrarAuditoria({
+      id_usuario:     req.usuario.id,
+      nombre_usuario: req.usuario.nombre || req.usuario.username,
+      accion:         'ELIMINAR',
+      modulo:         'Ventas',
+      descripcion:    `Venta anulada: ${venta.numero_venta || id} — Total: S/ ${venta.total}`,
+      ip:             getIP(req)
+    });
+
     res.json({ message: 'Venta anulada y stock restaurado' });
   } catch (err) {
     await client.query('ROLLBACK');
