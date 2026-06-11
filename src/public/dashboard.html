@@ -2692,18 +2692,18 @@
             <div class="col-4">
               <div class="form-label">Precio Costo (S/)</div>
               <input class="form-control" id="productoPrecioCosto" type="number" step="0.01" min="0"
-                placeholder="0.00" value="0" oninput="onPrecioChange()" onfocus="this.select()">
+                placeholder="0.00" value="0" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';onPrecioChange();" onfocus="this.select()">
             </div>
             <div class="col-4">
               <div class="form-label">Precio Venta (S/) *</div>
               <input class="form-control" id="productoPrecioVenta" type="number" step="0.01" min="0"
-                placeholder="0.00" oninput="onPrecioChange()" onfocus="this.select()">
+                placeholder="0.00" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';onPrecioChange();" onfocus="this.select()">
             </div>
             <div class="col-4">
               <div class="form-label">Oferta (%)</div>
               <input class="form-control" id="productoOferta" type="number" step="0.01"
                 min="0" max="100" value="0"
-                oninput="calcularPrecioOferta(this.value)" onfocus="this.select()">
+                oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';if(parseFloat(this.value)>100)this.value='100';calcularPrecioOferta(this.value);" onfocus="this.select()">
             </div>
           </div>
           <!-- Preview precio con oferta -->
@@ -2736,7 +2736,7 @@
           </div>
           <div class="col-3">
             <div class="form-label">Stock Mín.</div>
-            <input class="form-control" id="productoStockMin" type="number" min="0" value="5" onfocus="this.select()">
+            <input class="form-control" id="productoStockMin" type="number" min="0" value="5" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';" onfocus="this.select()">
           </div>
           <div class="col-4" id="productoEstadoGroup" style="display:none">
             <div class="form-label">Estado</div>
@@ -2751,7 +2751,7 @@
         <div class="row g-2 mb-2">
           <div class="col-6">
             <div class="form-label">Peso (kg)</div>
-            <input class="form-control" id="productoPeso" type="number" step="0.001" placeholder="">
+            <input class="form-control" id="productoPeso" type="number" step="0.001" min="0" placeholder="" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value=''">
           </div>
           <div class="col-6">
             <div class="form-label">Dimensiones (cm)</div>
@@ -2762,7 +2762,7 @@
         <div class="row g-2 mb-2">
           <div class="col-4">
             <div class="form-label">Garantía (meses)</div>
-            <input class="form-control" id="productoGarantia" type="number" min="0" value="0">
+            <input class="form-control" id="productoGarantia" type="number" min="0" value="0" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';">
           </div>
         </div>
 
@@ -2804,11 +2804,11 @@
             </div>
             <div class="col-3">
               <div class="form-label">Precio Costo</div>
-              <input class="form-control" id="ppNuevoCosto" type="number" step="0.01" placeholder="0.00" value="" onfocus="this.select()">
+              <input class="form-control" id="ppNuevoCosto" type="number" step="0.01" min="0" placeholder="0.00" value="" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';" onfocus="this.select()">
             </div>
             <div class="col-4">
               <div class="form-label">Precio Venta *</div>
-              <input class="form-control" id="ppNuevoVenta" type="number" step="0.01" placeholder="0.00" onfocus="this.select()">
+              <input class="form-control" id="ppNuevoVenta" type="number" step="0.01" min="0" placeholder="0.00" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';" onfocus="this.select()">
             </div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
