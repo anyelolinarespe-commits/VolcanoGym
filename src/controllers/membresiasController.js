@@ -1,4 +1,5 @@
 import { pool } from '../config/bd.js';
+import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
@@ -39,51 +40,95 @@ function genComprobante(prefijo = 'MEM') {
 // ─── GET /api/membresias ─────────────────────────────────────────────────────
 export const getMembresias = async (req, res) => {
     try {
-        await pool.query(`
-            UPDATE membresia SET estado = 'vencida'
-            WHERE estado = 'activa' AND fecha_fin < CURRENT_DATE
-        `);
-        const { estado, id_plan, asesor } = req.query;
+        await pool.query(`UPDATE membresia SET estado='activa' WHERE estado='programada' AND fecha_inicio <= CURRENT_DATE`);
+        await pool.query(`UPDATE membresia SET estado='vencida' WHERE estado='activa' AND fecha_fin < CURRENT_DATE`);
+
+        const { estado, id_plan, asesor, q, id, solo_deuda, este_mes, page, limit } = req.query;
+        const pageNum  = Math.max(1, parseInt(page)  || 1);
+        const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+        const offset   = (pageNum - 1) * limitNum;
+
         const where = ['c.deleted_at IS NULL'];
         const params = [];
         let i = 1;
 
-        if (estado && estado !== 'todos') { where.push(`m.estado = $${i++}`); params.push(estado); }
-        if (id_plan && id_plan !== 'todos') { where.push(`m.id_plan = $${i++}`); params.push(Number(id_plan)); }
-        if (asesor && asesor !== 'todos') { where.push(`u.id_usuario = $${i++}`); params.push(Number(asesor)); }
+        if (estado && estado !== 'todos') {
+            where.push(`m.estado = $${i++}`);
+            params.push(estado);
+        } else {
+            where.push(`m.estado NOT IN ('anulada','programada')`);
+        }
+        if (id_plan    && id_plan !== 'todos') { where.push(`m.id_plan = $${i++}`);     params.push(Number(id_plan)); }
+        if (asesor     && asesor  !== 'todos') { where.push(`u.id_usuario = $${i++}`);  params.push(Number(asesor)); }
+        if (id !== undefined) {
+            const idNum = parseInt(id, 10);
+            if (Number.isInteger(idNum) && idNum > 0) {
+                where.push(`m.id_membresia = $${i++}`);
+                params.push(idNum);
+            }
+        } else if (q) {
+            where.push(`(LOWER(c.nombre || ' ' || c.apellido) LIKE $${i} OR LOWER(c.dni) LIKE $${i})`);
+            params.push(`%${q.toLowerCase()}%`);
+            i++;
+        }
+        if (solo_deuda === '1') where.push(`m.saldo_pendiente > 0`);
+        if (este_mes   === '1') where.push(`DATE_TRUNC('month', m.created_at) = DATE_TRUNC('month', NOW())`);
 
-        const result = await pool.query(`
-            SELECT
-                m.id_membresia,
-                m.id_cliente,
-                c.nombre || ' ' || c.apellido  AS nombre_cliente,
-                c.nombre, c.apellido,
-                c.dni, c.telefono, c.celular, c.foto_perfil,
-                p.id_plan, p.nombre             AS nombre_plan,
-                p.tipo_cliente, p.duracion_meses, p.duracion_unidad,
-                p.permite_fraccion, p.max_cuotas,
-                m.fecha_inicio, m.fecha_fin,
-                m.tipo_ingreso, m.estado,
-                m.monto_total, m.saldo_pendiente,
-                m.observaciones,
-                u.id_usuario                    AS id_asesor,
-                COALESCE(u.alias_asesor, u.nombre) AS asesor,
-                m.created_at,
-                -- Cuotas resumidas para mostrar progreso
-                (SELECT COUNT(*) FROM pago pa WHERE pa.id_membresia = m.id_membresia)          AS total_cuotas,
-                (SELECT COUNT(*) FROM pago pa WHERE pa.id_membresia = m.id_membresia AND pa.estado_cuota = 'pagado') AS cuotas_pagadas,
-                (SELECT COUNT(*) FROM pago pa WHERE pa.id_membresia = m.id_membresia AND pa.estado_cuota = 'pendiente') AS cuotas_pendientes,
-                (SELECT COUNT(*) FROM pago pa WHERE pa.id_membresia = m.id_membresia AND pa.estado_cuota = 'vencido')   AS cuotas_vencidas,
-                (SELECT MIN(pa.fecha_limite) FROM pago pa WHERE pa.id_membresia = m.id_membresia AND pa.estado_cuota IN ('pendiente','vencido')) AS proxima_fecha_limite
-            FROM membresia m
-            JOIN cliente c        ON c.id_cliente   = m.id_cliente
-            JOIN plan_membresia p ON p.id_plan       = m.id_plan
-            JOIN usuarios u       ON u.id_usuario    = m.id_usuario_reg
-            WHERE ${where.join(' AND ')}
-            ORDER BY m.created_at DESC
-        `, params);
+        const whereStr = where.join(' AND ');
 
-        res.json(result.rows);
+        const [countRes, dataRes] = await Promise.all([
+            pool.query(
+                `SELECT COUNT(*) FROM membresia m
+                 JOIN cliente c        ON c.id_cliente  = m.id_cliente
+                 JOIN plan_membresia p ON p.id_plan      = m.id_plan
+                 JOIN usuarios u       ON u.id_usuario   = m.id_usuario_reg
+                 WHERE ${whereStr}`,
+                params
+            ),
+            pool.query(`
+                SELECT
+                    m.id_membresia,
+                    m.id_cliente,
+                    c.nombre || ' ' || c.apellido  AS nombre_cliente,
+                    c.nombre, c.apellido,
+                    c.dni, c.telefono, c.celular, c.foto_perfil,
+                    p.id_plan, p.nombre             AS nombre_plan,
+                    p.tipo_cliente, p.duracion_meses, p.duracion_unidad,
+                    p.permite_fraccion, p.max_cuotas,
+                    m.fecha_inicio, m.fecha_fin,
+                    m.tipo_ingreso, m.estado,
+                    m.monto_total, m.saldo_pendiente,
+                    m.observaciones,
+                    u.id_usuario                    AS id_asesor,
+                    COALESCE(u.alias_asesor, u.nombre) AS asesor,
+                    m.created_at,
+                    (SELECT COUNT(*) FROM pago pa WHERE pa.id_membresia = m.id_membresia)                                                           AS total_cuotas,
+                    (SELECT COUNT(*) FROM pago pa WHERE pa.id_membresia = m.id_membresia AND pa.estado_cuota = 'pagado')                            AS cuotas_pagadas,
+                    (SELECT COUNT(*) FROM pago pa WHERE pa.id_membresia = m.id_membresia AND pa.estado_cuota = 'pendiente')                         AS cuotas_pendientes,
+                    (SELECT COUNT(*) FROM pago pa WHERE pa.id_membresia = m.id_membresia AND pa.estado_cuota = 'vencido')                           AS cuotas_vencidas,
+                    (SELECT MIN(pa.fecha_limite) FROM pago pa WHERE pa.id_membresia = m.id_membresia AND pa.estado_cuota IN ('pendiente','vencido')) AS proxima_fecha_limite,
+                    (SELECT prx.fecha_inicio FROM membresia prx
+                     WHERE prx.id_cliente = m.id_cliente
+                       AND prx.id_membresia != m.id_membresia
+                       AND prx.estado = 'programada'
+                     ORDER BY prx.fecha_inicio ASC LIMIT 1) AS proxima_fecha_inicio
+                FROM membresia m
+                JOIN cliente c        ON c.id_cliente   = m.id_cliente
+                JOIN plan_membresia p ON p.id_plan       = m.id_plan
+                JOIN usuarios u       ON u.id_usuario    = m.id_usuario_reg
+                WHERE ${whereStr}
+                ORDER BY m.created_at DESC
+                LIMIT $${i} OFFSET $${i + 1}
+            `, [...params, limitNum, offset])
+        ]);
+
+        const total = parseInt(countRes.rows[0].count);
+        res.json({
+            data:  dataRes.rows,
+            total,
+            page:  pageNum,
+            pages: Math.ceil(total / limitNum),
+        });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error al obtener membresías' });
@@ -95,11 +140,13 @@ export const getMembresiasStats = async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT
-                COUNT(*) FILTER (WHERE m.estado = 'activa')  AS activas,
-                COUNT(*) FILTER (WHERE m.estado = 'vencida') AS vencidas,
+                COUNT(*) FILTER (WHERE m.estado = 'activa')   AS activas,
+                COUNT(*) FILTER (WHERE m.estado = 'vencida')  AS vencidas,
+                COUNT(*) FILTER (WHERE m.estado = 'programada') AS programadas,
                 COUNT(*) FILTER (WHERE m.saldo_pendiente > 0 AND m.estado = 'activa') AS con_deuda,
                 COUNT(*) FILTER (WHERE m.estado = 'congelada') AS congeladas,
-                COUNT(*) FILTER (WHERE DATE_TRUNC('month', m.created_at) = DATE_TRUNC('month', NOW())) AS este_mes
+                COUNT(*) FILTER (WHERE DATE_TRUNC('month', m.created_at) = DATE_TRUNC('month', NOW())) AS este_mes,
+                COUNT(*) FILTER (WHERE m.estado = 'anulada')  AS anuladas
             FROM membresia m
             JOIN cliente c ON c.id_cliente = m.id_cliente
             WHERE c.deleted_at IS NULL
@@ -115,10 +162,8 @@ export const getMembresiasStats = async (req, res) => {
 export const getMembresiasByCliente = async (req, res) => {
     const { id } = req.params;
     try {
-        await pool.query(`
-            UPDATE membresia SET estado = 'vencida'
-            WHERE id_cliente = $1 AND estado = 'activa' AND fecha_fin < CURRENT_DATE
-        `, [id]);
+        await pool.query(`UPDATE membresia SET estado='activa' WHERE id_cliente=$1 AND estado='programada' AND fecha_inicio <= CURRENT_DATE`, [id]);
+        await pool.query(`UPDATE membresia SET estado='vencida' WHERE id_cliente=$1 AND estado='activa' AND fecha_fin < CURRENT_DATE`, [id]);
         // Membresías con cuotas embebidas
         const membResult = await pool.query(`
             SELECT
@@ -260,25 +305,46 @@ export const createMembresia = async (req, res) => {
         const membExist = await client.query(
             `SELECT m.id_membresia, m.id_plan, m.fecha_inicio, m.fecha_fin,
                     m.tipo_ingreso, m.estado, m.monto_total, m.saldo_pendiente,
-                    m.observaciones, p.nombre AS nombre_plan
+                    m.observaciones, p.nombre AS nombre_plan,
+                    (SELECT MIN(pa.fecha_limite)
+                     FROM pago pa
+                     WHERE pa.id_membresia = m.id_membresia
+                       AND pa.estado_cuota = 'pendiente'
+                       AND pa.fecha_limite >= CURRENT_DATE) AS cuota_pendiente_fecha
              FROM membresia m
              JOIN plan_membresia p ON p.id_plan = m.id_plan
              WHERE m.id_cliente = $1
+             ORDER BY CASE m.estado WHEN 'activa' THEN 1 WHEN 'programada' THEN 2 ELSE 3 END
              LIMIT 1`,
             [id_cliente]
         );
         const esRenovacion = membExist.rows.length > 0;
 
+        // ── 3b. Bloquear renovación/matrícula si hay deuda vigente ─────────
+        if (esRenovacion) {
+            const memb = membExist.rows[0];
+            if (parseFloat(memb.saldo_pendiente) > 0 && memb.cuota_pendiente_fecha !== null) {
+                await client.query('ROLLBACK');
+                const fecha = new Date(memb.cuota_pendiente_fecha).toLocaleDateString('es-PE');
+                return res.status(409).json({
+                    message: `El cliente tiene una deuda pendiente de S/ ${parseFloat(memb.saldo_pendiente).toFixed(2)}. Debe pagar antes del ${fecha} para renovar o matricular.`
+                });
+            }
+        }
+
+        const hoyStr = new Date().toISOString().split('T')[0];
+
         // ── 4A. NUEVA MATRÍCULA (primer registro) ──────────────────────────
         if (!esRenovacion) {
+            const estadoInicial = fecha_inicio > hoyStr ? 'programada' : 'activa';
             const membRes = await client.query(
                 `INSERT INTO membresia
                  (id_cliente, id_plan, id_usuario_reg, fecha_inicio, fecha_fin,
                   tipo_ingreso, estado, monto_total, saldo_pendiente, observaciones)
-                 VALUES ($1,$2,$3,$4,$5,'nuevo','activa',$6,$7,$8)
+                 VALUES ($1,$2,$3,$4,$5,'nuevo',$9,$6,$7,$8)
                  RETURNING *`,
                 [id_cliente, id_plan, idUsuarioReg, fecha_inicio, fechaFin,
-                 Number(monto_total), saldoPendiente, observaciones || null]
+                 Number(monto_total), saldoPendiente, observaciones || null, estadoInicial]
             );
             const membresia = membRes.rows[0];
 
@@ -290,14 +356,85 @@ export const createMembresia = async (req, res) => {
             });
 
             await client.query('COMMIT');
+            registrarAuditoria({
+                id_usuario:     req.usuario.id,
+                nombre_usuario: req.usuario.nombre || req.usuario.username,
+                accion:         'CREAR',
+                modulo:         'Membresías',
+                descripcion:    `Membresía #${membresia.id_membresia} nueva — Plan: ${plan.nombre} — Cliente #${id_cliente} — Total: S/ ${Number(monto_total).toFixed(2)}`,
+                ip:             getIP(req)
+            });
             const cuotas = (await pool.query(
                 `SELECT * FROM pago WHERE id_membresia=$1 ORDER BY num_cuota`, [membresia.id_membresia]
             )).rows;
             return res.status(201).json({ ...membresia, cuotas });
         }
 
+        // ── 4B-0. INSERTAR SIN TOCAR LA EXISTENTE ─────────────────────────
+        // esAdelantar:        activa vigente y nueva fecha >= fecha_fin actual
+        // esAntesDePrograma:  solo hay programada y la nueva fecha empieza ANTES de ella
+        const membActual         = membExist.rows[0];
+        const fechaFinActual      = String(membActual.fecha_fin).split('T')[0];
+        const fechaInicioActual   = String(membActual.fecha_inicio).split('T')[0];
+        const esAdelantar         = membActual.estado === 'activa'     && fecha_inicio >= fechaFinActual;
+        const esAntesDePrograma   = membActual.estado === 'programada' && fecha_inicio <  fechaInicioActual;
+
+        if (esAdelantar || esAntesDePrograma) {
+            // ── Validar solapamiento contra TODAS las membresías del cliente ──
+            const overlapRes = await client.query(
+                `SELECT m.id_membresia, p.nombre AS plan,
+                        m.fecha_inicio::date, m.fecha_fin::date, m.estado
+                 FROM membresia m
+                 JOIN plan_membresia p ON p.id_plan = m.id_plan
+                 WHERE m.id_cliente    = $1
+                   AND m.estado       IN ('activa','programada','congelada')
+                   AND m.fecha_inicio  < $2
+                   AND m.fecha_fin     > $3`,
+                [id_cliente, fechaFin, fecha_inicio]
+            );
+            if (overlapRes.rows.length > 0) {
+                const o  = overlapRes.rows[0];
+                const fi = new Date(o.fecha_inicio + 'T12:00:00').toLocaleDateString('es-PE');
+                const ff = new Date(o.fecha_fin    + 'T12:00:00').toLocaleDateString('es-PE');
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    message: `Las fechas se superponen con la membresía "${o.plan}" (${fi} → ${ff}). La nueva debe empezar el ${ff} o después.`
+                });
+            }
+
+            const estadoNuevo = fecha_inicio > hoyStr ? 'programada' : 'activa';
+            const nRes = await client.query(
+                `INSERT INTO membresia
+                 (id_cliente, id_plan, id_usuario_reg, fecha_inicio, fecha_fin,
+                  tipo_ingreso, estado, monto_total, saldo_pendiente, observaciones)
+                 VALUES ($1,$2,$3,$4,$5,'renovacion',$9,$6,$7,$8)
+                 RETURNING *`,
+                [id_cliente, id_plan, idUsuarioReg, fecha_inicio, fechaFin,
+                 Number(monto_total), saldoPendiente, observaciones || null, estadoNuevo]
+            );
+            await _insertarCuotas(client, {
+                id_membresia: nRes.rows[0].id_membresia,
+                idUsuarioReg, montoPagadoAhora, saldoPendiente,
+                fecha_inicio, fechaFin, plan, metodo_pago, pagos_detalle
+            });
+            await client.query('COMMIT');
+            registrarAuditoria({
+                id_usuario:     req.usuario.id,
+                nombre_usuario: req.usuario.nombre || req.usuario.username,
+                accion:         'CREAR',
+                modulo:         'Membresías',
+                descripcion:    `Membresía #${nRes.rows[0].id_membresia} programada — Plan: ${plan.nombre} — Cliente #${id_cliente} — Total: S/ ${Number(monto_total).toFixed(2)}`,
+                ip:             getIP(req)
+            });
+            const cuotas = (await pool.query(
+                `SELECT * FROM pago WHERE id_membresia=$1 ORDER BY num_cuota`,
+                [nRes.rows[0].id_membresia]
+            )).rows;
+            return res.status(201).json({ ...nRes.rows[0], cuotas });
+        }
+
         // ── 4B. RENOVACIÓN (ya existe fila maestra) ────────────────────────
-        const membAnterior = membExist.rows[0];
+        const membAnterior = membActual;
         const idMembresia  = membAnterior.id_membresia;
 
         // 4B-i. Guardar período anterior en historial
@@ -324,6 +461,7 @@ export const createMembresia = async (req, res) => {
         await client.query(`DELETE FROM pago WHERE id_membresia = $1`, [idMembresia]);
 
         // 4B-iii. Actualizar la fila maestra con el nuevo período
+        const estadoRenovacion = fecha_inicio > hoyStr ? 'programada' : 'activa';
         await client.query(
             `UPDATE membresia SET
                 id_plan          = $1,
@@ -331,7 +469,7 @@ export const createMembresia = async (req, res) => {
                 fecha_inicio     = $3,
                 fecha_fin        = $4,
                 tipo_ingreso     = 'renovacion',
-                estado           = 'activa',
+                estado           = $10,
                 monto_total      = $5,
                 saldo_pendiente  = $6,
                 observaciones    = $7,
@@ -341,7 +479,7 @@ export const createMembresia = async (req, res) => {
             [id_plan, idUsuarioReg, fecha_inicio, fechaFin,
              Number(monto_total), saldoPendiente,
              observaciones || membAnterior.observaciones || null,
-             idUsuarioReg, idMembresia]
+             idUsuarioReg, idMembresia, estadoRenovacion]
         );
 
         // 4B-iv. Crear nuevas cuotas para el período renovado
@@ -352,6 +490,15 @@ export const createMembresia = async (req, res) => {
         });
 
         await client.query('COMMIT');
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'CREAR',
+            modulo:         'Membresías',
+            descripcion:    `Membresía #${idMembresia} renovada — Plan: ${plan.nombre} — Cliente #${id_cliente} — Total: S/ ${Number(monto_total).toFixed(2)}`,
+            ip:             getIP(req)
+        });
 
         // Retornar membresía actualizada con cuotas
         const [membActualizada, cuotas] = await Promise.all([
@@ -555,6 +702,15 @@ export const pagarCuota = async (req, res) => {
 
         await client.query('COMMIT');
 
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Membresías',
+            descripcion:    `Membresía #${id} — Cuota #${id_pago} ${restante <= 0.01 ? 'pagada completamente' : 'abono parcial'}: S/ ${montoFinal.toFixed(2)} (${esMixto ? 'Pago mixto' : metodoPrimario})`,
+            ip:             getIP(req)
+        });
+
         res.json({
             message:     restante <= 0.01 ? 'Pago completo registrado' : 'Abono parcial registrado',
             cuotas:      await _getCuotasConAbonos(id),
@@ -601,26 +757,86 @@ export const getHistorialByMembresia = async (req, res) => {
 export const updateMembresia = async (req, res) => {
     const { id } = req.params;
     const { estado, observaciones, saldo_pendiente } = req.body;
+
+    const client = await pool.connect();
     try {
+        await client.query('BEGIN');
+
+        // Leer estado actual para calcular días congelados al descongelar
+        const actual = await client.query(
+            `SELECT estado, fecha_congelamiento, fecha_fin FROM membresia WHERE id_membresia = $1`,
+            [id]
+        );
+        if (!actual.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ message: 'Membresía no encontrada' });
+        }
+        const curr = actual.rows[0];
+
         const sets = [];
         const params = [];
         let i = 1;
-        if (estado !== undefined)           { sets.push(`estado=$${i++}`);           params.push(estado); }
-        if (observaciones !== undefined)     { sets.push(`observaciones=$${i++}`);    params.push(observaciones); }
-        if (saldo_pendiente !== undefined)   { sets.push(`saldo_pendiente=$${i++}`);  params.push(Number(saldo_pendiente)); }
-        if (!sets.length)
+
+        if (estado !== undefined) {
+            sets.push(`estado=$${i++}`);
+            params.push(estado);
+
+            if (estado === 'congelada' && curr.estado !== 'congelada') {
+                // Guardar la fecha en que se congela
+                sets.push(`fecha_congelamiento=CURRENT_DATE`);
+
+            } else if (estado === 'activa' && curr.estado === 'congelada') {
+                // Calcular días congelados y extender fecha_fin
+                if (curr.fecha_congelamiento) {
+                    const hoy = new Date();
+                    const fechaCong = new Date(curr.fecha_congelamiento + 'T12:00:00');
+                    const diasCongelado = Math.max(0, Math.floor((hoy - fechaCong) / 86_400_000));
+                    if (diasCongelado > 0) {
+                        const nuevaFin = addDias(
+                            curr.fecha_fin.toISOString ? curr.fecha_fin.toISOString().split('T')[0] : String(curr.fecha_fin).split('T')[0],
+                            diasCongelado
+                        );
+                        sets.push(`fecha_fin=$${i++}`);
+                        params.push(nuevaFin);
+                    }
+                }
+                // Limpiar fecha_congelamiento
+                sets.push(`fecha_congelamiento=NULL`);
+            }
+        }
+
+        if (observaciones !== undefined)   { sets.push(`observaciones=$${i++}`);   params.push(observaciones); }
+        if (saldo_pendiente !== undefined) { sets.push(`saldo_pendiente=$${i++}`); params.push(Number(saldo_pendiente)); }
+
+        if (!sets.length) {
+            await client.query('ROLLBACK');
             return res.status(400).json({ message: 'Nada que actualizar' });
+        }
+
         params.push(id);
-        const result = await pool.query(
+        const result = await client.query(
             `UPDATE membresia SET ${sets.join(',')} WHERE id_membresia=$${i} RETURNING *`,
             params
         );
-        if (!result.rowCount)
-            return res.status(404).json({ message: 'Membresía no encontrada' });
+
+        await client.query('COMMIT');
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Membresías',
+            descripcion:    `Membresía #${id} actualizada — ${estado ? `Estado: ${estado}` : 'datos editados'}`,
+            ip:             getIP(req)
+        });
+
         res.json(result.rows[0]);
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error(err);
         res.status(500).json({ message: 'Error al actualizar membresía' });
+    } finally {
+        client.release();
     }
 };
 
@@ -652,6 +868,16 @@ export const deleteMembresia = async (req, res) => {
         await client.query(`DELETE FROM membresia WHERE id_membresia = $1`, [id]);
 
         await client.query('COMMIT');
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'ELIMINAR',
+            modulo:         'Membresías',
+            descripcion:    `Membresía #${id} eliminada — Motivo: ${motivo.trim()}`,
+            ip:             getIP(req)
+        });
+
         res.json({ message: `Membresía eliminada. Motivo: ${motivo.trim()}` });
 
     } catch (err) {
@@ -663,38 +889,176 @@ export const deleteMembresia = async (req, res) => {
     }
 };
 
-// ─── CONSULTA DNI PERÚ ────────────────────────────────────────────────────────
+// ─── CONSULTA DNI / CE PERÚ ──────────────────────────────────────────────────
 export const consultarDNI = async (req, res) => {
-  const { dni } = req.params;
- 
-  if (!dni || !/^\d{8}$/.test(dni)) {
-    return res.status(400).json({ ok: false, mensaje: 'DNI inválido. Debe tener exactamente 8 dígitos.' });
+  const { dni: numero } = req.params;
+  const tipo = (req.query.tipo || 'DNI').toUpperCase();
+
+  if (tipo === 'DNI') {
+    if (!numero || !/^\d{8}$/.test(numero))
+      return res.status(400).json({ ok: false, mensaje: 'DNI inválido. Debe tener exactamente 8 dígitos.' });
+  } else if (tipo === 'RUC') {
+    if (!numero || !/^\d{11}$/.test(numero))
+      return res.status(400).json({ ok: false, mensaje: 'RUC inválido. Debe tener exactamente 11 dígitos.' });
+  } else if (tipo === 'CE') {
+    if (!numero || !/^[a-zA-Z0-9]{8,12}$/.test(numero))
+      return res.status(400).json({ ok: false, mensaje: 'Carnet de Extranjería inválido. Debe tener entre 8 y 12 caracteres alfanuméricos.' });
+  } else {
+    return res.status(400).json({ ok: false, mensaje: 'Tipo de documento no válido. Use DNI o CE.' });
   }
- 
+
   try {
     // 1. Verificar si el cliente ya existe en nuestra BD
     const existente = await pool.query(
-      `SELECT id_cliente, dni, nombre, apellido, telefono, celular, fecha_nacimiento, activo
-       FROM cliente WHERE dni = $1 LIMIT 1`,
-      [dni]
+      `SELECT id_cliente, dni, tipo_documento, nombre, apellido, telefono, celular, fecha_nacimiento, activo, deleted_at
+       FROM cliente WHERE dni = $1 AND tipo_documento = $2 LIMIT 1`,
+      [numero.toUpperCase(), tipo]
     );
- 
+
     if (existente.rows.length > 0) {
+      const clienteData = existente.rows[0];
+      // Verificar si tiene deuda con cuota pendiente dentro del plazo
+      const deudaRes = await pool.query(
+        `SELECT m.saldo_pendiente,
+                (SELECT MIN(pa.fecha_limite)
+                 FROM pago pa
+                 WHERE pa.id_membresia = m.id_membresia
+                   AND pa.estado_cuota = 'pendiente'
+                   AND pa.fecha_limite >= CURRENT_DATE) AS cuota_pendiente_fecha
+         FROM membresia m WHERE m.id_cliente = $1 LIMIT 1`,
+        [clienteData.id_cliente]
+      );
+      let deuda_vigente = null;
+      if (deudaRes.rows.length > 0) {
+        const d = deudaRes.rows[0];
+        if (parseFloat(d.saldo_pendiente) > 0 && d.cuota_pendiente_fecha !== null) {
+          deuda_vigente = {
+            saldo: parseFloat(d.saldo_pendiente),
+            fecha_limite: d.cuota_pendiente_fecha
+          };
+        }
+      }
+      const membresiasCount = await pool.query(
+        `SELECT COUNT(*) FROM membresia WHERE id_cliente = $1`,
+        [clienteData.id_cliente]
+      );
+      const es_recurrente = parseInt(membresiasCount.rows[0].count) > 0;
+
+      const membActivaRes = await pool.query(
+        `SELECT
+           MIN(m.fecha_inicio)                                   AS block_inicio,
+           MAX(m.fecha_fin)                                      AS block_fin,
+           BOOL_OR(m.estado IN ('activa','congelada'))           AS tiene_activa,
+           BOOL_OR(m.estado = 'programada')                      AS tiene_programada,
+           (SELECT p2.nombre
+            FROM membresia m2
+            JOIN plan_membresia p2 ON p2.id_plan = m2.id_plan
+            WHERE m2.id_cliente = $1
+              AND m2.estado IN ('activa','congelada')
+            ORDER BY m2.fecha_fin DESC
+            LIMIT 1)                                             AS plan_activo,
+           (SELECT p3.nombre
+            FROM membresia m3
+            JOIN plan_membresia p3 ON p3.id_plan = m3.id_plan
+            WHERE m3.id_cliente = $1
+              AND m3.estado = 'programada'
+            ORDER BY m3.fecha_fin DESC
+            LIMIT 1)                                             AS plan_programado
+         FROM membresia m
+         WHERE m.id_cliente = $1
+           AND m.estado IN ('activa','congelada','programada')
+           AND m.fecha_fin >= CURRENT_DATE`,
+        [clienteData.id_cliente]
+      );
+      const bRow = membActivaRes.rows[0];
+      const toDateStr = d => d instanceof Date ? d.toISOString().split('T')[0] : String(d).split('T')[0];
+
+      const membListRes = await pool.query(
+        `SELECT m.estado, p.nombre AS plan_nombre, m.fecha_inicio, m.fecha_fin
+         FROM membresia m JOIN plan_membresia p ON p.id_plan = m.id_plan
+         WHERE m.id_cliente = $1
+           AND m.estado IN ('activa','congelada','programada')
+           AND m.fecha_fin >= CURRENT_DATE
+         ORDER BY m.fecha_inicio`,
+        [clienteData.id_cliente]
+      );
+
+      const membresia_activa = (bRow && bRow.block_fin) ? {
+        fecha_inicio:     toDateStr(bRow.block_inicio),
+        fecha_fin:        toDateStr(bRow.block_fin),
+        tiene_activa:     bRow.tiene_activa,
+        tiene_programada: bRow.tiene_programada,
+        plan_activo:      bRow.plan_activo || null,
+        plan_programado:  bRow.plan_programado || null,
+        memberships:      membListRes.rows.map(r => ({
+          estado:       r.estado,
+          plan:         r.plan_nombre,
+          fecha_inicio: toDateStr(r.fecha_inicio),
+          fecha_fin:    toDateStr(r.fecha_fin)
+        }))
+      } : null;
+
       return res.json({
         ok: true,
         fuente: 'base_de_datos',
-        cliente: existente.rows[0],
-        ya_existe: true
+        cliente: clienteData,
+        ya_existe: true,
+        es_recurrente,
+        deuda_vigente,
+        membresia_activa,
+        cliente_eliminado: clienteData.deleted_at !== null
       });
     }
- 
-    // 2. Cliente nuevo — consultar Decolecta API (RENIEC)
+
+    // 2. Cliente nuevo — consultar API externa
     const decolectaToken = process.env.DECOLECTA_TOKEN;
     if (!decolectaToken) {
-      return res.status(500).json({ ok: false, mensaje: 'Token de API RENIEC no configurado.' });
+      return res.status(500).json({ ok: false, mensaje: 'Token de API no configurado.' });
     }
 
-    const respuesta = await fetch(`https://api.decolecta.com/v1/reniec/dni?numero=${dni}`, {
+    let urlApi, parsearRespuesta;
+
+    if (tipo === 'DNI') {
+      urlApi = `https://api.decolecta.com/v1/reniec/dni?numero=${numero}`;
+      parsearRespuesta = (datos) => {
+        if (!datos || !datos.first_name) return null;
+        return {
+          nombre: datos.first_name,
+          apellido: [datos.first_last_name, datos.second_last_name].filter(Boolean).join(' ').trim(),
+          numero,
+          tipo: 'DNI'
+        };
+      };
+    } else if (tipo === 'RUC') {
+      urlApi = `https://api.decolecta.com/v1/sunat/ruc?numero=${numero}`;
+      parsearRespuesta = (datos) => {
+        if (!datos) return null;
+        const razonSocial = datos.razon_social || datos.nombre || datos.name || '';
+        if (!razonSocial) return null;
+        return {
+          nombre: razonSocial,
+          apellido: '',
+          numero,
+          tipo: 'RUC',
+          estado: datos.estado_contribuyente || datos.estado || '',
+          direccion: datos.direccion || datos.domicilio_fiscal || ''
+        };
+      };
+    } else {
+      // CE — Migraciones vía Decolecta
+      urlApi = `https://api.decolecta.com/v1/migraciones/ce?numero=${numero.toUpperCase()}`;
+      parsearRespuesta = (datos) => {
+        if (!datos) return null;
+        // Decolecta CE puede devolver nombre/apellidos directos o first_name/last_name
+        const nombre = datos.nombre || datos.first_name || datos.nombres || '';
+        const apellido = datos.apellidos || datos.apellido ||
+          [datos.first_last_name, datos.second_last_name].filter(Boolean).join(' ').trim() || '';
+        if (!nombre) return null;
+        return { nombre, apellido, numero: numero.toUpperCase(), tipo: 'CE', nacionalidad: datos.nacionalidad || '' };
+      };
+    }
+
+    const respuesta = await fetch(urlApi, {
       headers: {
         'Authorization': `Bearer ${decolectaToken}`,
         'Content-Type': 'application/json'
@@ -704,34 +1068,30 @@ export const consultarDNI = async (req, res) => {
 
     if (!respuesta.ok) {
       if (respuesta.status === 404)
-        return res.status(404).json({ ok: false, mensaje: 'DNI no encontrado en RENIEC.' });
+        return res.status(404).json({ ok: false, mensaje: `${tipo} no encontrado en el registro oficial.` });
       if (respuesta.status === 401)
-        return res.status(401).json({ ok: false, mensaje: 'Token de API DNI inválido o expirado.' });
-      return res.status(respuesta.status).json({ ok: false, mensaje: 'Error al consultar el DNI.' });
+        return res.status(401).json({ ok: false, mensaje: 'Token de API inválido o expirado.' });
+      return res.status(respuesta.status).json({ ok: false, mensaje: `Error al consultar el ${tipo}.` });
     }
 
     const datos = await respuesta.json();
-    // Respuesta Decolecta: { first_name, first_last_name, second_last_name, full_name, document_number }
-    if (!datos || !datos.first_name) {
-      return res.status(404).json({ ok: false, mensaje: 'No se encontró información para este DNI en RENIEC.' });
+    const datosParseados = parsearRespuesta(datos);
+    if (!datosParseados) {
+      return res.status(404).json({ ok: false, mensaje: `No se encontró información para este ${tipo}.` });
     }
 
     return res.json({
       ok: true,
-      fuente: 'api_reniec',
-      datos_dni: {
-        nombre: datos.first_name,
-        apellido: [datos.first_last_name, datos.second_last_name].filter(Boolean).join(' ').trim(),
-        dni
-      },
+      fuente: tipo === 'DNI' ? 'api_reniec' : tipo === 'RUC' ? 'api_sunat' : 'api_migraciones',
+      datos_dni: datosParseados,
       ya_existe: false
     });
 
   } catch (error) {
     if (error.name === 'TimeoutError')
-      return res.status(504).json({ ok: false, mensaje: 'La API de DNI tardó demasiado. Intente de nuevo.' });
+      return res.status(504).json({ ok: false, mensaje: 'La API tardó demasiado. Intente de nuevo.' });
     console.error('Error consultarDNI:', error.message);
-    return res.status(500).json({ ok: false, mensaje: 'Error al consultar el DNI.' });
+    return res.status(500).json({ ok: false, mensaje: `Error al consultar el ${tipo}.` });
   }
 };
  
@@ -740,6 +1100,7 @@ export const crearMembresia = async (req, res) => {
   const {
     // Datos del cliente
     dni,
+    tipo_documento,
     nombre,
     apellido,
     telefono,
@@ -770,7 +1131,7 @@ export const crearMembresia = async (req, res) => {
  
     // ── PASO 1: Resolver cliente ──────────────────────────────────────────────
     if (cliente_existente_id) {
-      // Cliente ya registrado — solo verificar que existe
+      // Cliente ya registrado — verificar que existe y no tiene deuda vigente
       const check = await client.query(
         'SELECT id_cliente FROM cliente WHERE id_cliente = $1',
         [cliente_existente_id]
@@ -779,20 +1140,43 @@ export const crearMembresia = async (req, res) => {
         throw new Error('Cliente no encontrado.');
       }
       id_cliente_final = cliente_existente_id;
+
+      // Bloquear si tiene cuota pendiente dentro del plazo
+      const deudaCheck = await client.query(
+        `SELECT m.saldo_pendiente,
+                (SELECT MIN(pa.fecha_limite)
+                 FROM pago pa
+                 WHERE pa.id_membresia = m.id_membresia
+                   AND pa.estado_cuota = 'pendiente'
+                   AND pa.fecha_limite >= CURRENT_DATE) AS cuota_pendiente_fecha
+         FROM membresia m WHERE m.id_cliente = $1 LIMIT 1`,
+        [id_cliente_final]
+      );
+      if (deudaCheck.rows.length > 0) {
+        const { saldo_pendiente, cuota_pendiente_fecha } = deudaCheck.rows[0];
+        if (parseFloat(saldo_pendiente) > 0 && cuota_pendiente_fecha !== null) {
+          const fecha = new Date(cuota_pendiente_fecha).toLocaleDateString('es-PE');
+          throw new Error(`El cliente tiene una deuda pendiente de S/ ${parseFloat(saldo_pendiente).toFixed(2)}. Debe pagar antes del ${fecha} para continuar.`);
+        }
+      }
  
     } else {
       // Cliente nuevo — validar y crear
       if (!dni || !nombre || !apellido) {
-        throw new Error('DNI, nombre y apellido son obligatorios para crear un cliente nuevo.');
+        throw new Error('Número de documento, nombre y apellido son obligatorios para crear un cliente nuevo.');
       }
-      if (!/^\d{8}$/.test(dni)) {
-        throw new Error('DNI inválido.');
+      const tipoDoc = (tipo_documento || 'DNI').toUpperCase();
+      if (tipoDoc === 'DNI' && !/^\d{8}$/.test(dni)) {
+        throw new Error('DNI inválido. Debe tener exactamente 8 dígitos.');
       }
- 
-      // Verificar duplicado de DNI
+      if (tipoDoc === 'CE' && !/^[a-zA-Z0-9]{4,12}$/.test(dni)) {
+        throw new Error('Carnet de Extranjería inválido.');
+      }
+
+      // Verificar duplicado de documento
       const dniExistente = await client.query(
-        'SELECT id_cliente FROM cliente WHERE dni = $1',
-        [dni]
+        'SELECT id_cliente FROM cliente WHERE dni = $1 AND tipo_documento = $2',
+        [dni.toUpperCase(), tipoDoc]
       );
       if (dniExistente.rows.length > 0) {
         throw new Error('Ya existe un cliente con ese DNI.');
@@ -801,13 +1185,14 @@ export const crearMembresia = async (req, res) => {
       const qr_code = uuidv4();
       const nuevo = await client.query(
         `INSERT INTO cliente
-           (id_usuario_reg, dni, nombre, apellido, telefono, celular,
+           (id_usuario_reg, dni, tipo_documento, nombre, apellido, telefono, celular,
             fecha_nacimiento, qr_code, creado_por)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          RETURNING id_cliente`,
         [
           id_usuario_reg,
-          dni.trim(),
+          dni.trim().toUpperCase(),
+          tipoDoc,
           nombre.trim(),
           apellido.trim(),
           telefono?.trim() || null,
@@ -837,14 +1222,16 @@ export const crearMembresia = async (req, res) => {
     const montoNum = parseFloat(monto_pagado);
 
     // ── PASO 4: Crear la membresía ────────────────────────────────────────────
+    const hoyWiz = new Date().toISOString().split('T')[0];
+    const estadoWiz = fecha_inicio > hoyWiz ? 'programada' : 'activa';
     const membRes = await client.query(
       `INSERT INTO membresia
          (id_cliente, id_plan, id_usuario_reg, fecha_inicio, fecha_fin,
           tipo_ingreso, estado, monto_total, saldo_pendiente, observaciones)
-       VALUES ($1,$2,$3,$4,$5,'nuevo','activa',$6,0,$7)
+       VALUES ($1,$2,$3,$4,$5,'nuevo',$8,$6,0,$7)
        RETURNING id_membresia`,
       [id_cliente_final, id_plan, id_usuario_reg, fecha_inicio, fecha_fin_str,
-       montoNum, observacion_pago?.trim() || null]
+       montoNum, observacion_pago?.trim() || null, estadoWiz]
     );
     const id_membresia = membRes.rows[0].id_membresia;
 
@@ -863,7 +1250,16 @@ export const crearMembresia = async (req, res) => {
     );
  
     await client.query('COMMIT');
- 
+
+    registrarAuditoria({
+      id_usuario:     req.usuario.id,
+      nombre_usuario: req.usuario.nombre || req.usuario.username,
+      accion:         'CREAR',
+      modulo:         'Membresías',
+      descripcion:    `Membresía creada #${id_membresia} — Plan: ${plan.nombre} — Cliente ID: ${id_cliente_final}`,
+      ip:             getIP(req)
+    });
+
     return res.status(201).json({
       ok: true,
       mensaje: 'Membresía creada exitosamente.',

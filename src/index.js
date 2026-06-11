@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import cors from 'cors';
 import { verificarToken } from './middlewares/verificarToken.js';
 import { uploadComprobante } from './middlewares/upload.js';
+import { pool } from './config/bd.js';
 import authRoutes            from './routes/authRoutes.js';
 import perfilesRoutes        from './routes/perfilesRoutes.js';
 import usuariosRoutes        from './routes/usuariosRoutes.js';
@@ -20,16 +21,71 @@ import presentacionesRoutes  from './routes/presentacionesRoutes.js';
 import asistenciasRoutes     from './routes/asistenciasRoutes.js';
 import inventarioRoutes from './routes/inventarioRoutes.js';
 import fotosRoutes from './routes/fotosRoutes.js';
-import ventasRoutes from './routes/ventasRoutes.js';
+import ventasRoutes    from './routes/ventasRoutes.js';
+import reportesRoutes  from './routes/reportesRoutes.js';
+import auditoriaRoutes from './routes/auditoriaRoutes.js';
 
 dotenv.config();
+
+// ── Migraciones automáticas al iniciar ──────────────────────────────────────
+
+pool.query(`ALTER TABLE membresia ADD COLUMN IF NOT EXISTS fecha_congelamiento DATE`)
+  .catch(e => console.warn('Migration fecha_congelamiento:', e.message));
+
+// Tabla central de auditoría
+pool.query(`
+  CREATE TABLE IF NOT EXISTS auditoria (
+    id             BIGSERIAL PRIMARY KEY,
+    id_usuario     INTEGER REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+    nombre_usuario VARCHAR(200),
+    accion         VARCHAR(20) NOT NULL
+                     CHECK (accion IN ('CREAR','EDITAR','ELIMINAR','LOGIN','LOGOUT')),
+    modulo         VARCHAR(100) NOT NULL,
+    descripcion    TEXT,
+    ip_usuario     VARCHAR(45),
+    created_at     TIMESTAMPTZ DEFAULT NOW()
+  )
+`).catch(e => console.warn('Migration auditoria:', e.message));
+
+pool.query(`CREATE INDEX IF NOT EXISTS idx_auditoria_created  ON auditoria(created_at DESC)`)
+  .catch(e => console.warn('Migration idx auditoria created:', e.message));
+pool.query(`CREATE INDEX IF NOT EXISTS idx_auditoria_usuario  ON auditoria(id_usuario)`)
+  .catch(e => console.warn('Migration idx auditoria usuario:', e.message));
+pool.query(`CREATE INDEX IF NOT EXISTS idx_auditoria_accion   ON auditoria(accion)`)
+  .catch(e => console.warn('Migration idx auditoria accion:', e.message));
+
+// Campos de auditoría faltantes en tablas existentes
+pool.query(`ALTER TABLE venta            ADD COLUMN IF NOT EXISTS anulado_por    INTEGER REFERENCES usuarios(id_usuario)`)
+  .catch(e => console.warn('Migration venta.anulado_por:', e.message));
+pool.query(`ALTER TABLE membresia        ADD COLUMN IF NOT EXISTS eliminado_por  INTEGER REFERENCES usuarios(id_usuario)`)
+  .catch(e => console.warn('Migration membresia.eliminado_por:', e.message));
+pool.query(`ALTER TABLE plan_membresia   ADD COLUMN IF NOT EXISTS creado_por     INTEGER REFERENCES usuarios(id_usuario)`)
+  .catch(e => console.warn('Migration plan_membresia.creado_por:', e.message));
+pool.query(`ALTER TABLE plan_membresia   ADD COLUMN IF NOT EXISTS modificado_por INTEGER REFERENCES usuarios(id_usuario)`)
+  .catch(e => console.warn('Migration plan_membresia.modificado_por:', e.message));
+pool.query(`ALTER TABLE plan_membresia   ADD COLUMN IF NOT EXISTS created_at     TIMESTAMPTZ DEFAULT NOW()`)
+  .catch(e => console.warn('Migration plan_membresia.created_at:', e.message));
+pool.query(`ALTER TABLE producto         ADD COLUMN IF NOT EXISTS modificado_por INTEGER REFERENCES usuarios(id_usuario)`)
+  .catch(e => console.warn('Migration producto.modificado_por:', e.message));
+pool.query(`ALTER TABLE categoria_producto ADD COLUMN IF NOT EXISTS modificado_por INTEGER REFERENCES usuarios(id_usuario)`)
+  .catch(e => console.warn('Migration categoria_producto.modificado_por:', e.message));
+pool.query(`ALTER TABLE perfiles         ADD COLUMN IF NOT EXISTS modificado_por INTEGER REFERENCES usuarios(id_usuario)`)
+  .catch(e => console.warn('Migration perfiles.modificado_por:', e.message));
+
+// Opción de menú para el módulo de auditoría (solo si no existe)
+pool.query(`
+  INSERT INTO opciones (nombre, ruta, icono, orden, activo)
+  SELECT 'Auditoría', 'auditoria', 'bi-shield-check', 99, TRUE
+  WHERE NOT EXISTS (SELECT 1 FROM opciones WHERE ruta = 'auditoria')
+`).catch(e => console.warn('Migration opcion auditoria:', e.message));
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 app.use(cors());
 app.use(morgan('dev'));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(express.static(__dirname + '/public'));
 
 // API
@@ -47,7 +103,9 @@ app.use('/api/presentaciones', presentacionesRoutes);
 app.use('/api/asistencias',   asistenciasRoutes);
 app.use('/api/inventario', inventarioRoutes);
 app.use('/api/productos/:id/fotos', fotosRoutes);
-app.use('/api/ventas', ventasRoutes);
+app.use('/api/ventas',    ventasRoutes);
+app.use('/api/reportes', reportesRoutes);
+app.use('/api/auditoria', auditoriaRoutes);
 
 // Upload de capturas de comprobantes de pago
 app.post('/api/uploads/comprobante',
@@ -55,7 +113,8 @@ app.post('/api/uploads/comprobante',
   uploadComprobante.single('file'),
   (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No se recibió ningún archivo' });
-    res.json({ url: `/uploads/comprobantes/${req.file.filename}` });
+    const url = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    res.json({ url });
   }
 );
 
