@@ -66,7 +66,7 @@ const _PM = (() => {
               <label class="pm-lbl">Monto:</label>
               <input type="number" class="pm-monto" min="0.01" step="0.01"
                 value="${parseFloat(sp.monto || 0).toFixed(2)}"
-                oninput="_PM._setMonto(${i}, this.value)"
+                oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0.01';_PM._setMonto(${i}, this.value);"
                 onfocus="this.select()"
                 style="width:120px;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-weight:700;color:#0f3460">
               <span class="pm-total-hint" style="font-size:11px;color:#888">de ${_fmtS(_total)}</span>
@@ -194,7 +194,11 @@ const _PM = (() => {
         },
 
         _setMonto(i, val) {
-            _splits[i].monto = parseFloat(val) || 0;
+            const parsed = parseFloat(val) || 0;
+            _splits[i].monto = parsed < 0 ? 0 : parsed;
+            // Reflejar corrección en el input
+            const inputs = document.querySelectorAll('.pm-monto');
+            if (inputs[i] && parsed < 0) inputs[i].value = '0';
             _updateTotalBar();
         },
 
@@ -1311,10 +1315,13 @@ function _pcCheckAbono(deudaTotal) {
     const input = document.getElementById('pcMonto');
     const aviso = document.getElementById('avisoAbonoParcial');
     if (!input || !aviso) return;
+    // Bloquear negativos y cero
+    if (parseFloat(input.value) < 0 || input.value === '-') input.value = '0.01';
+    // Bloquear valor mayor a la deuda
+    if (parseFloat(input.value) > deudaTotal) input.value = deudaTotal.toFixed(2);
     const ing = parseFloat(input.value);
     const esAbono = !isNaN(ing) && ing > 0 && ing < deudaTotal - 0.01;
     aviso.style.display = esAbono ? '' : 'none';
-    // Actualizar total del componente _PM
     _PM.updateTotal(parseFloat(input.value) || deudaTotal);
 }
 
@@ -2228,7 +2235,24 @@ async function saveMembresia() {
     // Fecha de inicio = hoy
     const hoy = new Date().toISOString().split('T')[0];
     const fi = document.getElementById('memb-fecha-inicio');
-    if (fi) { fi.value = hoy; fi.min = hoy; }
+    if (fi) {
+      fi.value = hoy;
+      fi.min   = hoy;
+      // Evitar edición manual a fecha anterior (el atributo min no bloquea teclado en todos los navegadores)
+      if (!fi._minGuardListener) {
+        fi._minGuardListener = true;
+        fi.addEventListener('change', function() {
+          const minVal = this.min || new Date().toISOString().split('T')[0];
+          if (this.value && this.value < minVal) {
+            this.value = minVal;
+            window._mcaSelFecha && _mcaSelFecha(minVal);
+            showToast('No se puede seleccionar una fecha anterior a hoy.', 'warning');
+          } else if (this.value) {
+            window._mcaSelFecha && _mcaSelFecha(this.value);
+          }
+        });
+      }
+    }
 
     estado.clienteEliminado = false;
     estado.membresiaActiva = null;
