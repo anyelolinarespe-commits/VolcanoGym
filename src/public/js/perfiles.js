@@ -28,8 +28,8 @@ function renderPerfiles(data) {
   const yoSoySuperAdmin = miPerfil3 === 'superadministrador';
 
   tbody.innerHTML = data.map(p => {
-    const esAdmin      = p.nombre.toLowerCase() === 'administrador';
-    const esSuperAdmin = p.nombre.toLowerCase() === 'superadministrador';
+    const esAdmin      = p.nombre.trim().toLowerCase() === 'administrador';
+    const esSuperAdmin = p.nombre.trim().toLowerCase() === 'superadministrador';
     const esMio        = p.id_perfil === miPerfilId;
 
     // Roles inferiores no pueden editar ni eliminar perfiles
@@ -47,13 +47,13 @@ function renderPerfiles(data) {
       ? `<span style="font-size:10px;color:#7c4dff;background:#ede7f6;padding:2px 7px;border-radius:20px">${esMio ? 'tu perfil' : 'protegido'}</span>`
       : '';
 
-    return `<tr>
+    return `<tr style="cursor:${bloqEdit ? 'default' : 'pointer'}" ${bloqEdit ? '' : `ondblclick="editPerfil(${p.id_perfil})"`}>
       <td>${p.id_perfil}</td>
       <td><strong>${p.nombre}</strong> ${badge}</td>
       <td style="color:var(--color-text-secondary)">${p.descripcion || '—'}</td>
       <td><span class="badge-estado ${p.estado === 1 ? 'badge-activo' : 'badge-inactivo'}">${p.estado === 1 ? 'Activo' : 'Inactivo'}</span></td>
       <td>${new Date(p.created_at).toLocaleDateString('es-PE')}</td>
-      <td style="display:flex;gap:6px">
+      <td style="display:flex;gap:6px" ondblclick="event.stopPropagation()">
         <button class="btn-icon perm" onclick="openPermisos(${p.id_perfil},'${p.nombre}')"><i class="bi bi-key"></i> Permisos</button>
         ${bloqEdit
         ? `<button class="btn-icon" disabled style="opacity:.35"><i class="bi bi-pencil"></i></button>`
@@ -127,23 +127,30 @@ async function openPermisos(perfilId, perfilNombre) {
   }
 }
 
-//  RENDER PERMISOS 
+//  RENDER PERMISOS
 function renderPermisosLista(opciones) {
   const lista = document.getElementById('permisosLista');
+  const perfilNombre = (document.getElementById('permisoPerfilNombre').textContent || '').toLowerCase();
+  const esSuperAdmin = perfilNombre === 'superadministrador';
+
   if (!opciones.length) {
     lista.innerHTML = '<div style="text-align:center;padding:20px;color:#bbb">No hay opciones registradas</div>';
     actualizarContadorPermisos();
     return;
   }
-  lista.innerHTML = opciones.map(op => `
-    <label class="permiso-item" for="perm_${op.id_opcion}">
+  lista.innerHTML = opciones.map(op => {
+    const locked = esSuperAdmin && (op.ruta === 'perfiles' || op.ruta === 'usuarios');
+    return `
+    <label class="permiso-item" for="perm_${op.id_opcion}" style="${locked ? 'opacity:.7;cursor:default' : ''}">
       <input type="checkbox" id="perm_${op.id_opcion}" value="${op.id_opcion}"
-        ${op.tiene_permiso ? 'checked' : ''} onchange="actualizarContadorPermisos()">
+        ${(op.tiene_permiso || locked) ? 'checked' : ''}
+        ${locked ? 'disabled' : `onchange="actualizarContadorPermisos()"`}>
       <div>
-        <div class="perm-nombre">${op.nombre}</div>
+        <div class="perm-nombre">${op.nombre}${locked ? ' <span style="font-size:10px;color:#7c4dff;background:#ede7f6;padding:1px 6px;border-radius:10px;margin-left:4px">requerido</span>' : ''}</div>
         <div class="perm-ruta">${op.ruta}</div>
       </div>
-    </label>`).join('');
+    </label>`;
+  }).join('');
   actualizarContadorPermisos();
 }
 
@@ -154,21 +161,26 @@ function actualizarContadorPermisos() {
 }
 
 function toggleTodosPermisos() {
-  const checks = document.querySelectorAll('#permisosLista input[type=checkbox]');
-  const todos = [...checks].every(c => c.checked);
+  const checks = [...document.querySelectorAll('#permisosLista input[type=checkbox]:not([disabled])')];
+  const todos = checks.every(c => c.checked);
   checks.forEach(c => c.checked = !todos);
   actualizarContadorPermisos();
 }
 
-//  GUARDAR PERMISOS (AJAX PUT) 
+//  GUARDAR PERMISOS (AJAX PUT)
 async function savePermisos() {
-  const perfilId = document.getElementById('permisoPerfilId').value;
+  const perfilId   = Number(document.getElementById('permisoPerfilId').value);
+  const miPerfilId = JSON.parse(atob(TOKEN.split('.')[1])).id_perfil;
   const sel = [...document.querySelectorAll('#permisosLista input[type=checkbox]:checked')]
     .map(c => Number(c.value));
   try {
     await api('PUT', `/api/permisos/perfil/${perfilId}`, { opciones: sel });
     showAlert('alertPermisos', '✅ Permisos guardados', 'success');
-    setTimeout(() => closeModal('modalPermisos'), 1200);
+    setTimeout(async () => {
+      closeModal('modalPermisos');
+      // Si editamos nuestro propio perfil, refrescar navegación de inmediato
+      if (perfilId === miPerfilId) await refrescarPermisos();
+    }, 1200);
   } catch (e) { showAlert('alertPermisos', e.message); }
 }
 

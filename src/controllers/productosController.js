@@ -1,4 +1,5 @@
 import { pool } from '../config/bd.js';
+import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  CONTROLLER: PRODUCTOS
@@ -9,7 +10,11 @@ import { pool } from '../config/bd.js';
 // GET /api/productos
 export const getProductos = async (req, res) => {
     try {
-        const { id_categoria, estado } = req.query;
+        const { id_categoria, estado, q, id, stock_bajo, page, limit } = req.query;
+        const pageNum  = Math.max(1, parseInt(page)  || 1);
+        const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
+        const offset   = (pageNum - 1) * limitNum;
+
         let where = ['p.estado != 2'];
         let params = [];
         let i = 1;
@@ -21,6 +26,23 @@ export const getProductos = async (req, res) => {
         if (estado && estado !== 'todos') {
             where.push(`p.estado = $${i++}`);
             params.push(Number(estado));
+        }
+        if (id !== undefined) {
+            const idNum = parseInt(id, 10);
+            if (Number.isInteger(idNum) && idNum > 0) {
+                where.push(`p.id_producto = $${i++}`);
+                params.push(idNum);
+            }
+        } else if (q) {
+            where.push(`(LOWER(p.nombre) LIKE $${i} OR LOWER(p.marca) LIKE $${i} OR LOWER(p.sku) LIKE $${i})`);
+            params.push(`%${q.toLowerCase()}%`);
+            i++;
+        }
+        if (stock_bajo === '1') {
+            where.push(`(
+                SELECT COALESCE(SUM(pp2.stock_actual),0) FROM producto_presentacion pp2
+                WHERE pp2.id_producto = p.id_producto AND pp2.estado = 1
+            ) <= p.stock_minimo`);
         }
 
         const whereClause = 'WHERE ' + where.join(' AND ');
@@ -107,9 +129,16 @@ export const getProductos = async (req, res) => {
             JOIN categoria_producto c ON c.id_categoria = p.id_categoria
             ${whereClause}
             ORDER BY p.created_at DESC
-        `, params);
+            LIMIT $${i} OFFSET $${i + 1}
+        `, [...params, limitNum, offset]);
 
-        res.json(result.rows);
+        const countRes = await pool.query(
+            `SELECT COUNT(*) FROM producto p JOIN categoria_producto c ON c.id_categoria = p.id_categoria ${whereClause}`,
+            params
+        );
+
+        const total = parseInt(countRes.rows[0].count);
+        res.json({ data: result.rows, total, page: pageNum, pages: Math.ceil(total / limitNum), limit: limitNum });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error al obtener productos' });
@@ -257,6 +286,16 @@ export const createProducto = async (req, res) => {
         }
 
         await client.query('COMMIT');
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'CREAR',
+            modulo:         'Productos',
+            descripcion:    `Producto creado: "${req.body.nombre}"`,
+            ip:             getIP(req)
+        });
+
         res.status(201).json(producto);
     } catch (err) {
         await client.query('ROLLBACK');
@@ -281,6 +320,16 @@ export const updateProducto = async (req, res) => {
         return res.status(400).json({ message: 'El nombre es requerido' });
 
     try {
+        const prevRes = await pool.query(
+            `SELECT p.nombre, p.estado, p.id_categoria, c.nombre AS cat_nombre,
+                    p.marca, p.porcentaje_oferta, p.stock_minimo
+             FROM producto p JOIN categoria_producto c ON c.id_categoria = p.id_categoria
+             WHERE p.id_producto=$1 AND p.estado != 2`, [id]
+        );
+        if (!prevRes.rows.length)
+            return res.status(404).json({ message: 'Producto no encontrado' });
+        const old = prevRes.rows[0];
+
         const result = await pool.query(
             `UPDATE producto SET
                 id_categoria            = $1,
@@ -317,6 +366,32 @@ export const updateProducto = async (req, res) => {
         );
         if (result.rowCount === 0)
             return res.status(404).json({ message: 'Producto no encontrado' });
+
+        const ESTADO_PROD = { 0: 'Inactivo', 1: 'Activo', 2: 'Eliminado' };
+        const cambios = [];
+        if (old.nombre !== nombre.trim())
+            cambios.push(`nombre: "${old.nombre}" → "${nombre.trim()}"`);
+        if (String(old.estado) !== String(estado ?? 1))
+            cambios.push(`estado: ${ESTADO_PROD[old.estado] ?? old.estado} → ${ESTADO_PROD[String(estado ?? 1)] ?? estado}`);
+        if (String(old.id_categoria) !== String(id_categoria))
+            cambios.push(`categoría: "${old.cat_nombre}" → cat #${id_categoria}`);
+        if ((old.marca || '') !== (marca || ''))
+            cambios.push(`marca: "${old.marca || '—'}" → "${marca || '—'}"`);
+        if (Number(old.porcentaje_oferta) !== Number(porcentaje_oferta ?? 0))
+            cambios.push(`oferta: ${old.porcentaje_oferta}% → ${Number(porcentaje_oferta ?? 0)}%`);
+        if (Number(old.stock_minimo) !== Number(stock_minimo ?? 3))
+            cambios.push(`stock mín.: ${old.stock_minimo} → ${Number(stock_minimo ?? 3)}`);
+        const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Productos',
+            descripcion:    `Producto #${id} "${nombre.trim()}" — ${diffStr}`,
+            ip:             getIP(req)
+        });
+
         res.json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -335,6 +410,16 @@ export const deleteProducto = async (req, res) => {
         );
         if (result.rowCount === 0)
             return res.status(404).json({ message: 'Producto no encontrado' });
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'ELIMINAR',
+            modulo:         'Productos',
+            descripcion:    `Producto #${id} eliminado (soft-delete)`,
+            ip:             getIP(req)
+        });
+
         res.json({ message: 'Producto eliminado' });
     } catch (err) {
         console.error(err);

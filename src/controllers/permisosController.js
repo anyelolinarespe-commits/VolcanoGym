@@ -1,4 +1,5 @@
 import { pool } from '../config/bd.js';
+import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 
 // GET /api/permisos/perfil/:id — opciones asignadas a un perfil
 export const getPermisosByPerfil = async (req, res) => {
@@ -28,8 +29,29 @@ export const setPermisosByPerfil = async (req, res) => {
         return res.status(400).json({ message: 'opciones debe ser un array' });
     }
 
+    const perfilRes = await pool.query(`SELECT nombre FROM perfiles WHERE id_perfil=$1`, [id]);
+    const nombrePerfil = perfilRes.rows[0]?.nombre || `#${id}`;
+
     const client = await pool.connect();
     try {
+        // Capturar permisos actuales con nombres
+        const oldPermsRes = await client.query(
+            `SELECT o.id_opcion, o.nombre FROM opciones o
+             JOIN permisos p ON p.id_opcion = o.id_opcion AND p.id_perfil = $1`, [id]
+        );
+        const oldIds     = new Set(oldPermsRes.rows.map(r => r.id_opcion));
+        const oldNombres = Object.fromEntries(oldPermsRes.rows.map(r => [r.id_opcion, r.nombre]));
+
+        // Obtener nombres de las nuevas opciones
+        let newNombres = {};
+        if (opciones.length > 0) {
+            const namesRes = await client.query(
+                `SELECT id_opcion, nombre FROM opciones WHERE id_opcion = ANY($1::int[])`, [opciones]
+            );
+            newNombres = Object.fromEntries(namesRes.rows.map(r => [r.id_opcion, r.nombre]));
+        }
+        const newSet = new Set(opciones.map(Number));
+
         await client.query('BEGIN');
 
         // Eliminar permisos anteriores del perfil
@@ -48,6 +70,29 @@ export const setPermisosByPerfil = async (req, res) => {
         }
 
         await client.query('COMMIT');
+
+        const agregadas  = opciones.filter(id => !oldIds.has(Number(id))).map(id => newNombres[id] ?? `#${id}`);
+        const eliminadas = [...oldIds].filter(id => !newSet.has(id)).map(id => oldNombres[id] ?? `#${id}`);
+
+        let diffPerm;
+        if (!agregadas.length && !eliminadas.length) {
+            diffPerm = `sin cambios (${opciones.length} opciones activas)`;
+        } else {
+            const partes = [];
+            if (agregadas.length)  partes.push(`+${agregadas.length} agregadas: ${agregadas.join(', ')}`);
+            if (eliminadas.length) partes.push(`-${eliminadas.length} eliminadas: ${eliminadas.join(', ')}`);
+            diffPerm = partes.join(' | ');
+        }
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Permisos',
+            descripcion:    `Permisos del perfil "${nombrePerfil}" — ${diffPerm}`,
+            ip:             getIP(req)
+        });
+
         res.json({ message: 'Permisos actualizados correctamente' });
     } catch (err) {
         await client.query('ROLLBACK');
@@ -61,36 +106,15 @@ export const setPermisosByPerfil = async (req, res) => {
 // GET /api/permisos/mis-opciones — opciones del usuario logueado (para el sidebar)
 export const getMisOpciones = async (req, res) => {
     try {
-        // Primero verificar si el perfil tiene todos los permisos (Administrador = sin restricción)
-        const perfilResult = await pool.query(
-            `SELECT nombre FROM perfiles WHERE id_perfil = (
-                SELECT id_perfil FROM usuarios WHERE id_usuario = $1
-            )`, [req.usuario.id]
-        );
-
-        const nombrePerfil = perfilResult.rows[0]?.nombre?.toLowerCase() || '';
-
-        let result;
-        if (nombrePerfil === 'administrador') {
-            // Administrador ve todo
-            result = await pool.query(`
-                SELECT id_opcion, nombre, ruta, icono, orden
-                FROM opciones
-                WHERE activo = TRUE
-                ORDER BY orden ASC, nombre ASC
-            `);
-        } else {
-            // Filtrar por permisos del perfil
-            result = await pool.query(`
-                SELECT o.id_opcion, o.nombre, o.ruta, o.icono, o.orden
-                FROM opciones o
-                JOIN permisos p ON p.id_opcion = o.id_opcion
-                JOIN usuarios u ON u.id_perfil = p.id_perfil
-                WHERE u.id_usuario = $1
-                  AND o.activo = TRUE
-                ORDER BY o.orden ASC, o.nombre ASC
-            `, [req.usuario.id]);
-        }
+        const result = await pool.query(`
+            SELECT o.id_opcion, o.nombre, o.ruta, o.icono, o.orden
+            FROM opciones o
+            JOIN permisos p ON p.id_opcion = o.id_opcion
+            JOIN usuarios u ON u.id_perfil = p.id_perfil
+            WHERE u.id_usuario = $1
+              AND o.activo = TRUE
+            ORDER BY o.orden ASC, o.nombre ASC
+        `, [req.usuario.id]);
 
         res.json(result.rows);
     } catch (err) {

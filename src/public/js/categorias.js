@@ -1,11 +1,20 @@
+let _categoriasTimer = null;
+
 async function loadCategorias() {
   const tbody = document.getElementById('tbodyCategorias');
   if (tbody) {
     tbody.innerHTML = '<tr class="loading-row"><td colspan="5">Cargando...</td></tr>';
   }
- 
+
   try {
-    dataCategorias = await api('GET', '/api/categorias');
+    const raw    = document.getElementById('searchCategorias')?.value || '';
+    const parsed = parseSearchInput(raw);
+    const params = new URLSearchParams();
+    if (parsed.type === 'id')    params.set('id', parsed.value);
+    else if (parsed.value)       params.set('q', parsed.value);
+
+    const qs = params.toString();
+    dataCategorias = await api('GET', `/api/categorias${qs ? '?' + qs : ''}`);
     renderCategorias(dataCategorias);
     
     const el = document.getElementById('countCategorias');
@@ -18,10 +27,12 @@ async function loadCategorias() {
     }
   }
 }
- 
-/**
- * Renderiza las filas en la tabla de categorías
- */
+
+function filtrarCategorias() {
+  clearTimeout(_categoriasTimer);
+  _categoriasTimer = setTimeout(() => loadCategorias(), 300);
+}
+
 function renderCategorias(data) {
   const tbody = document.getElementById('tbodyCategorias');
   if (!tbody) return;
@@ -37,7 +48,7 @@ function renderCategorias(data) {
       ? `<span style="background:var(--color-warning-bg);color:var(--color-warning);padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600">-${pct % 1 === 0 ? pct : pct.toFixed(2)}%</span>`
       : `<span style="color:var(--color-text-muted);font-size:12px">—</span>`;
     return `
-    <tr>
+    <tr style="cursor:pointer" ondblclick="editCategoria(${c.id_categoria})">
       <td>${c.id_categoria}</td>
       <td><strong>${c.nombre}</strong></td>
       <td style="color:var(--color-text-secondary)">${c.descripcion || '—'}</td>
@@ -47,19 +58,22 @@ function renderCategorias(data) {
           ${c.estado === 1 ? 'ACTIVO' : 'INACTIVO'}
         </span>
       </td>
-      <td>
+      <td ondblclick="event.stopPropagation()">
         <div style="display:flex;gap:6px;justify-content:center">
           <button class="btn-icon edit" title="Editar" onclick="editCategoria(${c.id_categoria})">
             <i class="bi bi-pencil"></i>
           </button>
           ${c.estado === 1
-            ? `<button class="btn-icon danger" title="Anular categoría" onclick="anularCategoria(${c.id_categoria})">
-                <i class="bi bi-trash"></i>
+            ? `<button class="btn-icon danger" title="Anular categoría" onclick="anularCategoria(${c.id_categoria})" style="border-color:#f57f17;color:#f57f17">
+                <i class="bi bi-dash-circle"></i>
                </button>`
             : `<button class="btn-icon" style="border-color:#2e7d32;color:#2e7d32" title="Reactivar categoría" onclick="anularCategoria(${c.id_categoria})">
                 <i class="bi bi-check-circle"></i>
                </button>`
           }
+          <button class="btn-icon danger" title="Eliminar categoría" onclick="confirmDelete('categoria',${c.id_categoria},'${c.nombre.replace(/'/g, "\\'")}')">
+            <i class="bi bi-trash3"></i>
+          </button>
         </div>
       </td>
     </tr>`;
@@ -134,6 +148,14 @@ async function saveCategoria() {
     showAlert('alertCategoria', 'El nombre es requerido');
     return;
   }
+  if (!/[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ]/.test(nombre)) {
+    showAlert('alertCategoria', 'El nombre debe contener al menos una letra, no puede ser solo números');
+    return;
+  }
+  if (porcentaje_descuento < 0) {
+    showAlert('alertCategoria', 'El descuento no puede ser negativo');
+    return;
+  }
 
   try {
     const payload = {
@@ -167,12 +189,27 @@ async function anularCategoria(id) {
   if (!cat) return;
   const nuevoEstado = cat.estado === 1 ? 0 : 1;
   const accion = nuevoEstado === 0 ? 'anular' : 'reactivar';
-  if (!confirm(`¿Deseas ${accion} la categoría "${cat.nombre}"?`)) return;
-  try {
-    await api('PUT', `/api/categorias/${id}`, { estado: nuevoEstado });
-    await loadCategorias();
-    if (typeof cargarCategoriasSelect === 'function') cargarCategoriasSelect();
-  } catch (e) { alert(e.message); }
+  showConfirm(
+    `¿Deseas ${accion} la categoría "${cat.nombre}"?`,
+    async () => {
+      try {
+        await api('PUT', `/api/categorias/${id}`, {
+          nombre:               cat.nombre,
+          descripcion:          cat.descripcion || '',
+          porcentaje_descuento: parseFloat(cat.porcentaje_descuento ?? 0),
+          estado:               nuevoEstado
+        });
+        await loadCategorias();
+        if (typeof cargarCategoriasSelect === 'function') cargarCategoriasSelect();
+        showToast(`Categoría ${nuevoEstado === 0 ? 'anulada' : 'reactivada'} correctamente`);
+      } catch (e) { showToast(e.message, 'error'); }
+    },
+    {
+      btnLabel: nuevoEstado === 0 ? 'Anular' : 'Reactivar',
+      btnColor: nuevoEstado === 0 ? '#c62828' : '#2e7d32',
+      title:    nuevoEstado === 0 ? '⚠️ Anular categoría' : '✅ Reactivar categoría'
+    }
+  );
 }
 
 function resetCategoriaForm() {

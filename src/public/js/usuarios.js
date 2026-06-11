@@ -1,9 +1,19 @@
-//  CARGAR USUARIOS (AJAX) 
+//  CARGAR USUARIOS (AJAX)
+let _usuariosTimer = null;
+
 async function loadUsuarios() {
   document.getElementById('tbodyUsuarios').innerHTML =
     '<tr class="loading-row"><td colspan="7">Cargando...</td></tr>';
   try {
-    dataUsuarios = await api('GET', '/api/usuarios');
+    const raw    = document.getElementById('searchUsuarios')?.value || '';
+    const parsed = parseSearchInput(raw);
+    const params = new URLSearchParams();
+    if (parsed.type === 'id')    params.set('id', parsed.value);
+    else if (parsed.value)       params.set('q', parsed.value);
+
+    const qs = params.toString();
+    const res = await api('GET', `/api/usuarios${qs ? '?' + qs : ''}`);
+    dataUsuarios = Array.isArray(res) ? res : (res.data || []);
     renderUsuarios(dataUsuarios);
     const el = document.getElementById('countUsuarios');
     if (el) el.textContent = dataUsuarios.length;
@@ -11,6 +21,11 @@ async function loadUsuarios() {
     document.getElementById('tbodyUsuarios').innerHTML =
       '<tr class="empty-row"><td colspan="7">Error al cargar</td></tr>';
   }
+}
+
+function filtrarUsuarios() {
+  clearTimeout(_usuariosTimer);
+  _usuariosTimer = setTimeout(() => loadUsuarios(), 300);
 }
 
 //  RENDER TABLA 
@@ -45,14 +60,14 @@ function renderUsuarios(data) {
                      (!yoSoySuperAdmin && esAdmin && !esSelf) ||
                      (mismos && !esSelf);
 
-    return `<tr>
+    return `<tr style="cursor:${bloqEdit ? 'default' : 'pointer'}" ${bloqEdit ? '' : `ondblclick="editUsuario(${u.id_usuario})"`}>
       <td>${u.id_usuario}</td>
       <td><strong>${u.nombre} ${u.apellido}</strong></td>
       <td><code>${u.username}</code></td>
       <td>${u.email}</td>
       <td><span class="badge-perfil">${u.perfil}</span></td>
       <td><span class="badge-estado ${u.estado === 1 ? 'badge-activo' : 'badge-inactivo'}">${u.estado === 1 ? 'Activo' : 'Inactivo'}</span></td>
-      <td style="display:flex;gap:6px">
+      <td style="display:flex;gap:6px" ondblclick="event.stopPropagation()">
         ${bloqEdit
         ? `<button class="btn-icon" disabled style="opacity:.35"><i class="bi bi-pencil"></i></button>`
         : `<button class="btn-icon edit" onclick="editUsuario(${u.id_usuario})"><i class="bi bi-pencil"></i></button>`}

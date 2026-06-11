@@ -1,10 +1,12 @@
 import bcrypt from 'bcryptjs';
 import { pool } from '../config/bd.js';
+import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 
 // GET /api/usuarios
 export const getUsuarios = async (req, res) => {
     try {
-        // Determinar si el ejecutor es superAdmin para controlar visibilidad
+        const { q, id } = req.query;
+
         const ejecutorRes = await pool.query(
             `SELECT p.nombre AS perfil_nombre
              FROM usuarios u JOIN perfiles p ON p.id_perfil = u.id_perfil
@@ -12,6 +14,22 @@ export const getUsuarios = async (req, res) => {
         );
         const ejecutorEsSuperAdmin =
             ejecutorRes.rows[0]?.perfil_nombre?.toLowerCase() === 'superadministrador';
+
+        const where  = ['u.estado != 2', `($1::boolean = TRUE OR LOWER(p.nombre) != 'superadministrador')`];
+        const params = [ejecutorEsSuperAdmin];
+        let   i      = 2;
+
+        if (id !== undefined) {
+            const idNum = parseInt(id, 10);
+            if (Number.isInteger(idNum) && idNum > 0) {
+                where.push(`u.id_usuario = $${i++}`);
+                params.push(idNum);
+            }
+        } else if (q) {
+            where.push(`(LOWER(u.nombre || ' ' || u.apellido) LIKE $${i} OR LOWER(u.username) LIKE $${i})`);
+            params.push(`%${q.toLowerCase()}%`);
+            i++;
+        }
 
         const result = await pool.query(`
             SELECT u.id_usuario, u.nombre, u.apellido, u.username, u.email,
@@ -30,10 +48,9 @@ export const getUsuarios = async (req, res) => {
                    ), '[]') AS contactos_emergencia
             FROM usuarios u
             JOIN perfiles p ON p.id_perfil = u.id_perfil
-            WHERE u.estado != 2
-              AND ($1::boolean = TRUE OR LOWER(p.nombre) != 'superadministrador')
+            WHERE ${where.join(' AND ')}
             ORDER BY u.created_at DESC
-        `, [ejecutorEsSuperAdmin]);
+        `, params);
         res.json(result.rows);
     } catch (err) {
         console.error(err);
@@ -163,6 +180,15 @@ export const createUsuario = async (req, res) => {
             }
         }
 
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'CREAR',
+            modulo:         'Usuarios',
+            descripcion:    `Usuario creado: ${username} (${nombre} ${apellido})`,
+            ip:             getIP(req)
+        });
+
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -191,10 +217,19 @@ export const updateUsuario = async (req, res) => {
         }
     }
     try {
-        // Obtener perfil del TARGET y del EJECUTOR juntos
+        // Obtener perfil del TARGET y del EJECUTOR juntos, incluyendo datos previos para auditoría
         const info = await pool.query(
             `SELECT
                 t.id_usuario        AS target_id,
+                t.nombre            AS target_nombre,
+                t.apellido          AS target_apellido,
+                t.username          AS target_username,
+                t.email             AS target_email,
+                t.celular           AS target_celular,
+                t.dni               AS target_dni,
+                t.alias_asesor      AS target_alias,
+                t.foto_perfil       AS target_foto_perfil,
+                t.estado            AS target_estado,
                 t.id_perfil         AS target_perfil_id,
                 pt.nombre           AS target_perfil_nombre,
                 e.id_perfil         AS ejecutor_perfil_id,
@@ -209,7 +244,9 @@ export const updateUsuario = async (req, res) => {
         if (!info.rows.length) return res.status(404).json({ message: 'Usuario no encontrado' });
 
         const {
-            target_perfil_id, target_perfil_nombre,
+            target_nombre, target_apellido, target_username, target_email,
+            target_celular, target_dni, target_alias, target_foto_perfil,
+            target_estado, target_perfil_id, target_perfil_nombre,
             ejecutor_perfil_id, ejecutor_perfil_nombre
         } = info.rows[0];
 
@@ -277,12 +314,14 @@ export const updateUsuario = async (req, res) => {
         }
 
         // Protección al asignar perfiles elevados
+        let nuevoPerfil = target_perfil_nombre;
         if (id_perfil) {
             const perfilDestinoRes = await pool.query(
                 `SELECT nombre FROM perfiles WHERE id_perfil = $1`, [id_perfil]
             );
             const perfilDestinoNombre = perfilDestinoRes.rows[0]?.nombre?.toLowerCase();
             const perfilCambia = Number(id_perfil) !== target_perfil_id;
+            if (perfilCambia) nuevoPerfil = perfilDestinoRes.rows[0]?.nombre ?? `Perfil #${id_perfil}`;
             // Nadie puede asignar superAdministrador (solo aplica si el perfil cambia)
             if (perfilDestinoNombre === 'superadministrador' && perfilCambia) {
                 return res.status(403).json({
@@ -344,6 +383,43 @@ export const updateUsuario = async (req, res) => {
                 );
             }
         }
+
+        const ESTADO_USR = { 0: 'Inactivo', 1: 'Activo', 2: 'Eliminado' };
+        const cambios = [];
+        if (`${target_nombre} ${target_apellido}` !== `${nombre} ${apellido}`)
+            cambios.push(`nombre: "${target_nombre} ${target_apellido}" → "${nombre} ${apellido}"`);
+        if (String(target_estado) !== String(estado ?? 1))
+            cambios.push(`estado: ${ESTADO_USR[target_estado] ?? target_estado} → ${ESTADO_USR[String(estado ?? 1)] ?? estado}`);
+        if (target_perfil_nombre !== nuevoPerfil)
+            cambios.push(`perfil: "${target_perfil_nombre}" → "${nuevoPerfil}"`);
+        if ((target_username || '') !== (username?.trim() || ''))
+            cambios.push(`usuario: "${target_username}" → "${username?.trim()}"`);
+        if (password) cambios.push('contraseña actualizada');
+        if ((target_email || '') !== (email || ''))
+            cambios.push(`email: "${target_email || '—'}" → "${email || '—'}"`);
+        if ((target_celular || '') !== (celular || ''))
+            cambios.push(`celular: ${target_celular || '—'} → ${celular || '—'}`);
+        if ((target_dni || '') !== (dni || ''))
+            cambios.push(`DNI: ${target_dni || '—'} → ${dni || '—'}`);
+        if ((target_alias || '') !== (alias_asesor || ''))
+            cambios.push(`alias: "${target_alias || '—'}" → "${alias_asesor || '—'}"`);
+        const fotoVieja = target_foto_perfil || null;
+        const fotoNueva = foto_perfil || null;
+        if (fotoVieja !== fotoNueva) {
+            if (!fotoVieja && fotoNueva)       cambios.push('foto de perfil: agregada');
+            else if (fotoVieja && !fotoNueva)  cambios.push('foto de perfil: eliminada');
+            else                               cambios.push('foto de perfil: actualizada');
+        }
+        const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Usuarios',
+            descripcion:    `Usuario #${id} "${target_username}" (${nombre} ${apellido}) — ${diffStr}`,
+            ip:             getIP(req)
+        });
 
         res.json({ message: 'Usuario actualizado' });
     } catch (err) {
@@ -418,6 +494,15 @@ export const reactivarUsuario = async (req, res) => {
              WHERE id_usuario=$2 RETURNING id_usuario, nombre, apellido, username, email, estado`,
             [req.usuario.id, id]
         );
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Usuarios',
+            descripcion:    `Usuario #${id} reactivado: ${nombre} ${apellido} (Perfil: ${perfil_nombre})`,
+            ip:             getIP(req)
+        });
 
         res.json({
             ...result.rows[0],
@@ -494,6 +579,16 @@ export const deleteUsuario = async (req, res) => {
             [req.usuario.id, id]
         );
         if (result.rowCount === 0) return res.status(404).json({ message: 'Usuario no encontrado' });
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'ELIMINAR',
+            modulo:         'Usuarios',
+            descripcion:    `Usuario #${id} eliminado (soft-delete)`,
+            ip:             getIP(req)
+        });
+
         res.json({ message: 'Usuario eliminado' });
     } catch (err) {
         console.error(err);
