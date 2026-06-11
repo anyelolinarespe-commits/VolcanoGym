@@ -41,14 +41,15 @@ const MODULOS_CONFIG = {
   'presentaciones': { icon: 'bi-box2',           label: 'Presentaciones', seccion: 'Tienda',           color: '#00897b' },
   'productos':      { icon: 'bi-box-seam',       label: 'Productos',      seccion: 'Tienda',           color: '#ff7043' },
   'inventario':     { icon: 'bi-clipboard-data', label: 'Inventario',     seccion: 'Tienda',           color: '#1565c0' },
-  'ventas':         { icon: 'bi-receipt',        label: 'Ventas',         seccion: 'Tienda',           color: '#0f9d58' },
-  'perfiles':       { icon: 'bi-shield-check',   label: 'Perfiles',       seccion: 'Administración',   color: '#e94560' },
+  'ventas':               { icon: 'bi-receipt',        label: 'Ventas',                 seccion: 'Tienda',           color: '#0f9d58' },
+  'verificacion-pagos':   { icon: 'bi-check2-circle',  label: 'Verificación de Pagos',  seccion: 'Tienda',           color: '#1565c0' },
+  'perfiles':             { icon: 'bi-shield-check',   label: 'Perfiles',               seccion: 'Administración',   color: '#e94560' },
   'usuarios':       { icon: 'bi-people',         label: 'Usuarios',       seccion: 'Administración',   color: '#0f3460' },
   'auditoria':      { icon: 'bi-journal-text',   label: 'Auditoría',      seccion: 'Administración',   color: '#6a1b9a' },
 };
 
-// Helper: normaliza la ruta para comparaciones
-const normRuta = r => r?.toLowerCase().replace(/^\//, '').trim() ?? '';
+// Helper: normaliza la ruta para comparaciones (acepta guiones o guiones bajos)
+const normRuta = r => r?.toLowerCase().replace(/^\//, '').replace(/_/g, '-').trim() ?? '';
 
 // Topbar y Sidebar toggle
 document.getElementById('topbarUser').textContent = USUARIO.nombre || 'Usuario';
@@ -427,8 +428,9 @@ function goTo(view, fromHistory = false) {
   if (view === 'productos')      loadProductos();
   if (view === 'inventario')     loadInventario();
   if (view === 'asistencias')  { filtroAsistHoy(); _preloadClientesAsist(); }
-  if (view === 'ventas')         loadVentas();
-  if (view === 'auditoria')    { cargarUsuariosAuditoria(); cargarModulosAuditoria(); loadAuditoria(1); }
+  if (view === 'ventas')               loadVentas();
+  if (view === 'verificacion-pagos')   vpCargar(1);
+  if (view === 'auditoria')          { cargarUsuariosAuditoria(); cargarModulosAuditoria(); loadAuditoria(1); }
 }
 
 window.addEventListener('popstate', e => {
