@@ -8,13 +8,15 @@ import {
   emitirComprobante,
   enviarSunat,
   anularVenta,
-  enviarEmailVenta
+  enviarEmailVenta,
+  getVerificacionPagos
 } from '../controllers/ventasController.js';
 import { verificarToken } from '../middlewares/verificarToken.js';
 
 const router = Router();
 router.use(verificarToken);
 
+router.get('/verificacion/pagos', getVerificacionPagos);
 router.get('/tipos-comprobante',  getTiposComprobante);
 router.get('/numero-siguiente',   getNumeroSiguiente);
 router.get('/productos/buscar',   buscarProductosVenta);
