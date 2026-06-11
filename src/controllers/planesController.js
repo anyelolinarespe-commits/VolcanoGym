@@ -1,4 +1,5 @@
 import { pool } from '../config/bd.js';
+import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 
 // ─── GET /api/planes ─────────────────────────────────────────────────────────
 export const getPlanes = async (req, res) => {
@@ -93,6 +94,15 @@ export const createPlan = async (req, res) => {
                 descripcion || null
             ]
         );
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'CREAR',
+            modulo:         'Planes',
+            descripcion:    `Plan creado: "${req.body.nombre}"`,
+            ip:             getIP(req)
+        });
+
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -122,6 +132,16 @@ export const updatePlan = async (req, res) => {
     const tipoI     = apInteres ? (tipo_interes || 'porcentaje') : 'porcentaje';
 
     try {
+        const prevRes = await pool.query(
+            `SELECT nombre, precio, precio_renovacion, activo, tipo_cliente,
+                    duracion_meses, duracion_unidad, permite_fraccion, dias_limite_fraccion,
+                    max_cuotas, monto_minimo_cuota, aplica_interes, tasa_interes, tipo_interes, descripcion
+             FROM plan_membresia WHERE id_plan=$1`, [id]
+        );
+        if (!prevRes.rows.length)
+            return res.status(404).json({ message: 'Plan no encontrado' });
+        const old = prevRes.rows[0];
+
         const precioRenov = precio_renovacion ? Number(precio_renovacion) : null;
 
         const result = await pool.query(
@@ -144,6 +164,45 @@ export const updatePlan = async (req, res) => {
         );
         if (!result.rowCount)
             return res.status(404).json({ message: 'Plan no encontrado' });
+
+        const cambios = [];
+        if (old.nombre !== nombre)
+            cambios.push(`nombre: "${old.nombre}" → "${nombre}"`);
+        if (Number(old.precio) !== Number(precio))
+            cambios.push(`precio: S/${Number(old.precio).toFixed(2)} → S/${Number(precio).toFixed(2)}`);
+        if (old.activo !== (activo ?? true))
+            cambios.push(`estado: ${old.activo ? 'Activo' : 'Inactivo'} → ${(activo ?? true) ? 'Activo' : 'Inactivo'}`);
+        if (Number(old.duracion_meses) !== Number(duracion_meses))
+            cambios.push(`duración: ${old.duracion_meses} ${old.duracion_unidad} → ${duracion_meses} ${duracion_unidad ?? 'meses'}`);
+        if (old.permite_fraccion !== fraccion)
+            cambios.push(`fraccionado: ${old.permite_fraccion ? 'Sí' : 'No'} → ${fraccion ? 'Sí' : 'No'}`);
+        if (Number(old.max_cuotas) !== cuotas)
+            cambios.push(`cuotas: ${old.max_cuotas} → ${cuotas}`);
+        if (Number(old.precio_renovacion ?? 0) !== Number(precio_renovacion ?? 0))
+            cambios.push(`precio renov.: S/${Number(old.precio_renovacion ?? 0).toFixed(2)} → S/${Number(precio_renovacion ?? 0).toFixed(2)}`);
+        if ((old.tipo_cliente || '') !== (tipo_cliente || ''))
+            cambios.push(`tipo: "${old.tipo_cliente}" → "${tipo_cliente}"`);
+        if (Number(old.dias_limite_fraccion ?? 0) !== Number(dias_limite_fraccion ?? 20))
+            cambios.push(`días límite fracción: ${old.dias_limite_fraccion} → ${dias_limite_fraccion ?? 20}`);
+        if (Number(old.monto_minimo_cuota ?? 0) !== Number(monto_minimo_cuota ?? 0))
+            cambios.push(`monto mín. cuota: S/${Number(old.monto_minimo_cuota ?? 0).toFixed(2)} → S/${Number(monto_minimo_cuota ?? 0).toFixed(2)}`);
+        if (old.aplica_interes !== apInteres)
+            cambios.push(`interés: ${old.aplica_interes ? 'Sí' : 'No'} → ${apInteres ? 'Sí' : 'No'}`);
+        if (apInteres && Number(old.tasa_interes ?? 0) !== tasaI)
+            cambios.push(`tasa: ${old.tasa_interes}% → ${tasaI}%`);
+        if ((old.descripcion || '') !== (descripcion || ''))
+            cambios.push('descripción actualizada');
+        const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Planes',
+            descripcion:    `Plan #${id} "${nombre}" — ${diffStr}`,
+            ip:             getIP(req)
+        });
+
         res.json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -155,17 +214,21 @@ export const updatePlan = async (req, res) => {
 export const deletePlan = async (req, res) => {
     const { id } = req.params;
     try {
-        const check = await pool.query(
-            `SELECT COUNT(*) FROM membresia WHERE id_plan=$1 AND estado='activa'`, [id]
-        );
-        if (parseInt(check.rows[0].count) > 0)
-            return res.status(409).json({ message: 'No se puede desactivar: hay membresías activas con este plan' });
-
         const result = await pool.query(
             `UPDATE plan_membresia SET activo=false WHERE id_plan=$1 RETURNING id_plan`, [id]
         );
         if (!result.rowCount)
             return res.status(404).json({ message: 'Plan no encontrado' });
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'ELIMINAR',
+            modulo:         'Planes',
+            descripcion:    `Plan #${id} desactivado`,
+            ip:             getIP(req)
+        });
+
         res.json({ message: 'Plan desactivado correctamente' });
     } catch (err) {
         console.error(err);

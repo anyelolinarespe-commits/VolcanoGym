@@ -162,15 +162,7 @@ async function subirFotoProducto(file) {
         const formData = new FormData();
         formData.append('foto', file);
 
-        // apiUpload: versión de api() para FormData (sin Content-Type JSON)
-        const res = await fetch(`/api/productos/${_idProductoFotos}/fotos`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${TOKEN}` },
-            body: formData
-        });
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Error al subir la foto');
+        await apiForm('POST', `/api/productos/${_idProductoFotos}/fotos`, formData);
 
         // Limpiar input
         const input = document.getElementById('fotoInput');

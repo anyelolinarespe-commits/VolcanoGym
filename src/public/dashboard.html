@@ -16,6 +16,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
   <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="dashboard-responsive.css">
 </head>
 
 <body>
@@ -41,6 +42,10 @@
           <i class="bi bi-moon-stars" id="themeIcon"></i>
           <span id="themeLabel">Oscuro</span>
         </button>
+        <button class="fullscreen-btn" id="fullscreenBtn" title="Pantalla completa">
+          <i class="bi bi-fullscreen" id="fullscreenIcon"></i>
+          <span id="fullscreenLabel">Pantalla completa</span>
+        </button>
         <span style="font-size:13px;color:#666">Bienvenido,</span>
         <span class="user-badge" id="topbarUser">—</span>
         <button class="btn-logout-mobile" id="btnLogoutMobile" title="Cerrar sesión">
@@ -55,6 +60,54 @@
         <h4 style="font-weight:700;color:#1a1a2e;margin-bottom:6px;">Dashboard</h4>
         <p style="color:#888;font-size:14px;margin-bottom:24px;">Bienvenido al sistema de gestión</p>
         <div class="row g-3" id="homeCards"></div>
+
+        <!-- Balance de Ingresos -->
+        <div id="homeBalance" style="margin-top:32px;display:none;">
+          <div class="balance-header">
+            <div class="balance-title-wrap">
+              <span class="balance-title"><i class="bi bi-bar-chart-line me-2"></i>Balance de Ingresos</span>
+              <span class="balance-subtitle">Ingresos consolidados del gimnasio</span>
+            </div>
+            <select id="balancePeriodo" class="balance-periodo-sel" onchange="cargarBalance()">
+              <option value="3">Últimos 3 meses</option>
+              <option value="6">Últimos 6 meses</option>
+              <option value="12" selected>Últimos 12 meses</option>
+            </select>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6 col-md-3">
+              <div class="bkpi-card">
+                <div class="bkpi-label">Total este mes</div>
+                <div class="bkpi-value" id="bkpiTotal">—</div>
+                <div class="bkpi-badge" id="bkpiVariacion"></div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="bkpi-card">
+                <div class="bkpi-label">Membresías este mes</div>
+                <div class="bkpi-value bkpi-blue" id="bkpiMemb">—</div>
+                <div class="bkpi-sub">Cuotas cobradas</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="bkpi-card">
+                <div class="bkpi-label">Ventas este mes</div>
+                <div class="bkpi-value bkpi-green" id="bkpiVentas">—</div>
+                <div class="bkpi-sub">Productos vendidos</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="bkpi-card bkpi-card-deuda">
+                <div class="bkpi-label">Deuda pendiente</div>
+                <div class="bkpi-value bkpi-red" id="bkpiDeuda">—</div>
+                <div class="bkpi-sub">Sin cobrar</div>
+              </div>
+            </div>
+          </div>
+          <div class="balance-chart-wrap">
+            <canvas id="balanceChart"></canvas>
+          </div>
+        </div>
       </div>
 
       <div class="view" id="view-clientes">
@@ -68,13 +121,23 @@
           <div class="stat-pill" data-f="activos" onclick="filtroCliente('activos',this)"><span class="sp-num sp-activos" id="cl-activos">—</span> activos</div>
           <div class="stat-pill" data-f="vencidas" onclick="filtroCliente('vencidas',this)"><span class="sp-num sp-vencidas" id="cl-vencidas">—</span> vencidas</div>
           <div class="stat-pill" data-f="congeladas" onclick="filtroCliente('congeladas',this)"><span class="sp-num sp-congeladas" id="cl-congeladas">—</span> congeladas</div>
+          <div class="stat-pill" data-f="sin_membresia" onclick="filtroCliente('sin_membresia',this)"><span class="sp-num" style="color:#9c27b0" id="cl-sin-memb">—</span> sin membresía</div>
           <div class="stat-pill" data-f="mes" onclick="filtroCliente('mes',this)"><span class="sp-num sp-mes" id="cl-mes">—</span> este mes</div>
           <div class="stat-pill" data-f="saldo" onclick="filtroCliente('saldo',this)"><span class="sp-num sp-saldo" id="cl-saldo">—</span> cuentas por cobrar</div>
         </div>
         <div class="table-card">
           <div class="table-toolbar">
             <input type="text" id="searchClientes" placeholder="🔍 Buscar por nombre o DNI..."
-              autocomplete="off" oninput="filtrarTabla('clientes')">
+              autocomplete="off" oninput="filtrarClientes()">
+            <select id="filtroEstadoClientes" onchange="filtroClienteSelect(this.value)">
+              <option value="todos">Todos</option>
+              <option value="activos">Activos</option>
+              <option value="vencidas">Vencidas</option>
+              <option value="congeladas">Congeladas</option>
+              <option value="sin_membresia">Sin membresía</option>
+              <option value="mes">Este mes</option>
+              <option value="saldo">Cuentas por cobrar</option>
+            </select>
           </div>
           <div style="overflow-x:auto">
             <table>
@@ -121,6 +184,8 @@
           <div class="stat-pill" onclick="filtroMembresia('congelada',this)"><span class="sp-num sp-congeladas" id="mb-congeladas">—</span> congeladas</div>
           <div class="stat-pill" onclick="filtroMembresia('deuda',this)"><span class="sp-num sp-saldo" id="mb-deuda">—</span> con deuda</div>
           <div class="stat-pill" onclick="filtroMembresia('este_mes',this)"><span class="sp-num sp-mes" id="mb-mes">—</span> este mes</div>
+          <div class="stat-pill" onclick="filtroMembresia('programada',this)"><span class="sp-num" style="background:#1565c0;color:#fff" id="mb-programadas">—</span> programadas</div>
+          <div class="stat-pill" onclick="filtroMembresia('anulada',this)"><span class="sp-num" style="background:#6a1b9a;color:#fff" id="mb-anuladas">—</span> anuladas</div>
         </div>
         <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
           <select id="filtroMembEstado" class="form-control" style="width:180px" onchange="onMembFiltroChange()">
@@ -129,6 +194,7 @@
             <option value="vencida">Vencida</option>
             <option value="anulada">Anulada</option>
             <option value="congelada">Congelada</option>
+            <option value="programada">Programada</option>
           </select>
           <select id="filtroMembPlan" class="form-control" style="width:180px" onchange="loadMembresias()">
             <option value="todos">Todos los planes</option>
@@ -197,8 +263,8 @@
         </div>
         <div class="table-card">
           <div class="table-toolbar">
-            <input type="text" id="searchUsuarios" placeholder="🔍 Buscar usuario..."
-              oninput="filtrarTabla('usuarios')">
+            <input type="search" id="searchUsuarios" placeholder="🔍 Buscar usuario… (#ID para buscar por ID)"
+              oninput="filtrarUsuarios()">
           </div>
           <table>
             <thead>
@@ -230,8 +296,8 @@
         </div>
         <div class="table-card">
           <div class="table-toolbar">
-            <input type="text" id="searchCategorias" placeholder="🔍 Buscar categoría..."
-              oninput="filtrarTabla('categorias')">
+            <input type="search" id="searchCategorias" placeholder="🔍 Buscar categoría… (#ID para buscar por ID)"
+              oninput="filtrarCategorias()">
           </div>
           <table>
             <thead>
@@ -364,7 +430,7 @@
 
         <!-- KPI cards -->
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
-          <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8f0;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+          <div id="inv-card-todos" onclick="filtroInvKpi('todos')" style="background:#fff;border-radius:12px;padding:16px;border:2px solid #3949ab;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);cursor:pointer;transition:box-shadow .15s,border-color .15s">
             <div style="width:44px;height:44px;border-radius:10px;background:#e8eaf6;display:flex;align-items:center;justify-content:center;flex-shrink:0">
               <i class="bi bi-boxes" style="font-size:20px;color:#3949ab"></i>
             </div>
@@ -373,7 +439,7 @@
               <div style="font-size:26px;font-weight:800;color:#1a1a2e;line-height:1.1" id="inv-total">—</div>
             </div>
           </div>
-          <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8f0;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+          <div id="inv-card-critico" onclick="filtroInvKpi('critico')" style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8f0;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);cursor:pointer;transition:box-shadow .15s,border-color .15s">
             <div style="width:44px;height:44px;border-radius:10px;background:#ffebee;display:flex;align-items:center;justify-content:center;flex-shrink:0">
               <i class="bi bi-exclamation-circle" style="font-size:20px;color:#c62828"></i>
             </div>
@@ -382,7 +448,7 @@
               <div style="font-size:26px;font-weight:800;color:#c62828;line-height:1.1" id="inv-critico">—</div>
             </div>
           </div>
-          <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8f0;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+          <div id="inv-card-optimo" onclick="filtroInvKpi('optimo')" style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8f0;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);cursor:pointer;transition:box-shadow .15s,border-color .15s">
             <div style="width:44px;height:44px;border-radius:10px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;flex-shrink:0">
               <i class="bi bi-check-circle" style="font-size:20px;color:#2e7d32"></i>
             </div>
@@ -416,7 +482,7 @@
               registros
             </div>
             <input type="text" id="searchInventario" placeholder="🔍 Buscar producto..."
-              oninput="filtrarTabla('inventario')" style="width:200px">
+              oninput="filtrarInventario()" style="width:200px">
           </div>
           <div style="overflow-x:auto">
             <table>
@@ -479,16 +545,16 @@
 
         <!-- STATS -->
         <div class="stats-row" id="asistStatsRow">
-          <div class="stat-pill active" onclick="resetFiltrosAsist()">Todos</div>
-          <div class="stat-pill" onclick="filtroAsistHoy()">
+          <div class="stat-pill active" id="asist-pill-hoy" onclick="filtroAsistHoy()">
             <span class="sp-num" style="color:#26a69a" id="asist-hoy">—</span> hoy
           </div>
-          <div class="stat-pill">
+          <div class="stat-pill" id="asist-pill-semana" onclick="filtroAsistEstaSemana()">
             <span class="sp-num" style="color:#1976d2" id="asist-semana">—</span> esta semana
           </div>
-          <div class="stat-pill">
+          <div class="stat-pill" id="asist-pill-mes" onclick="filtroAsistEsteMes()">
             <span class="sp-num" style="color:#7c4dff" id="asist-mes">—</span> este mes
           </div>
+          <div class="stat-pill" id="asist-pill-todos" onclick="resetFiltrosAsist()">Todos</div>
         </div>
 
         <!-- FILTROS -->
@@ -507,7 +573,20 @@
 
         <!-- TABLA -->
         <div class="table-card">
-          <table>
+          <div style="overflow-x:auto">
+          <table style="table-layout:fixed;min-width:860px">
+            <colgroup>
+              <col style="width:44px">
+              <col style="width:180px">
+              <col style="width:90px">
+              <col style="width:90px">
+              <col style="width:80px">
+              <col style="width:74px">
+              <col style="width:110px">
+              <col style="width:74px">
+              <col style="width:120px">
+              <col style="width:80px">
+            </colgroup>
             <thead>
               <tr>
                 <th>#</th>
@@ -526,6 +605,7 @@
               <tr class="loading-row"><td colspan="10">Cargando...</td></tr>
             </tbody>
           </table>
+          </div>
         </div>
       </div>
       <!-- ══ /ASISTENCIAS ═════════════════════════════════════════════════════ -->
@@ -539,19 +619,6 @@
           </button>
         </div>
 
-        <div class="stats-row" id="ventaStatsRow">
-          <div class="stat-pill active" onclick="filtroEstadoSunat('',this)">Todas</div>
-          <div class="stat-pill" onclick="filtroEstadoSunat('sin_emitir',this)">
-            <span class="sp-num" style="color:#e94560" id="vt-sin-emitir">—</span> sin emitir
-          </div>
-          <div class="stat-pill" onclick="filtroEstadoSunat('aceptado',this)">
-            <span class="sp-num" style="color:#2e7d32" id="vt-aceptado">—</span> aceptadas
-          </div>
-          <div class="stat-pill" onclick="filtroEstadoSunat('enviado',this)">
-            <span class="sp-num" style="color:#1565c0" id="vt-enviado">—</span> enviadas
-          </div>
-        </div>
-
         <div class="table-card">
           <div class="table-toolbar">
             <span id="ventaContador" style="font-size:13px;color:#888">—</span>
@@ -559,7 +626,19 @@
               oninput="loadVentas(1)" style="width:260px;margin-left:auto">
           </div>
           <div style="overflow-x:auto">
-            <table>
+            <table style="table-layout:fixed">
+              <colgroup>
+                <col style="width:40px">
+                <col style="width:115px">
+                <col style="width:150px">
+                <col style="width:105px">
+                <col style="width:80px">
+                <col style="width:78px">
+                <col style="width:88px">
+                <col style="width:78px">
+                <col style="width:88px">
+                <col style="width:180px">
+              </colgroup>
               <thead>
                 <tr>
                   <th>ID</th>
@@ -568,15 +647,14 @@
                   <th>VENDEDOR</th>
                   <th>FECHA</th>
                   <th>TOTAL</th>
-                  <th>FORMA PAGO</th>
+                  <th>PAGO</th>
                   <th>DEUDA</th>
-                  <th>ESTADO VENTA</th>
-                  <th>ESTADO SUNAT</th>
+                  <th>ESTADO</th>
                   <th>ACCIONES</th>
                 </tr>
               </thead>
               <tbody id="tbodyVentas">
-                <tr class="loading-row"><td colspan="11">Cargando...</td></tr>
+                <tr class="loading-row"><td colspan="10">Cargando...</td></tr>
               </tbody>
             </table>
           </div>
@@ -584,6 +662,62 @@
         </div>
       </div>
       <!-- ══ /VENTAS ══════════════════════════════════════════════════════════ -->
+
+      <!-- ══ AUDITORÍA ══════════════════════════════════════════════════════════ -->
+      <div class="view" id="view-auditoria">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-journal-text me-2"></i>Auditoría</span>
+          <button class="btn-cancel" style="padding:8px 14px;font-size:13px" onclick="limpiarFiltrosAuditoria()">
+            <i class="bi bi-x-circle me-1"></i>Limpiar
+          </button>
+        </div>
+
+        <!-- FILTROS -->
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+          <input type="search" id="audFiltroTexto" class="form-control" style="width:220px"
+                 placeholder="🔍 Buscar descripción… (#ID)" oninput="filtrarAuditoria()">
+          <select id="audFiltroUsuario" class="form-control" style="width:200px" onchange="filtrarAuditoria()">
+            <option value="">Todos los usuarios</option>
+          </select>
+          <select id="audFiltroModulo" class="form-control" style="width:170px" onchange="filtrarAuditoria()">
+            <option value="">Todos los módulos</option>
+          </select>
+          <select id="audFiltroAccion" class="form-control" style="width:160px" onchange="filtrarAuditoria()">
+            <option value="">Todas las acciones</option>
+            <option value="CREAR">CREAR</option>
+            <option value="EDITAR">EDITAR</option>
+            <option value="ELIMINAR">ELIMINAR</option>
+            <option value="LOGIN">LOGIN</option>
+            <option value="LOGOUT">LOGOUT</option>
+          </select>
+          <input type="date" id="audFechaInicio" class="form-control" style="width:160px" onchange="filtrarAuditoria()">
+          <input type="date" id="audFechaFin"    class="form-control" style="width:160px" onchange="filtrarAuditoria()">
+        </div>
+
+        <!-- TABLA -->
+        <div class="table-card">
+          <div style="overflow-x:auto">
+            <table style="min-width:900px">
+              <thead>
+                <tr>
+                  <th style="width:50px">#</th>
+                  <th>Usuario</th>
+                  <th style="width:120px">Acción</th>
+                  <th style="width:130px">Módulo</th>
+                  <th>Descripción</th>
+                  <th style="width:110px">IP</th>
+                  <th style="width:130px">Fecha y Hora</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyAuditoria">
+                <tr class="loading-row"><td colspan="7">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="paginacionAuditoria" style="margin-top:12px;text-align:center"></div>
+        </div>
+      </div>
+      <!-- ══ /AUDITORÍA ══════════════════════════════════════════════════════════ -->
 
     </div>
   </div>
@@ -671,12 +805,9 @@
       <div class="vt-section-label" style="margin-top:18px">
         <i class="bi bi-box-seam"></i> PRODUCTOS
       </div>
-      <div style="display:flex;gap:10px;margin-bottom:12px">
+      <div style="margin-bottom:12px">
         <button class="vt-btn-agregar-prod" onclick="abrirModalProducto()">
           <i class="bi bi-plus-circle me-1"></i>Agregar Producto
-        </button>
-        <button class="vt-btn-cotizacion" disabled title="Próximamente">
-          <i class="bi bi-file-earmark-check me-1"></i>Cargar Cotización
         </button>
       </div>
 
@@ -703,6 +834,7 @@
         <div>
           <div style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:.5px">TOTAL A PAGAR</div>
           <div class="vt-total-num" id="nv-total-pagar">S/ 0.00</div>
+          <div style="font-size:11px;color:#16a34a;font-weight:600;margin-top:2px">Precio incluye IGV (18%)</div>
         </div>
         <div style="text-align:right;font-size:13px;color:#666">
           Forma de Pago<br>
@@ -764,191 +896,6 @@
       <div id="listaProductosVenta" style="max-height:420px;overflow-y:auto">
         <div style="text-align:center;padding:30px;color:#aaa">Escribe para buscar productos...</div>
       </div>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: Emitir Comprobante -->
-<div class="modal-overlay" id="modalEmitirComprobante">
-  <div class="vt-modal-shell" style="max-width:720px">
-    <div class="vt-modal-header" style="background:linear-gradient(135deg,#1565c0,#1976d2)">
-      <div style="display:flex;align-items:center;gap:10px">
-        <i class="bi bi-file-earmark-check" style="font-size:22px"></i>
-        <div>
-          <div style="font-size:16px;font-weight:700">Emitir Comprobante Electrónico</div>
-          <div style="font-size:12px;opacity:.8">Tipo de documento y datos de facturación</div>
-        </div>
-      </div>
-      <button class="vt-btn-x" onclick="closeModal('modalEmitirComprobante')"><i class="bi bi-x-lg"></i></button>
-    </div>
-    <div class="vt-modal-body">
-      <input type="hidden" id="emitir-id-venta">
-
-      <!-- Tipo comprobante -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-        <label class="vt-tipo-comp-card" id="card-factura">
-          <input type="radio" name="tipo-comprobante" value="FAC" id="rb-factura">
-          <div class="vt-tipo-inner">
-            <i class="bi bi-file-earmark-text" style="font-size:28px;color:#1976d2"></i>
-            <div>
-              <div style="font-weight:700;font-size:15px">Factura</div>
-              <div style="font-size:12px;color:#666">RUC · Formal</div>
-            </div>
-            <span class="vt-tipo-badge">Tipo 01</span>
-          </div>
-          <div class="vt-tipo-check" id="check-factura"><i class="bi bi-check-circle-fill"></i></div>
-        </label>
-        <label class="vt-tipo-comp-card selected" id="card-boleta">
-          <input type="radio" name="tipo-comprobante" value="BOL" id="rb-boleta" checked>
-          <div class="vt-tipo-inner">
-            <i class="bi bi-receipt" style="font-size:28px;color:#ff8f00"></i>
-            <div>
-              <div style="font-weight:700;font-size:15px">Boleta</div>
-              <div style="font-size:12px;color:#666">DNI/RUC · Simple</div>
-            </div>
-            <span class="vt-tipo-badge" style="background:#ff8f00">Tipo 03</span>
-          </div>
-          <div class="vt-tipo-check visible" id="check-boleta"><i class="bi bi-check-circle-fill" style="color:#2e7d32"></i></div>
-        </label>
-      </div>
-
-      <!-- Op tributaria + tipo pago -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-        <div>
-          <label class="form-label">OP. TRIBUTARIA</label>
-          <input class="form-control" value="Gravada (0101)" readonly>
-        </div>
-        <div>
-          <label class="form-label">TIPO DE PAGO</label>
-          <input class="form-control" id="emitir-tipo-pago" value="Contado" readonly>
-        </div>
-      </div>
-
-      <!-- Serie / número -->
-      <div style="display:grid;grid-template-columns:1fr 1fr 1.6fr;gap:14px;margin-bottom:18px">
-        <div>
-          <label class="form-label">SERIE</label>
-          <input class="form-control" id="emitir-serie" readonly>
-        </div>
-        <div>
-          <label class="form-label">NÚMERO</label>
-          <input class="form-control" id="emitir-num-solo" readonly>
-        </div>
-        <div>
-          <label class="form-label">NÚMERO COMPLETO</label>
-          <input class="form-control vt-input-num-completo" id="emitir-numero" readonly>
-        </div>
-      </div>
-
-      <!-- Cliente -->
-      <div class="vt-section-label"><i class="bi bi-person-circle"></i> CLIENTE</div>
-      <div style="margin-bottom:16px">
-        <div style="font-weight:700;font-size:15px" id="emitir-cliente">—</div>
-        <div style="font-size:13px;color:#666" id="emitir-dni">—</div>
-      </div>
-
-      <!-- Productos -->
-      <div style="margin-bottom:12px">
-        <table class="vt-tabla-carrito">
-          <thead>
-            <tr>
-              <th>PRODUCTO</th>
-              <th style="text-align:center">CANT.</th>
-              <th style="text-align:right">P. UNIT.</th>
-              <th style="text-align:right">TOTAL</th>
-            </tr>
-          </thead>
-          <tbody id="emitir-detalle"></tbody>
-        </table>
-      </div>
-
-      <!-- Totales -->
-      <div class="vt-totales-grid">
-        <div class="vt-total-row">
-          <span>Subtotal (base imponible)</span>
-          <strong id="emitir-subtotal">S/ 0.00</strong>
-        </div>
-        <div class="vt-total-row">
-          <span>IGV (18%)</span>
-          <strong id="emitir-igv">S/ 0.00</strong>
-        </div>
-        <div class="vt-total-row" id="emitir-descuento-row" style="display:none;color:#c62828">
-          <span>Descuento</span>
-          <strong id="emitir-descuento">— S/ 0.00</strong>
-        </div>
-        <div id="emitir-observacion-row" style="display:none;padding:6px 0;border-top:1px dashed #e0e0e0;margin-top:2px">
-          <div style="font-size:11px;font-weight:700;color:#888;letter-spacing:.5px;text-transform:uppercase;margin-bottom:3px">Observación del descuento</div>
-          <div id="emitir-observacion" style="font-size:12.5px;color:#555;font-style:italic"></div>
-        </div>
-        <div class="vt-total-row vt-total-final">
-          <span>TOTAL</span>
-          <strong id="emitir-total">S/ 0.00</strong>
-        </div>
-      </div>
-    </div>
-    <div class="vt-modal-footer">
-      <button class="btn-cancel" onclick="closeModal('modalEmitirComprobante')">Cancelar</button>
-      <button class="btn-save" id="btnEmitirConfirmar" data-original="Emitir"
-        onclick="confirmarEmision()" style="background:linear-gradient(135deg,#2e7d32,#388e3c)">
-        <i class="bi bi-check-lg me-1"></i>Emitir
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: Comprobante Emitido (éxito) -->
-<div class="modal-overlay" id="modalComprobanteEmitido">
-  <div class="modal-box" style="max-width:440px;text-align:center;padding:40px 32px">
-    <div style="font-size:56px;color:#2e7d32;margin-bottom:12px"><i class="bi bi-check-circle-fill"></i></div>
-    <h3 style="font-weight:800;color:#1a1a2e;margin-bottom:6px">Emisión Exitosa</h3>
-    <p style="color:#555;font-size:14px;margin-bottom:24px">
-      Comprobante <strong id="comp-emitido-numero">—</strong> generado correctamente.
-    </p>
-    <div style="display:flex;gap:10px;justify-content:center">
-      <button class="btn-cancel" onclick="closeModal('modalComprobanteEmitido')">Cerrar</button>
-      <button class="btn-save" id="btnEnviarSunat"
-        style="background:linear-gradient(135deg,#2e7d32,#388e3c)">
-        <i class="bi bi-send me-1"></i>Enviar a SUNAT
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: Confirmar Enviar a SUNAT -->
-<div class="modal-overlay" id="modalConfirmSunat">
-  <div class="modal-box" style="max-width:420px;text-align:center;padding:40px 32px">
-    <div style="font-size:52px;color:#1565c0;margin-bottom:12px"><i class="bi bi-info-circle-fill"></i></div>
-    <h4 style="font-weight:800;margin-bottom:8px">¿Enviar a SUNAT?</h4>
-    <p style="color:#555;font-size:13.5px;margin-bottom:8px">
-      Este comprobante se enviará a los servidores de SUNAT para su validación.
-    </p>
-    <p style="font-size:12px;color:#888;margin-bottom:24px" id="sunat-numero-comp"></p>
-    <div style="display:flex;gap:10px;justify-content:center">
-      <button class="btn-save" id="btnConfirmarSunat" data-original="Sí, enviar"
-        style="background:linear-gradient(135deg,#2e7d32,#388e3c)">
-        <i class="bi bi-send me-1"></i>Sí, enviar
-      </button>
-      <button class="btn-cancel" onclick="closeModal('modalConfirmSunat')">Cancelar</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: Preguntar emitir tras guardar -->
-<div class="modal-overlay" id="modalConfirmEmitir">
-  <div class="modal-box" style="max-width:420px;text-align:center;padding:36px 28px">
-    <div style="font-size:46px;color:#1976d2;margin-bottom:10px"><i class="bi bi-file-earmark-check-fill"></i></div>
-    <h4 style="font-weight:700;margin-bottom:8px">Venta registrada</h4>
-    <p style="color:#555;font-size:13.5px;margin-bottom:20px">
-      Nota de Venta <strong id="confirm-emitir-num">—</strong> guardada correctamente.<br>
-      ¿Desea emitir un comprobante electrónico (boleta/factura)?
-    </p>
-    <div style="display:flex;gap:10px;justify-content:center">
-      <button class="btn-save" id="btnConfirmEmitir">
-        <i class="bi bi-file-earmark-check me-1"></i>Emitir comprobante
-      </button>
-      <button class="btn-cancel" onclick="closeModal('modalConfirmEmitir')">
-        Ahora no
-      </button>
     </div>
   </div>
 </div>
@@ -1045,8 +992,8 @@
       <div class="vt-dv-totales">
         <div class="vt-dv-total-row"><span>Subtotal (base imponible)</span><span id="dventa-subtotal"></span></div>
         <div class="vt-dv-total-row"><span>IGV (18%)</span><span id="dventa-igv"></span></div>
-        <div id="dventa-descuento-row" class="vt-dv-total-row" style="display:none;color:#c62828">
-          <span>Descuento</span><span id="dventa-descuento"></span>
+        <div id="dventa-descuento-row" class="vt-dv-total-row" style="display:none;color:#16a34a;font-size:12px">
+          <span>Descuento aplicado</span><span id="dventa-descuento"></span>
         </div>
         <div class="vt-dv-total-row vt-dv-total-final">
           <span>TOTAL</span><span id="dventa-total"></span>
@@ -1091,14 +1038,14 @@
 
 /* Badges tabla */
 .vt-badge-metodo { display:inline-block; padding:3px 10px; border-radius:20px;
-  font-size:11.5px; font-weight:600; background:#e8f5e9; color:#2e7d32; }
+  font-size:11.5px; font-weight:600; background:#e8f5e9; color:#2e7d32; white-space:nowrap; }
 .vt-badge-metodo.yape { background:#f3e5f5; color:#7b1fa2; }
 .vt-badge-metodo.plin  { background:#e3f2fd; color:#1565c0; }
 .vt-badge-metodo.transferencia { background:#fff3e0; color:#e65100; }
 .vt-badge-metodo.tarjeta { background:#e8f5e9; color:#2e7d32; }
 
 .badge-estado { display:inline-block; padding:3px 10px; border-radius:20px;
-  font-size:11px; font-weight:700; }
+  font-size:11px; font-weight:700; white-space:nowrap; }
 .badge-estado.sin-emitir  { background:#f5f5f5; color:#757575; }
 .badge-estado.enviado     { background:#e3f2fd; color:#1565c0; }
 .badge-estado.aceptado    { background:#e8f5e9; color:#2e7d32; }
@@ -1108,15 +1055,17 @@
 .badge-estado.anulada-v   { background:#ffebee; color:#c62828; }
 
 /* Botones acciones en tabla */
-.vt-btn-accion { background:#f0f2f7; border:none; border-radius:8px;
-  padding:5px 12px; font-size:12px; cursor:pointer; display:inline-flex;
-  align-items:center; gap:5px; transition:background .15s; }
+.vt-btn-accion { background:#f0f2f7; border:none; border-radius:7px;
+  padding:4px 9px; font-size:12px; cursor:pointer; display:inline-flex;
+  align-items:center; gap:4px; transition:background .15s; white-space:nowrap;
+  justify-content:center; }
 .vt-btn-accion:hover { background:#e0e4ef; }
-.vt-btn-accion.emitir { background:#e8f5e9; color:#2e7d32; }
+.vt-btn-accion.emitir { background:#e8f5e9; color:#2e7d32; font-weight:600;
+  min-width:80px; }
 .vt-btn-accion.emitir:hover { background:#c8e6c9; }
 .vt-btn-accion.danger { color:#c62828; }
 .vt-btn-accion.danger:hover { background:#ffebee; }
-.vt-row-actions { display:flex; gap:5px; align-items:center; flex-wrap:wrap; }
+.vt-row-actions { display:flex; gap:4px; align-items:center; flex-wrap:nowrap; }
 
 /* ── MODAL SHELL ─────────────────────────────────────────────── */
 .vt-modal-shell {
@@ -1195,12 +1144,6 @@
   display:flex; align-items:center; justify-content:center; gap:5px;
 }
 .vt-btn-agregar-prod:hover { background:linear-gradient(135deg,#0d47a1,#1565c0); }
-.vt-btn-cotizacion {
-  background:linear-gradient(135deg,#6a11cb,#2575fc);
-  color:#fff; border:none; border-radius:8px; padding:9px 20px;
-  font-size:13.5px; font-weight:600; cursor:not-allowed; flex:1; opacity:.5;
-  display:flex; align-items:center; justify-content:center; gap:5px;
-}
 
 /* ── TABLA CARRITO ─────────────────────────────────────────────── */
 .vt-tabla-carrito { width:100%; border-collapse:collapse; font-size:13.5px; }
@@ -1267,6 +1210,7 @@
 }
 .pp-stock { font-size:12px; color:#555; display:flex; align-items:center; gap:4px; }
 .pp-stock.bajo { color:#e65100; }
+.pp-igv-tag { font-size:10px; color:#16a34a; font-weight:700; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:4px; padding:1px 5px; }
 
 /* ── TIPO COMPROBANTE CARD ──────────────────────────────────────── */
 .vt-tipo-comp-card {
@@ -1387,6 +1331,48 @@
     padding:10px; font-family:Arial,sans-serif;
   }
 }
+
+/* ── DARK MODE: modales ventas ── */
+body[data-theme="dark"] .vt-modal-shell,
+body[data-theme="dark"] .vt-detalle-shell { background: #1a1a1a; }
+body[data-theme="dark"] .vt-modal-body,
+body[data-theme="dark"] .vt-detalle-body { color: #f0f0f0; }
+body[data-theme="dark"] .vt-modal-footer { background: #1a1a1a; border-top-color: #2e2e2e; }
+body[data-theme="dark"] .vt-detalle-footer { background: #222; border-top-color: #2e2e2e; }
+body[data-theme="dark"] .vt-section-label { color: #64b5f6; border-bottom-color: #1e3a5f; }
+body[data-theme="dark"] .vt-dv-card { background: #1e1e2e; border-color: #2e2e3e; }
+body[data-theme="dark"] .vt-dv-label { color: #64b5f6; }
+body[data-theme="dark"] .vt-dv-tabla tbody td { border-bottom-color: #2e2e3e; color: #ddd; }
+body[data-theme="dark"] .vt-dv-tabla tbody tr:hover td { background: #1e2a3a; }
+body[data-theme="dark"] .vt-dv-totales { background: #1e1e2e; border-color: #2e2e3e; }
+body[data-theme="dark"] .vt-dv-total-row { color: #bbb; }
+body[data-theme="dark"] .vt-dv-total-final { color: #f0f0f0; }
+body[data-theme="dark"] .vt-dv-total-final span:last-child { color: #64b5f6; }
+body[data-theme="dark"] .vt-dv-vendedor { background: #1e2a3a; color: #aaa; border-left-color: #64b5f6; }
+body[data-theme="dark"] .vt-total-box { background: linear-gradient(135deg,#1a2a3a,#1e2a44); border-color: #1e3a5f; }
+body[data-theme="dark"] .vt-totales-grid { background: #1e1e2e; }
+body[data-theme="dark"] .vt-total-row { color: #bbb; }
+body[data-theme="dark"] .vt-total-final { color: #f0f0f0; }
+body[data-theme="dark"] .vt-tabla-carrito tbody td { border-bottom-color: #2e2e3e; color: #ddd; }
+body[data-theme="dark"] .vt-tabla-carrito tbody tr:hover td { background: #1e2a3a; }
+body[data-theme="dark"] .nv-cliente-found.found { background: #0d2318; border-color: #2a5a3a; color: #4ade80; }
+body[data-theme="dark"] .nv-cliente-found.api { background: #1a2e3a; border-color: #1e3a5f; color: #90caf9; }
+body[data-theme="dark"] .nv-cliente-found small { color: #9ca3af; }
+body[data-theme="dark"] .nv-cliente-not-found { background: #2a2000; border-color: #5a4a20; color: #fcd34d; }
+body[data-theme="dark"] #nv-efectivo-section { background: #0d2318 !important; border-color: #2a5a3a !important; color: #ddd; }
+body[data-theme="dark"] #nv-vuelto-box { background: #1e1e1e !important; border-color: #2a5a3a !important; }
+body[data-theme="dark"] .vt-btn-sin-cliente { background: #1e1e1e; border-color: #333; color: #ccc; }
+body[data-theme="dark"] .vt-tipo-comp-card { background: #1e1e1e; border-color: #333; color: #ddd; }
+body[data-theme="dark"] .vt-tipo-comp-card.selected { background: #0d2318; border-color: #2e7d32; }
+body[data-theme="dark"] .prod-card-venta { border-color: #2e2e3e; }
+body[data-theme="dark"] .prod-header-venta { background: #1e1e2e; }
+body[data-theme="dark"] .prod-header-venta strong { color: #f0f0f0; }
+body[data-theme="dark"] .pp-item:hover { background: #1e2a3a; }
+body[data-theme="dark"] .pp-nombre { color: #ddd; }
+body[data-theme="dark"] .precio-final { color: #f0f0f0; }
+body[data-theme="dark"] .qty-control button { background: #2e2e2e; color: #ccc; }
+body[data-theme="dark"] .qty-control button:hover { background: #3a3a3a; }
+body[data-theme="dark"] .qty-input { background: #1e1e1e; border-color: #333; color: #f0f0f0; }
 </style>
 
 <style>
@@ -1643,13 +1629,24 @@
       </div>
 
       <div class="row g-2">
-        <div class="col-6">
+        <div class="col-4">
           <div class="cl-field">
-            <label class="cl-label">DNI <span class="req">*</span></label>
+            <label class="cl-label">Tipo doc. <span class="req">*</span></label>
+            <select class="cl-select" id="clienteTipoDoc" onchange="onClienteTipoDocChange()">
+              <option value="DNI">DNI</option>
+              <option value="CE">Carnet Ext.</option>
+            </select>
+          </div>
+        </div>
+        <div class="col-8">
+          <div class="cl-field">
+            <label class="cl-label" id="clienteDniLabel">DNI <span class="req">*</span></label>
             <input class="cl-input" id="clienteDni" placeholder="00000000" maxlength="8" inputmode="numeric" autocomplete="off">
           </div>
         </div>
-        <div class="col-6">
+      </div>
+      <div class="row g-2">
+        <div class="col-12">
           <div class="cl-field">
             <label class="cl-label">Celular <span class="opt">(opcional)</span></label>
             <input class="cl-input" id="clienteCelular" placeholder="9XXXXXXXX" maxlength="15" autocomplete="off">
@@ -2740,19 +2737,19 @@
           <div class="row g-2">
             <div class="col-4">
               <div class="form-label">Precio Costo (S/)</div>
-              <input class="form-control" id="productoPrecioCosto" type="number" step="0.01"
-                placeholder="0.00" value="0" oninput="onPrecioChange()">
+              <input class="form-control" id="productoPrecioCosto" type="number" step="0.01" min="0"
+                placeholder="0.00" value="0" oninput="onPrecioChange()" onfocus="this.select()">
             </div>
             <div class="col-4">
               <div class="form-label">Precio Venta (S/) *</div>
-              <input class="form-control" id="productoPrecioVenta" type="number" step="0.01"
-                placeholder="0.00" oninput="onPrecioChange()">
+              <input class="form-control" id="productoPrecioVenta" type="number" step="0.01" min="0"
+                placeholder="0.00" oninput="onPrecioChange()" onfocus="this.select()">
             </div>
             <div class="col-4">
               <div class="form-label">Oferta (%)</div>
               <input class="form-control" id="productoOferta" type="number" step="0.01"
                 min="0" max="100" value="0"
-                oninput="calcularPrecioOferta(this.value)">
+                oninput="calcularPrecioOferta(this.value)" onfocus="this.select()">
             </div>
           </div>
           <!-- Preview precio con oferta -->
@@ -2785,7 +2782,7 @@
           </div>
           <div class="col-3">
             <div class="form-label">Stock Mín.</div>
-            <input class="form-control" id="productoStockMin" type="number" min="0" value="5">
+            <input class="form-control" id="productoStockMin" type="number" min="0" value="5" onfocus="this.select()">
           </div>
           <div class="col-4" id="productoEstadoGroup" style="display:none">
             <div class="form-label">Estado</div>
@@ -2853,11 +2850,11 @@
             </div>
             <div class="col-3">
               <div class="form-label">Precio Costo</div>
-              <input class="form-control" id="ppNuevoCosto" type="number" step="0.01" placeholder="0.00" value="">
+              <input class="form-control" id="ppNuevoCosto" type="number" step="0.01" placeholder="0.00" value="" onfocus="this.select()">
             </div>
             <div class="col-4">
               <div class="form-label">Precio Venta *</div>
-              <input class="form-control" id="ppNuevoVenta" type="number" step="0.01" placeholder="0.00">
+              <input class="form-control" id="ppNuevoVenta" type="number" step="0.01" placeholder="0.00" onfocus="this.select()">
             </div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -3088,13 +3085,17 @@
       <div id="memb-paso-1" class="memb-paso-contenido activo">
         <div class="memb-paso-titulo-sec">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-          Consultar DNI del cliente
+          Consultar documento del cliente
         </div>
-        <p class="memb-paso-desc">Ingresa el DNI para verificar si el cliente ya está registrado o consultar sus datos en RENIEC.</p>
-        <div class="memb-dni-campo">
+        <p class="memb-paso-desc">Ingresa el documento para verificar si el cliente ya está registrado o consultar sus datos en RENIEC / Migraciones.</p>
+        <div class="memb-dni-campo" style="gap:8px;align-items:center">
+          <select id="memb-tipo-doc" class="memb-select-tipo-doc" style="flex:0 0 auto;height:44px;border:1.5px solid #cbd5e1;border-radius:10px;padding:0 10px;font-size:14px;background:#fff;color:#1e293b;cursor:pointer" onchange="onMembTipoDocChange()">
+            <option value="DNI">DNI</option>
+            <option value="CE">Carnet Ext.</option>
+          </select>
           <input type="text" id="memb-dni-input" placeholder="Ej: 70123456" maxlength="8"
-            inputmode="numeric" pattern="\d{8}" class="memb-input-dni"
-            autocomplete="off" aria-label="Número de DNI" />
+            inputmode="numeric" class="memb-input-dni"
+            autocomplete="off" aria-label="Número de documento" />
           <button id="btn-buscar-dni" class="memb-btn-buscar-dni" disabled>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             Buscar
@@ -3114,6 +3115,18 @@
         <div style="margin-bottom:12px;padding:9px 13px;background:#e8f5e9;border:1.5px solid #a5d6a7;border-radius:9px;font-size:12px;color:#2e7d32">
           <i class="bi bi-info-circle-fill me-1"></i>
           <strong>Cláusula 1a:</strong> Si el cliente es menor de 18 años, un adulto con tenencia debe suscribir el contrato.
+        </div>
+
+        <!-- Documento capturado en paso 1 (solo ingreso manual) -->
+        <div id="memb-p2-doc-info" style="display:none;margin-bottom:12px;padding:9px 13px;background:#f3e5f5;border:1.5px solid #ce93d8;border-radius:9px;font-size:12px;color:#6a1b9a">
+          <i class="bi bi-card-text me-1"></i>
+          Documento: <strong id="memb-p2-tipo-doc"></strong> &nbsp;·&nbsp; <strong id="memb-p2-num-doc"></strong>
+        </div>
+
+        <!-- Aviso cliente eliminado — reactivación automática -->
+        <div id="memb-p2-reactivar-aviso" style="display:none;margin-bottom:12px;padding:9px 13px;background:#fff3e0;border:1.5px solid #ffb74d;border-radius:9px;font-size:12px;color:#e65100">
+          <i class="bi bi-arrow-counterclockwise me-1"></i>
+          Este cliente estaba <strong>eliminado</strong>. Sus datos anteriores han sido precargados — puedes actualizarlos antes de continuar. Al confirmar, el cliente se <strong>reactivará automáticamente</strong>.
         </div>
 
         <div class="memb-form-grid">
@@ -3179,7 +3192,7 @@
         </div>
 
         <!-- Contacto 2 -->
-        <div style="background:#f7f8fc;border:1.5px solid #fce4ec;border-radius:10px;padding:12px">
+        <div id="memb-contacto2-card" style="background:#f7f8fc;border:1.5px solid #fce4ec;border-radius:10px;padding:12px">
           <div style="font-size:11px;font-weight:700;color:#c62828;margin-bottom:8px">
             <i class="bi bi-2-circle-fill me-1"></i> Contacto 2
             <span style="font-size:10px;font-weight:400;color:#9199ab">(opcional)</span>
@@ -3217,8 +3230,11 @@
         <div id="memb-planes-grid" class="memb-planes-grid">
           <div class="memb-planes-cargando">Cargando planes…</div>
         </div>
-        <div class="memb-form-grupo" style="margin-top:1rem;">
-          <label for="memb-fecha-inicio">Fecha de inicio <span class="memb-req">*</span></label>
+        <!-- Calendario (aparece al seleccionar un plan; muestra períodos existentes + preview del nuevo) -->
+        <div id="memb-cal-activa" style="display:none;"></div>
+        <!-- Aviso de solapamiento con opciones -->
+        <div id="memb-solapamiento-aviso" style="display:none;"></div>
+        <div style="display:none;">
           <input type="date" id="memb-fecha-inicio" />
         </div>
         <div id="memb-paso3-error" class="memb-error-campo" style="display:none;" role="alert"></div>
@@ -3355,7 +3371,14 @@
   .memb-paso-contenido.activo { display: block; }
   .memb-paso-titulo-sec { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: .5rem; color: var(--mc-texto); }
   .memb-paso-desc { font-size: .875rem; color: var(--mc-texto-suave); margin: 0 0 1.25rem; }
-  .memb-paso-acciones { display: flex; gap: .75rem; justify-content: flex-end; margin-top: 1.5rem; flex-wrap: wrap; }
+  .memb-paso-acciones {
+    display: flex; gap: .75rem; justify-content: flex-end; flex-wrap: wrap;
+    position: sticky; bottom: 0;
+    background: #fff; z-index: 1;
+    padding: 12px 0 4px;
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--mc-borde);
+  }
 
   /* ── Botones del modal ──────────────────────────────────────────────────── */
   .memb-btn-primario {
@@ -3383,9 +3406,9 @@
   /* ── DNI ────────────────────────────────────────────────────────────────── */
   .memb-dni-campo { display: flex; gap: 8px; margin-bottom: 1rem; }
   .memb-input-dni {
-    flex: 1; padding: 10px 14px; font-size: 1.5rem; font-weight: 600;
+    flex: 1; min-width: 0; padding: 10px 14px; font-size: 1.1rem; font-weight: 600;
     border: 2px solid var(--mc-borde); border-radius: var(--mc-radio);
-    text-align: center; letter-spacing: .2em; transition: border-color .15s;
+    text-align: center; letter-spacing: .1em; transition: border-color .15s;
   }
   .memb-input-dni:focus { outline: none; border-color: var(--mc-primario); }
   .memb-btn-buscar-dni {
@@ -3397,13 +3420,22 @@
   .memb-btn-buscar-dni:hover:not(:disabled) { background: var(--mc-primario-hover); }
   .memb-btn-buscar-dni:disabled { opacity: .45; cursor: not-allowed; }
   .memb-dni-estado {
-    padding: .6rem 1rem; border-radius: var(--mc-radio);
-    font-size: .875rem; display: flex; align-items: center; gap: 8px; min-height: 2rem;
+    padding: .65rem 1rem; border-radius: var(--mc-radio);
+    font-size: .875rem; display: flex; align-items: flex-start; gap: 8px;
+    flex-wrap: wrap; line-height: 1.45;
   }
+  .memb-dni-estado .dni-icono { flex-shrink: 0; margin-top: 1px; }
+  .memb-dni-estado span:last-child { flex: 1; min-width: 0; }
   .memb-dni-cargando  { background: #eff6ff; color: #1e40af; }
   .memb-dni-encontrado { background: #d1fae5; color: #065f46; }
   .memb-dni-nuevo     { background: #fef3c7; color: #92400e; }
   .memb-dni-error     { background: #fee2e2; color: #991b1b; }
+  .memb-btn-manual {
+    margin-left: auto; padding: 4px 12px; font-size: .8rem; font-weight: 600;
+    background: #991b1b; color: #fff; border: none; border-radius: 20px;
+    cursor: pointer; white-space: nowrap; transition: background .15s;
+  }
+  .memb-btn-manual:hover { background: #7f1d1d; }
 
   /* ── Formulario ─────────────────────────────────────────────────────────── */
   .memb-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -3423,14 +3455,17 @@
   }
 
   /* ── Planes ─────────────────────────────────────────────────────────────── */
-  .memb-planes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: .5rem; }
+  .memb-planes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: .5rem; }
+  .memb-plan-badge { display:inline-block; font-size:.65rem; font-weight:700; color:#fff; border-radius:20px; padding:2px 8px; margin-bottom:6px; letter-spacing:.4px; }
   .memb-plan-card {
+    position: relative;
     border: 2px solid var(--mc-borde); border-radius: var(--mc-radio-lg);
     padding: 14px 12px; cursor: pointer; text-align: center;
     transition: border-color .15s, box-shadow .15s; background: #fff;
   }
-  .memb-plan-card:hover { border-color: var(--mc-primario); box-shadow: 0 2px 8px rgba(26,86,219,.12); }
+  .memb-plan-card:not(.plan-deshabilitado):hover { border-color: var(--mc-primario); box-shadow: 0 2px 8px rgba(26,86,219,.12); }
   .memb-plan-card.seleccionado { border-color: var(--mc-primario); background: #eff6ff; box-shadow: 0 0 0 3px rgba(26,86,219,.15); }
+  .memb-plan-card.plan-deshabilitado { opacity:.45; cursor:not-allowed; filter:grayscale(.5); pointer-events:none; }
   .memb-plan-card-nombre { font-weight: 700; font-size: .9375rem; margin-bottom: 4px; }
   .memb-plan-card-duracion { font-size: .8125rem; color: var(--mc-texto-suave); margin-bottom: 8px; }
   .memb-plan-card-precio { font-size: 1.25rem; font-weight: 700; color: var(--mc-primario); }
@@ -3546,7 +3581,57 @@
     .memb-modal-cuerpo { max-height: 100vh; border-radius: 0; }
     .memb-pasos-indicador .memb-paso-label { display: none; }
   }
+
+  /* ── DARK MODE: modal nueva membresía ── */
+  body[data-theme="dark"] #memb-modal-overlay {
+    --mc-borde:       #2e2e3e;
+    --mc-fondo-suave: #222;
+    --mc-texto:       #f0f0f0;
+    --mc-texto-suave: #9aa3af;
+  }
+  body[data-theme="dark"] .memb-modal-cuerpo { background: #1a1a1a; }
+  body[data-theme="dark"] .memb-modal-header,
+  body[data-theme="dark"] .memb-paso-acciones { background: #1a1a1a; }
+  body[data-theme="dark"] .memb-btn-secundario { background: #222; color: #ccc; }
+  body[data-theme="dark"] .memb-btn-secundario:hover { background: #2a2a2a; }
+  body[data-theme="dark"] .memb-plan-card { background: #1e1e2e; border-color: #2e2e3e; }
+  body[data-theme="dark"] .memb-plan-card.seleccionado { background: #1a2e4a; }
+  body[data-theme="dark"] .memb-plan-card-precio { color: #fff; }
+  body[data-theme="dark"] .memb-form-grupo input,
+  body[data-theme="dark"] .memb-form-grupo select {
+    background: #222; border-color: #333; color: #f0f0f0;
+  }
+  body[data-theme="dark"] .memb-form-grupo label { color: #aaa; }
+  body[data-theme="dark"] .memb-metodo-btn {
+    background: #1e1e2e; border-color: #2e2e3e; color: #ddd;
+  }
+  body[data-theme="dark"] .memb-metodo-btn.activo { background: #1a2e4a; border-color: #1a56db; }
+  body[data-theme="dark"] .memb-input-dni { background: #222; border-color: #333; color: #f0f0f0; }
+  body[data-theme="dark"] #memb-tipo-doc { background: #222 !important; border-color: #333 !important; color: #f0f0f0 !important; }
+  body[data-theme="dark"] .memb-resumen-pago { background: #1e1e2e; }
+  body[data-theme="dark"] .pm-metodo-btn { background: #1e1e2e; border-color: #2e2e3e; color: #ccc; }
+  body[data-theme="dark"] .pm-metodo-btn.activo { background: #1e2040; border-color: #6366f1; color: #a5b4fc; }
+  body[data-theme="dark"] .memb-dni-encontrado { background: #0d2318; color: #4ade80; }
+  body[data-theme="dark"] .memb-dni-nuevo { background: #2a2000; color: #fcd34d; }
+  body[data-theme="dark"] .memb-dni-error { background: #2a0a0a; color: #f87171; }
+  /* ── Contacto 1 y 2 ── */
+  body[data-theme="dark"] #memb-contacto1-card,
+  body[data-theme="dark"] #memb-contacto2-card {
+    background: #1e1e2e !important;
+    border-color: #2e2e3e !important;
+  }
+  body[data-theme="dark"] #memb-contacto1-badge { color: #64b5f6 !important; }
+  body[data-theme="dark"] #memb-contacto2-card > div:first-child { color: #f48fb1 !important; }
+  body[data-theme="dark"] #memb-contacto2-card > div:first-child span { color: #9aa3af !important; }
+  /* ── Input monto total (readonly con inline style) ── */
+  body[data-theme="dark"] #memb-monto-total { background: #2a2a2a !important; color: #aaa !important; }
+  /* ── Resumen pago: texto y fuertes ── */
+  body[data-theme="dark"] .memb-resumen-item strong { color: #f0f0f0; }
+  body[data-theme="dark"] .memb-resumen-total strong { color: #64b5f6; }
   </style>
+
+  <!-- Chart.js para gráficos de balance -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 
   <!-- Librerías para generación de PDF (boleta WhatsApp) -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -3565,6 +3650,7 @@
   <script src="js/inventario.js"></script>
   <script src="js/asistencias.js"></script>
   <script src="js/ventas.js"></script>
+  <script src="js/auditoria.js"></script>
 </body>
 
 </html>

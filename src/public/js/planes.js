@@ -36,8 +36,8 @@ async function loadPlanes() {
 }
 
 // ─── RENDER GRID ──────────────────────────────────────────────────────────────
-const _tipoLabel = { nuevo: 'Nuevo', renovacion: 'Renovación', interdiario: 'Interdiario', rutina: 'Rutina' };
-const _tipoBadge = { nuevo: 'plan-badge-nuevo', renovacion: 'plan-badge-renov', interdiario: 'plan-badge-inter', rutina: 'plan-badge-rutina' };
+const _tipoLabel = { nuevo: 'Membresía', renovacion: 'Membresía', interdiario: 'Interdiario', rutina: 'Rutina' };
+const _tipoBadge = { nuevo: 'plan-badge-nuevo', renovacion: 'plan-badge-nuevo', interdiario: 'plan-badge-inter', rutina: 'plan-badge-rutina' };
 
 function _esRutina(p) { return p.duracion_unidad === 'dias' && Number(p.duracion_meses) === 1; }
 function _esAnos(p)   { return p.duracion_unidad === 'anos'; }
@@ -59,7 +59,7 @@ function _planCard(p) {
         : '';
     return `
     <div class="col-md-4 col-lg-3">
-        <div class="plan-card ${p.activo ? '' : 'inactivo'}">
+        <div class="plan-card ${p.activo ? '' : 'inactivo'}" style="cursor:pointer" ondblclick="editPlan(${p.id_plan})">
             <span class="plan-badge ${p.activo ? (_tipoBadge[p.tipo_cliente] || 'plan-badge-nuevo') : 'plan-badge-inact'}">
                 ${p.activo ? (_tipoLabel[p.tipo_cliente] || p.tipo_cliente) : 'Inactivo'}
             </span>
@@ -71,7 +71,7 @@ function _planCard(p) {
             </div>
             ${fraccionDetalle}
             ${p.descripcion ? `<div style="font-size:11px;color:#888;margin-top:6px">${p.descripcion}</div>` : ''}
-            <div style="margin-top:14px;display:flex;gap:6px">
+            <div style="margin-top:14px;display:flex;gap:6px" ondblclick="event.stopPropagation()">
                 <button class="btn-icon edit" onclick="editPlan(${p.id_plan})">
                     <i class="bi bi-pencil"></i>
                 </button>
@@ -129,13 +129,18 @@ function filtrarPlanes() { _aplicarFiltroPlanes(); }
 
 function _aplicarFiltroPlanes() {
     let data = dataPlanes;
+    if (_filtroPlanActual === 'todos')      data = data.filter(p =>  p.activo);
     if (_filtroPlanActual === 'membresias') data = data.filter(p =>  p.activo && !_esRutina(p) && !_esAnos(p));
     if (_filtroPlanActual === 'rutinas')    data = data.filter(p =>  p.activo &&  _esRutina(p));
     if (_filtroPlanActual === 'anuales')    data = data.filter(p =>  p.activo &&  _esAnos(p));
     if (_filtroPlanActual === 'inactivos')  data = data.filter(p => !p.activo);
 
-    const q = (document.getElementById('searchPlanes')?.value || '').toLowerCase().trim();
-    if (q) {
+    const rawPl  = document.getElementById('searchPlanes')?.value || '';
+    const parsedPl = parseSearchInput(rawPl);
+    if (parsedPl.type === 'id') {
+        data = data.filter(p => p.id_plan === parsedPl.value);
+    } else if (parsedPl.value) {
+        const q = parsedPl.value.toLowerCase();
         data = data.filter(p => {
             const label = _tipoLabel[p.tipo_cliente] || p.tipo_cliente;
             const dur   = _labelDuracion(p.duracion_meses, p.duracion_unidad || 'meses');

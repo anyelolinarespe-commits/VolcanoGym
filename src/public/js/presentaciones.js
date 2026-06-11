@@ -63,7 +63,7 @@ function renderPresentaciones(grupos, sinCategoria) {
 
   const renderFila = p => {
     const estado = p.estado ?? 1;
-    return `<tr style="border-bottom:1px solid #f5f5f5">
+    return `<tr style="border-bottom:1px solid #f5f5f5;cursor:pointer" ondblclick="editPresentacion(${p.id_presentacion})">
       <td style="padding:10px 16px"><strong>${p.nombre}</strong></td>
       <td style="padding:10px 16px;color:var(--color-text-secondary);font-size:13px">${p.descripcion || '—'}</td>
       <td style="padding:10px 16px">
@@ -71,7 +71,7 @@ function renderPresentaciones(grupos, sinCategoria) {
           ${estado === 1 ? 'ACTIVO' : 'INACTIVO'}
         </span>
       </td>
-      <td style="padding:10px 16px">
+      <td style="padding:10px 16px" ondblclick="event.stopPropagation()">
         <div style="display:flex;gap:6px">
           <button class="btn-icon edit" title="Editar" onclick="editPresentacion(${p.id_presentacion})">
             <i class="bi bi-pencil"></i>

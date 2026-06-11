@@ -1,72 +1,92 @@
 import { pool } from '../config/bd.js';
+import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 import { v4 as uuidv4 } from 'uuid';
 
 // GET /api/clientes — con membresía activa incluida
 export const getClientes = async (req, res) => {
     try {
-        // Auto-vencer membresías cuya fecha_fin ya pasó antes de retornar los datos
-        await pool.query(`
-            UPDATE membresia
-            SET estado = 'vencida'
-            WHERE estado = 'activa'
-              AND fecha_fin < CURRENT_DATE
-        `);
-        const result = await pool.query(`
-            SELECT
-                c.id_cliente, c.dni, c.nombre, c.apellido,
-                c.telefono, c.celular, c.foto_perfil,
-                c.fecha_nacimiento, c.fecha_registro, c.activo, c.created_at,
-                -- Usuario que registró (en el sistema)
-                u_reg.nombre || ' ' || u_reg.apellido AS registrado_por,
-                -- Contactos de emergencia (array JSON)
-                COALESCE((
-                    SELECT json_agg(json_build_object(
-                        'id_contacto', ce.id_contacto,
-                        'nombre',      ce.nombre,
-                        'parentesco',  ce.parentesco,
-                        'telefono',    ce.telefono
-                    ) ORDER BY ce.id_contacto)
-                    FROM contacto_emergencia_cliente ce
-                    WHERE ce.id_cliente = c.id_cliente
-                ), '[]') AS contactos_emergencia,
-                -- Membresía activa vigente
-                m.id_membresia,
-                m.fecha_inicio  AS memb_fecha_inicio,
-                m.fecha_fin     AS memb_fecha_fin,
-                m.tipo_ingreso  AS memb_tipo,
-                m.estado        AS memb_estado,
-                m.monto_total   AS memb_monto,
-                m.saldo_pendiente AS memb_saldo,
-                p.nombre        AS plan_nombre,
-                p.duracion_meses AS plan_duracion,
-                -- Asesor asignado a la membresía
-                u_asesor.id_usuario    AS id_asesor,
-                COALESCE(u_asesor.alias_asesor, u_asesor.nombre) AS asesor,
-                -- Si tiene alguna membresía previa (aunque esté anulada/vencida)
-                -- para saber si el botón debe decir Renovar o Matricular
-                (SELECT COUNT(*) FROM membresia WHERE id_cliente = c.id_cliente) AS total_membresias
+        await pool.query(`UPDATE membresia SET estado='activa' WHERE estado='programada' AND fecha_inicio <= CURRENT_DATE`);
+        await pool.query(`UPDATE membresia SET estado='vencida' WHERE estado='activa' AND fecha_fin < CURRENT_DATE`);
+
+        const { q, id, filtro, page, limit } = req.query;
+        const pageNum  = Math.max(1, parseInt(page)  || 1);
+        const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
+        const offset   = (pageNum - 1) * limitNum;
+
+        const where  = ['c.deleted_at IS NULL'];
+        const params = [];
+        let i = 1;
+
+        if (id !== undefined) {
+            const idNum = parseInt(id, 10);
+            if (Number.isInteger(idNum) && idNum > 0) {
+                where.push(`c.id_cliente = $${i++}`);
+                params.push(idNum);
+            }
+        } else if (q) {
+            where.push(`(LOWER(c.nombre || ' ' || c.apellido) LIKE $${i} OR LOWER(c.dni) LIKE $${i})`);
+            params.push(`%${q.toLowerCase()}%`);
+            i++;
+        }
+        if (filtro === 'activos')       where.push(`m.estado = 'activa'`);
+        if (filtro === 'vencidas')      where.push(`m.estado = 'vencida'`);
+        if (filtro === 'congeladas')    where.push(`m.estado = 'congelada'`);
+        if (filtro === 'saldo')         where.push(`m.saldo_pendiente > 0`);
+        if (filtro === 'mes')           where.push(`DATE_TRUNC('month', c.fecha_registro) = DATE_TRUNC('month', NOW())`);
+        if (filtro === 'sin_membresia') where.push(`m.id_membresia IS NULL`);
+
+        const whereStr = where.join(' AND ');
+        const joinStr  = `
             FROM cliente c
             JOIN usuarios u_reg ON u_reg.id_usuario = c.id_usuario_reg
             LEFT JOIN LATERAL (
                 SELECT * FROM membresia
                 WHERE id_cliente = c.id_cliente
-                ORDER BY
-                  CASE estado
-                    WHEN 'activa'    THEN 1
-                    WHEN 'congelada' THEN 2
-                    WHEN 'vencida'   THEN 3
-                    WHEN 'anulada'   THEN 4
-                    ELSE 5
-                  END,
-                  created_at DESC
+                ORDER BY CASE estado
+                    WHEN 'activa' THEN 1 WHEN 'congelada' THEN 2
+                    WHEN 'vencida' THEN 3 WHEN 'anulada' THEN 4 ELSE 5 END,
+                    created_at DESC
                 LIMIT 1
             ) m ON TRUE
-            LEFT JOIN plan_membresia p ON p.id_plan = m.id_plan
-            LEFT JOIN usuarios u_asesor ON u_asesor.id_usuario = m.id_usuario_reg
-            WHERE c.deleted_at IS NULL
-            ORDER BY c.created_at DESC
-        `);
-        res.json(result.rows);
+            LEFT JOIN plan_membresia p       ON p.id_plan       = m.id_plan
+            LEFT JOIN usuarios u_asesor      ON u_asesor.id_usuario = m.id_usuario_reg
+            WHERE ${whereStr}`;
+
+        const [countRes, dataRes] = await Promise.all([
+            pool.query(`SELECT COUNT(*) ${joinStr}`, params),
+            pool.query(`
+                SELECT
+                    c.id_cliente, c.dni, c.nombre, c.apellido,
+                    c.telefono, c.celular, c.foto_perfil,
+                    c.fecha_nacimiento, c.fecha_registro, c.activo, c.created_at,
+                    u_reg.nombre || ' ' || u_reg.apellido AS registrado_por,
+                    COALESCE((
+                        SELECT json_agg(json_build_object(
+                            'id_contacto', ce.id_contacto, 'nombre', ce.nombre,
+                            'parentesco',  ce.parentesco,  'telefono', ce.telefono
+                        ) ORDER BY ce.id_contacto)
+                        FROM contacto_emergencia_cliente ce WHERE ce.id_cliente = c.id_cliente
+                    ), '[]') AS contactos_emergencia,
+                    m.id_membresia,
+                    m.fecha_inicio    AS memb_fecha_inicio,
+                    m.fecha_fin       AS memb_fecha_fin,
+                    m.tipo_ingreso    AS memb_tipo,
+                    m.estado          AS memb_estado,
+                    m.monto_total     AS memb_monto,
+                    m.saldo_pendiente AS memb_saldo,
+                    p.nombre          AS plan_nombre,
+                    p.duracion_meses  AS plan_duracion,
+                    u_asesor.id_usuario AS id_asesor,
+                    COALESCE(u_asesor.alias_asesor, u_asesor.nombre) AS asesor,
+                    (SELECT COUNT(*) FROM membresia WHERE id_cliente = c.id_cliente) AS total_membresias
+                ${joinStr}
+                ORDER BY c.created_at DESC
+                LIMIT $${i} OFFSET $${i + 1}
+            `, [...params, limitNum, offset])
+        ]);
+
+        const total = parseInt(countRes.rows[0].count);
+        res.json({ data: dataRes.rows, total, page: pageNum, pages: Math.ceil(total / limitNum), limit: limitNum });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error al obtener clientes' });
@@ -78,7 +98,11 @@ export const getClientesStats = async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT
-                COUNT(*) FILTER (WHERE activo = TRUE AND deleted_at IS NULL) AS activos,
+                (SELECT COUNT(*) FROM cliente c2
+                 WHERE c2.deleted_at IS NULL AND EXISTS (
+                     SELECT 1 FROM membresia m WHERE m.id_cliente = c2.id_cliente
+                       AND m.estado = 'activa'
+                 )) AS activos,
                 (
                   SELECT COUNT(*)
                   FROM (
@@ -103,7 +127,16 @@ export const getClientesStats = async (req, res) => {
                       m.created_at DESC
                   ) sub WHERE sub.estado = 'congelada'
                 ) AS congeladas,
-                COUNT(*) FILTER (WHERE DATE_TRUNC('month', fecha_registro) = DATE_TRUNC('month', CURRENT_DATE) AND deleted_at IS NULL) AS este_mes
+                (SELECT COUNT(*) FROM cliente c2
+                 WHERE c2.deleted_at IS NULL AND NOT EXISTS (
+                     SELECT 1 FROM membresia m WHERE m.id_cliente = c2.id_cliente
+                 )) AS sin_membresia,
+                COUNT(*) FILTER (WHERE DATE_TRUNC('month', fecha_registro) = DATE_TRUNC('month', CURRENT_DATE) AND deleted_at IS NULL) AS este_mes,
+                (SELECT COUNT(*) FROM cliente c2
+                 WHERE c2.deleted_at IS NULL AND EXISTS (
+                     SELECT 1 FROM membresia m WHERE m.id_cliente = c2.id_cliente
+                       AND m.saldo_pendiente > 0 AND m.estado != 'anulada'
+                 )) AS con_saldo
             FROM cliente
         `);
         res.json(result.rows[0]);
@@ -116,13 +149,20 @@ export const getClientesStats = async (req, res) => {
 // POST /api/clientes
 export const createCliente = async (req, res) => {
     const {
-        dni, nombre, apellido, telefono, celular,
+        dni, tipo_documento, nombre, apellido, telefono, celular,
         fecha_nacimiento, foto_perfil,
         contactos_emergencia   // array opcional: [{ nombre, parentesco, telefono }, ...]
     } = req.body;
 
+    const tipoDoc = (tipo_documento || 'DNI').toUpperCase();
+
     if (!dni || !nombre || !apellido)
-        return res.status(400).json({ message: 'DNI, nombre y apellido son requeridos' });
+        return res.status(400).json({ message: 'Número de documento, nombre y apellido son requeridos' });
+
+    if (tipoDoc === 'DNI' && !/^\d{8}$/.test(dni))
+        return res.status(400).json({ message: 'DNI inválido. Debe tener exactamente 8 dígitos.' });
+    if (tipoDoc === 'CE' && !/^[a-zA-Z0-9]{8,12}$/.test(dni))
+        return res.status(400).json({ message: 'Carnet de Extranjería inválido. Debe tener entre 8 y 12 caracteres alfanuméricos.' });
 
     // Validar contactos de emergencia (opcional, máx 2, parentesco obligatorio si hay teléfono)
     if (contactos_emergencia) {
@@ -149,7 +189,7 @@ export const createCliente = async (req, res) => {
             }
         }
 
-        const existe = await pool.query('SELECT id_cliente, deleted_at, activo FROM cliente WHERE dni=$1', [dni]);
+        const existe = await pool.query('SELECT id_cliente, deleted_at, activo FROM cliente WHERE dni=$1 AND tipo_documento=$2', [dni.trim().toUpperCase(), tipoDoc]);
 
         if (existe.rows.length > 0) {
             const clienteExiste = existe.rows[0];
@@ -187,16 +227,16 @@ export const createCliente = async (req, res) => {
                 });
             }
 
-            return res.status(409).json({ message: 'Ya existe un cliente con ese DNI' });
+            return res.status(409).json({ message: `Ya existe un cliente con ese ${tipoDoc}` });
         }
 
         const qr_code = uuidv4();
         const result = await pool.query(
             `INSERT INTO cliente
-             (id_usuario_reg, dni, nombre, apellido, telefono, celular,
+             (id_usuario_reg, dni, tipo_documento, nombre, apellido, telefono, celular,
               fecha_nacimiento, foto_perfil, qr_code, creado_por)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-            [req.usuario.id, dni.trim(), nombre.trim(), apellido.trim(),
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+            [req.usuario.id, dni.trim().toUpperCase(), tipoDoc, nombre.trim(), apellido.trim(),
              telefono || null, celular || null,
              fecha_nacimiento || null, foto_perfil || null,
              qr_code, req.usuario.id]
@@ -213,6 +253,16 @@ export const createCliente = async (req, res) => {
             }
         }
 
+        const c = result.rows[0];
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'CREAR',
+            modulo:         'Clientes',
+            descripcion:    `DNI: ${c.dni} | Cliente #${c.id_cliente} creado: ${c.nombre} ${c.apellido}`,
+            ip:             getIP(req)
+        });
+
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -226,7 +276,7 @@ export const reactivarCliente = async (req, res) => {
     try {
         // Buscar el cliente incluyendo los eliminados
         const clienteRes = await pool.query(
-            'SELECT id_cliente, nombre, apellido, deleted_at, activo FROM cliente WHERE id_cliente=$1',
+            'SELECT id_cliente, nombre, apellido, dni, deleted_at, activo FROM cliente WHERE id_cliente=$1',
             [id]
         );
         if (!clienteRes.rows.length)
@@ -245,6 +295,15 @@ export const reactivarCliente = async (req, res) => {
             [req.usuario.id, id]
         );
 
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Clientes',
+            descripcion:    `DNI: ${cliente.dni} | Cliente #${id} reactivado: ${cliente.nombre} ${cliente.apellido}`,
+            ip:             getIP(req)
+        });
+
         res.json({
             ...result.rows[0],
             message: `Cliente ${cliente.nombre} ${cliente.apellido} reactivado exitosamente`
@@ -255,13 +314,31 @@ export const reactivarCliente = async (req, res) => {
     }
 };
 
+// GET /api/clientes/:id
+export const getClienteById = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await pool.query(
+            `SELECT id_cliente, dni, tipo_documento, nombre, apellido, telefono, celular,
+                    fecha_nacimiento, activo, foto_perfil, fecha_registro
+             FROM cliente WHERE id_cliente = $1 AND deleted_at IS NULL`,
+            [id]
+        );
+        if (result.rowCount === 0) return res.status(404).json({ message: 'Cliente no encontrado' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error al obtener cliente' });
+    }
+};
+
 // PUT /api/clientes/:id
 export const updateCliente = async (req, res) => {
     const { id } = req.params;
     const {
         nombre, apellido, telefono, celular,
         fecha_nacimiento, activo, foto_perfil,
-        contactos_emergencia
+        contactos_emergencia, forzar
     } = req.body;
 
     // Validar contactos de emergencia si vienen
@@ -277,15 +354,25 @@ export const updateCliente = async (req, res) => {
     }
 
     try {
+        const prevRes = await pool.query(
+            `SELECT nombre, apellido, activo, celular, telefono, fecha_nacimiento, dni, foto_perfil
+             FROM cliente WHERE id_cliente=$1 AND deleted_at IS NULL`, [id]
+        );
+        if (!prevRes.rows.length) return res.status(404).json({ message: 'Cliente no encontrado' });
+        const old = prevRes.rows[0];
+
         // Validar unicidad de celular al actualizar (excluir el propio cliente)
-        if (celular) {
+        if (celular && !forzar) {
             const celExiste = await pool.query(
                 `SELECT id_cliente, nombre, apellido FROM cliente WHERE celular=$1 AND deleted_at IS NULL AND id_cliente<>$2`,
                 [celular.trim(), id]
             );
             if (celExiste.rows.length > 0) {
                 const cx = celExiste.rows[0];
-                return res.status(409).json({ message: `El celular ${celular} ya está registrado para ${cx.nombre} ${cx.apellido}` });
+                return res.status(409).json({
+                    message: `El celular ${celular} ya está registrado para ${cx.nombre} ${cx.apellido}.`,
+                    cliente_duplicado: { id: cx.id_cliente, nombre: cx.nombre, apellido: cx.apellido }
+                });
             }
         }
 
@@ -313,6 +400,38 @@ export const updateCliente = async (req, res) => {
             }
         }
 
+        const updated = result.rows[0];
+        const cambios = [];
+        if (`${old.nombre} ${old.apellido}` !== `${nombre} ${apellido}`)
+            cambios.push(`nombre: "${old.nombre} ${old.apellido}" → "${nombre} ${apellido}"`);
+        if (old.activo !== (activo ?? true))
+            cambios.push(`estado: ${old.activo ? 'Activo' : 'Inactivo'} → ${(activo ?? true) ? 'Activo' : 'Inactivo'}`);
+        if ((old.celular || '') !== (celular || ''))
+            cambios.push(`celular: ${old.celular || '—'} → ${celular || '—'}`);
+        if ((old.telefono || '') !== (telefono || ''))
+            cambios.push(`teléfono: ${old.telefono || '—'} → ${telefono || '—'}`);
+        const fnVieja = old.fecha_nacimiento ? String(old.fecha_nacimiento).slice(0, 10) : null;
+        const fnNueva = fecha_nacimiento ? String(fecha_nacimiento).slice(0, 10) : null;
+        if (fnVieja !== fnNueva)
+            cambios.push(`fecha nacimiento: ${fnVieja || '—'} → ${fnNueva || '—'}`);
+        const fotoVieja = old.foto_perfil || null;
+        const fotoNueva = foto_perfil || null;
+        if (fotoVieja !== fotoNueva) {
+            if (!fotoVieja && fotoNueva)      cambios.push('foto de perfil: agregada');
+            else if (fotoVieja && !fotoNueva) cambios.push('foto de perfil: eliminada');
+            else                              cambios.push('foto de perfil: actualizada');
+        }
+        const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Clientes',
+            descripcion:    `DNI: ${updated.dni} | Cliente #${updated.id_cliente} "${nombre} ${apellido}" — ${diffStr}`,
+            ip:             getIP(req)
+        });
+
         res.json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -330,24 +449,33 @@ export const deleteCliente = async (req, res) => {
 
     try {
         // Auto-vencer membresías caducadas antes de validar
-        await pool.query(`
-            UPDATE membresia SET estado='vencida'
-            WHERE id_cliente=$1 AND estado='activa' AND fecha_fin < CURRENT_DATE
-        `, [id]);
+        await pool.query(`UPDATE membresia SET estado='activa' WHERE id_cliente=$1 AND estado='programada' AND fecha_inicio <= CURRENT_DATE`, [id]);
+        await pool.query(`UPDATE membresia SET estado='vencida' WHERE id_cliente=$1 AND estado='activa' AND fecha_fin < CURRENT_DATE`, [id]);
 
-        // No eliminar si tiene membresía activa vigente
+        // No eliminar si tiene membresía activa o programada vigente
         const activa = await pool.query(
-            `SELECT id_membresia FROM membresia WHERE id_cliente=$1 AND estado='activa'`, [id]
+            `SELECT id_membresia FROM membresia WHERE id_cliente=$1 AND estado IN ('activa','programada')`, [id]
         );
         if (activa.rows.length > 0)
-            return res.status(409).json({ message: 'No se puede eliminar: el cliente tiene una membresía activa. Elimina primero la membresía.' });
+            return res.status(409).json({ message: 'No se puede eliminar: el cliente tiene una membresía activa o programada. Anúlala primero.' });
 
         const result = await pool.query(
             `UPDATE cliente SET activo=false, eliminado_por=$1, deleted_at=NOW()
-             WHERE id_cliente=$2 RETURNING id_cliente`,
+             WHERE id_cliente=$2 RETURNING id_cliente, dni`,
             [req.usuario.id, id]
         );
         if (result.rowCount === 0) return res.status(404).json({ message: 'Cliente no encontrado' });
+
+        const deleted = result.rows[0];
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'ELIMINAR',
+            modulo:         'Clientes',
+            descripcion:    `DNI: ${deleted.dni} | Cliente #${deleted.id_cliente} eliminado — Motivo: ${motivo.trim()}`,
+            ip:             getIP(req)
+        });
+
         res.json({ message: `Cliente eliminado. Motivo: ${motivo.trim()}` });
     } catch (err) {
         console.error(err);
@@ -365,18 +493,21 @@ export const cambiarEstadoCliente = async (req, res) => {
         return res.status(400).json({ message: 'El motivo de eliminación es obligatorio' });
 
     try {
+        const clienteInfo = await pool.query(
+            `SELECT nombre, apellido, dni FROM cliente WHERE id_cliente=$1`, [id]
+        );
+        const ci = clienteInfo.rows[0];
+
         if (!activo) {
-            // Soft-delete: verificar que no tenga membresía activa vigente
-            await pool.query(`
-                UPDATE membresia SET estado='vencida'
-                WHERE id_cliente=$1 AND estado='activa' AND fecha_fin < CURRENT_DATE
-            `, [id]);
+            // Soft-delete: verificar que no tenga membresía activa o programada vigente
+            await pool.query(`UPDATE membresia SET estado='activa' WHERE id_cliente=$1 AND estado='programada' AND fecha_inicio <= CURRENT_DATE`, [id]);
+            await pool.query(`UPDATE membresia SET estado='vencida' WHERE id_cliente=$1 AND estado='activa' AND fecha_fin < CURRENT_DATE`, [id]);
 
             const activa = await pool.query(
-                `SELECT id_membresia FROM membresia WHERE id_cliente=$1 AND estado='activa'`, [id]
+                `SELECT id_membresia FROM membresia WHERE id_cliente=$1 AND estado IN ('activa','programada')`, [id]
             );
             if (activa.rows.length > 0)
-                return res.status(409).json({ message: 'No se puede eliminar: el cliente tiene una membresía activa. Anúlala primero.' });
+                return res.status(409).json({ message: 'No se puede eliminar: el cliente tiene una membresía activa o programada. Anúlala primero.' });
 
             const result = await pool.query(
                 `UPDATE cliente SET activo=false, eliminado_por=$1, deleted_at=NOW(), updated_at=NOW()
@@ -384,6 +515,14 @@ export const cambiarEstadoCliente = async (req, res) => {
                 [req.usuario.id, id]
             );
             if (result.rowCount === 0) return res.status(404).json({ message: 'Cliente no encontrado' });
+            registrarAuditoria({
+                id_usuario:     req.usuario.id,
+                nombre_usuario: req.usuario.nombre || req.usuario.username,
+                accion:         'ELIMINAR',
+                modulo:         'Clientes',
+                descripcion:    `DNI: ${ci?.dni} | Cliente #${id} desactivado — Motivo: ${motivo.trim()}`,
+                ip:             getIP(req)
+            });
             return res.json({ message: `Cliente desactivado. Motivo: ${motivo.trim()}` });
         } else {
             // Reactivar
@@ -394,6 +533,14 @@ export const cambiarEstadoCliente = async (req, res) => {
                 [req.usuario.id, id]
             );
             if (result.rowCount === 0) return res.status(404).json({ message: 'Cliente no encontrado' });
+            registrarAuditoria({
+                id_usuario:     req.usuario.id,
+                nombre_usuario: req.usuario.nombre || req.usuario.username,
+                accion:         'EDITAR',
+                modulo:         'Clientes',
+                descripcion:    `DNI: ${ci?.dni} | Cliente #${id} reactivado: ${ci?.nombre} ${ci?.apellido}`,
+                ip:             getIP(req)
+            });
             return res.json({ message: 'Cliente reactivado exitosamente' });
         }
     } catch (err) {
@@ -405,7 +552,8 @@ export const cambiarEstadoCliente = async (req, res) => {
 // POST /api/clientes/upload-foto
 export const uploadFotoCliente = (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No se recibió imagen' });
-  res.json({ url: `/uploads/clientes/${req.file.filename}` });
+  const url = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+  res.json({ url });
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -446,10 +594,8 @@ export const getHistorialCliente = async (req, res) => {
         const cliente = clienteRes.rows[0];
 
         // Auto-vencer membresías caducadas antes de retornar el historial
-        await pool.query(`
-            UPDATE membresia SET estado = 'vencida'
-            WHERE id_cliente = $1 AND estado = 'activa' AND fecha_fin < CURRENT_DATE
-        `, [id]);
+        await pool.query(`UPDATE membresia SET estado='activa' WHERE id_cliente=$1 AND estado='programada' AND fecha_inicio <= CURRENT_DATE`, [id]);
+        await pool.query(`UPDATE membresia SET estado='vencida' WHERE id_cliente=$1 AND estado='activa' AND fecha_fin < CURRENT_DATE`, [id]);
 
         // ── 2. Historial de matrículas (membresías) ───────────────────────
         // Une la fila activa (membresia) + todos los períodos archivados (historial_membresia)

@@ -1,4 +1,5 @@
 import { pool } from '../config/bd.js';
+import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  CONTROLLER: PRESENTACIONES
@@ -89,6 +90,13 @@ export const updatePresentacion = async (req, res) => {
     const { nombre, descripcion, estado } = req.body;
     if (!nombre) return res.status(400).json({ message: 'El nombre es requerido' });
     try {
+        const prevRes = await pool.query(
+            `SELECT nombre, descripcion, estado FROM presentacion WHERE id_presentacion=$1 AND estado != 2`, [id]
+        );
+        if (!prevRes.rows.length)
+            return res.status(404).json({ message: 'Presentación no encontrada' });
+        const old = prevRes.rows[0];
+
         const result = await pool.query(
             `UPDATE presentacion
              SET nombre=$1, descripcion=$2, estado=$3
@@ -97,6 +105,26 @@ export const updatePresentacion = async (req, res) => {
         );
         if (result.rowCount === 0)
             return res.status(404).json({ message: 'Presentación no encontrada' });
+
+        const ESTADO_P = { 0: 'Inactivo', 1: 'Activo', 2: 'Eliminado' };
+        const cambios = [];
+        if (old.nombre !== nombre.trim())
+            cambios.push(`nombre: "${old.nombre}" → "${nombre.trim()}"`);
+        if (String(old.estado) !== String(estado ?? 1))
+            cambios.push(`estado: ${ESTADO_P[old.estado] ?? old.estado} → ${ESTADO_P[String(estado ?? 1)] ?? estado}`);
+        if ((old.descripcion || '') !== (descripcion || ''))
+            cambios.push('descripción actualizada');
+        const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Presentaciones',
+            descripcion:    `Presentación #${id} "${nombre.trim()}" — ${diffStr}`,
+            ip:             getIP(req)
+        });
+
         res.json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -251,6 +279,17 @@ export const updatePresentacionProducto = async (req, res) => {
 
     const client = await pool.connect();
     try {
+        const prevRes = await client.query(`
+            SELECT pp.precio_costo, pp.precio_venta, pp.stock_minimo, pp.es_principal, pp.estado,
+                   p.nombre AS nombre_producto, pr.nombre AS nombre_presentacion
+            FROM producto_presentacion pp
+            JOIN producto p      ON p.id_producto       = pp.id_producto
+            JOIN presentacion pr ON pr.id_presentacion  = pp.id_presentacion
+            WHERE pp.id = $1
+        `, [id]);
+        if (!prevRes.rows.length) return res.status(404).json({ message: 'Registro no encontrado' });
+        const old = prevRes.rows[0];
+
         await client.query('BEGIN');
 
         // Si se marca como principal, desmarcar la anterior del mismo producto
@@ -285,6 +324,30 @@ export const updatePresentacionProducto = async (req, res) => {
             return res.status(404).json({ message: 'Registro no encontrado' });
 
         await client.query('COMMIT');
+
+        const ESTADO_PP = { 0: 'Inactivo', 1: 'Activo', 2: 'Eliminado' };
+        const cambios = [];
+        if (Number(old.precio_costo) !== Number(precio_costo ?? 0))
+            cambios.push(`costo: S/${Number(old.precio_costo).toFixed(2)} → S/${Number(precio_costo ?? 0).toFixed(2)}`);
+        if (Number(old.precio_venta) !== Number(precio_venta))
+            cambios.push(`precio venta: S/${Number(old.precio_venta).toFixed(2)} → S/${Number(precio_venta).toFixed(2)}`);
+        if (Number(old.stock_minimo) !== Number(stock_minimo ?? 0))
+            cambios.push(`stock mín.: ${old.stock_minimo} → ${Number(stock_minimo ?? 0)}`);
+        if (old.es_principal !== (es_principal ?? false))
+            cambios.push(`principal: ${old.es_principal ? 'Sí' : 'No'} → ${(es_principal ?? false) ? 'Sí' : 'No'}`);
+        if (String(old.estado) !== String(estado ?? 1))
+            cambios.push(`estado: ${ESTADO_PP[old.estado] ?? old.estado} → ${ESTADO_PP[String(estado ?? 1)] ?? estado}`);
+        const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Productos',
+            descripcion:    `Producto "${old.nombre_producto}" (${old.nombre_presentacion}) — ${diffStr}`,
+            ip:             getIP(req)
+        });
+
         res.json(result.rows[0]);
     } catch (err) {
         await client.query('ROLLBACK');
