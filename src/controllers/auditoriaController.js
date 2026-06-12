@@ -10,7 +10,7 @@ export const getAuditoria = async (req, res) => {
         const conds  = [];
         let   i      = 1;
 
-        const esSuperAdmin = req.usuario?.perfil?.toLowerCase() === 'superadministrador';
+const esSuperAdmin = req.usuario?.perfil?.toLowerCase() === 'superadministrador';
         if (!esSuperAdmin) {
             conds.push(`a.id_usuario NOT IN (
                 SELECT u2.id_usuario FROM usuarios u2
@@ -18,7 +18,6 @@ export const getAuditoria = async (req, res) => {
                 WHERE LOWER(p2.nombre) = 'superadministrador'
             )`);
         }
-
         if (id_usuario)   { conds.push(`a.id_usuario = $${i++}`);        params.push(Number(id_usuario)); }
         if (accion)        { conds.push(`a.accion = $${i++}`);            params.push(accion.toUpperCase()); }
         if (modulo)        { conds.push(`a.modulo = $${i++}`);            params.push(modulo); }

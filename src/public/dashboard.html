@@ -611,6 +611,56 @@
       <!-- ══ /ASISTENCIAS ═════════════════════════════════════════════════════ -->
 
       <!-- ══ VENTAS ══════════════════════════════════════════════════════════ -->
+      <!-- ══ VERIFICACIÓN DE PAGOS ══════════════════════════════════════════ -->
+      <div class="view" id="view-verificacion-pagos">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-check2-circle me-2"></i>Verificación de Pagos</span>
+        </div>
+
+        <!-- Filtros -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+          <input type="text" id="vpBuscar" class="form-control" placeholder="Buscar por N° venta, cliente o DNI..."
+            style="max-width:280px" oninput="vpBuscarTimer()">
+          <select id="vpEstado" class="form-control" style="max-width:160px" onchange="vpCargar(1)">
+            <option value="todos">Todos</option>
+            <option value="pendiente">Con saldo pendiente</option>
+            <option value="pagado">Pagados</option>
+          </select>
+          <button class="btn-save" onclick="vpCargar(1)" style="background:#1565c0">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+          </button>
+        </div>
+
+        <!-- Resumen rápido -->
+        <div id="vpResumen" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>
+
+        <!-- Tabla -->
+        <div style="overflow-x:auto">
+          <table class="tabla-base" id="vpTabla">
+            <thead>
+              <tr>
+                <th>N° Venta</th>
+                <th>Cliente</th>
+                <th>DNI</th>
+                <th>Productos</th>
+                <th style="text-align:right">Total</th>
+                <th style="text-align:right">Pagado</th>
+                <th style="text-align:right">Saldo</th>
+                <th>Método</th>
+                <th>Vendedor</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th>Cuotas</th>
+              </tr>
+            </thead>
+            <tbody id="vpTbody">
+              <tr><td colspan="12" class="cargando">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="vpPaginacion" style="margin-top:12px;display:flex;justify-content:center;gap:6px"></div>
+      </div>
+
       <div class="view" id="view-ventas">
         <div class="mod-header">
           <span class="mod-title"><i class="bi bi-receipt me-2"></i>Ventas</span>
@@ -2738,18 +2788,18 @@ body[data-theme="dark"] .qty-input { background: #1e1e1e; border-color: #333; co
             <div class="col-4">
               <div class="form-label">Precio Costo (S/)</div>
               <input class="form-control" id="productoPrecioCosto" type="number" step="0.01" min="0"
-                placeholder="0.00" value="0" oninput="onPrecioChange()" onfocus="this.select()">
+                placeholder="0.00" value="0" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';onPrecioChange();" onfocus="this.select()">
             </div>
             <div class="col-4">
               <div class="form-label">Precio Venta (S/) *</div>
               <input class="form-control" id="productoPrecioVenta" type="number" step="0.01" min="0"
-                placeholder="0.00" oninput="onPrecioChange()" onfocus="this.select()">
+                placeholder="0.00" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';onPrecioChange();" onfocus="this.select()">
             </div>
             <div class="col-4">
               <div class="form-label">Oferta (%)</div>
               <input class="form-control" id="productoOferta" type="number" step="0.01"
                 min="0" max="100" value="0"
-                oninput="calcularPrecioOferta(this.value)" onfocus="this.select()">
+                oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';if(parseFloat(this.value)>100)this.value='100';calcularPrecioOferta(this.value);" onfocus="this.select()">
             </div>
           </div>
           <!-- Preview precio con oferta -->
@@ -2782,7 +2832,7 @@ body[data-theme="dark"] .qty-input { background: #1e1e1e; border-color: #333; co
           </div>
           <div class="col-3">
             <div class="form-label">Stock Mín.</div>
-            <input class="form-control" id="productoStockMin" type="number" min="0" value="5" onfocus="this.select()">
+            <input class="form-control" id="productoStockMin" type="number" min="0" value="5" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';" onfocus="this.select()">
           </div>
           <div class="col-4" id="productoEstadoGroup" style="display:none">
             <div class="form-label">Estado</div>
@@ -2797,7 +2847,7 @@ body[data-theme="dark"] .qty-input { background: #1e1e1e; border-color: #333; co
         <div class="row g-2 mb-2">
           <div class="col-6">
             <div class="form-label">Peso (kg)</div>
-            <input class="form-control" id="productoPeso" type="number" step="0.001" placeholder="">
+            <input class="form-control" id="productoPeso" type="number" step="0.001" min="0" placeholder="" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value=''">
           </div>
           <div class="col-6">
             <div class="form-label">Dimensiones (cm)</div>
@@ -2808,7 +2858,7 @@ body[data-theme="dark"] .qty-input { background: #1e1e1e; border-color: #333; co
         <div class="row g-2 mb-2">
           <div class="col-4">
             <div class="form-label">Garantía (meses)</div>
-            <input class="form-control" id="productoGarantia" type="number" min="0" value="0">
+            <input class="form-control" id="productoGarantia" type="number" min="0" value="0" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';">
           </div>
         </div>
 
@@ -2850,11 +2900,11 @@ body[data-theme="dark"] .qty-input { background: #1e1e1e; border-color: #333; co
             </div>
             <div class="col-3">
               <div class="form-label">Precio Costo</div>
-              <input class="form-control" id="ppNuevoCosto" type="number" step="0.01" placeholder="0.00" value="" onfocus="this.select()">
+              <input class="form-control" id="ppNuevoCosto" type="number" step="0.01" min="0" placeholder="0.00" value="" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';" onfocus="this.select()">
             </div>
             <div class="col-4">
               <div class="form-label">Precio Venta *</div>
-              <input class="form-control" id="ppNuevoVenta" type="number" step="0.01" placeholder="0.00" onfocus="this.select()">
+              <input class="form-control" id="ppNuevoVenta" type="number" step="0.01" min="0" placeholder="0.00" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';" onfocus="this.select()">
             </div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -3650,6 +3700,7 @@ body[data-theme="dark"] .qty-input { background: #1e1e1e; border-color: #333; co
   <script src="js/inventario.js"></script>
   <script src="js/asistencias.js"></script>
   <script src="js/ventas.js"></script>
+  <script src="js/verificacion-pagos.js"></script>
   <script src="js/auditoria.js"></script>
 </body>
 

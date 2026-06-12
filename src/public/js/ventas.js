@@ -230,8 +230,17 @@ document.addEventListener('DOMContentLoaded', () => {
     r.addEventListener('change', onChangeTipoComprobante)
   );
 
-  // Descuento general → recalcular
-  document.getElementById('nv-descuento-general')?.addEventListener('input', recalcularTotales);
+  // Descuento general → bloquear negativos y recalcular
+  document.getElementById('nv-descuento-general')?.addEventListener('input', function() {
+    if (parseFloat(this.value) < 0 || this.value === '-') this.value = '0';
+    recalcularTotales();
+  });
+
+  // Monto recibido → bloquear negativos
+  document.getElementById('nv-monto-recibido')?.addEventListener('input', function() {
+    if (parseFloat(this.value) < 0 || this.value === '-') this.value = '0';
+    calcularVuelto();
+  });
 });
 
 // ── MODAL SELECCIONAR PRODUCTO ────────────────────────────────────────────────
@@ -348,7 +357,10 @@ function cambiarCantidad(idx, delta) {
 
 function setCantidad(idx, val) {
   const it = _carritoItems[idx];
-  it.cantidad = Math.max(1, Math.min(it.stock, parseInt(val) || 1));
+  const parsed = parseInt(val) || 1;
+  if (parsed < 1) { vtToast('La cantidad no puede ser menor a 1', 'warning'); }
+  it.cantidad = Math.max(1, Math.min(it.stock, parsed));
+  renderCarritoModal();
   recalcularTotales();
 }
 
@@ -404,7 +416,12 @@ async function guardarVenta() {
     return;
   }
 
-  const descGen      = Math.abs(parseFloat(document.getElementById('nv-descuento-general')?.value) || 0);
+  const descGenRaw = parseFloat(document.getElementById('nv-descuento-general')?.value) || 0;
+  if (descGenRaw < 0) {
+    vtAlertVenta('El descuento no puede ser negativo', 'error');
+    return;
+  }
+  const descGen      = descGenRaw;
   const montoRec     = metodo_pago === 'efectivo'
     ? (parseFloat(document.getElementById('nv-monto-recibido')?.value) || 0)
     : null;
