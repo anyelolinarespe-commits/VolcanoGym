@@ -87,7 +87,7 @@ function renderAuditoria(data) {
 
   tbody.innerHTML = data.data.map(r => {
     const fecha = r.created_at
-      ? new Date(r.created_at).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' })
+      ? new Date(r.created_at).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'medium' })
       : '—';
     const accionBadge = _audBadge(r.accion);
     const ip = r.ip_usuario || '—';

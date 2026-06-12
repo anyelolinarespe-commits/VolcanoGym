@@ -196,7 +196,7 @@ function renderClientes(data, pag = null) {
       <td ondblclick="event.stopPropagation()">
         <div style="display:flex;gap:5px;align-items:center">
         ${btnMemb}
-        <button class="btn-icon" title="Editar cliente" onclick="editCliente(${c.id_cliente})">
+        <button class="btn-icon edit" title="Editar cliente" onclick="editCliente(${c.id_cliente})">
           <i class="bi bi-pencil"></i>
         </button>
         <button class="btn-icon danger" title="Eliminar cliente"

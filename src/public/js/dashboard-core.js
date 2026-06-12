@@ -12,6 +12,7 @@ if (!localStorage.getItem('token')) {
   document.addEventListener('DOMContentLoaded', () => {
     document.body.style.visibility = 'visible';
     _initThemeToggle();
+    _initFullscreen();
   });
 }
 
@@ -29,6 +30,8 @@ let dataCategorias     = [];
 let dataPresentaciones = [];   
 let todasLasOpciones   = [];
 let clientesFiltrados  = [];
+let _activeView        = 'home';
+const _modalHistorySet = new Set(); // rastrea qué modales tienen estado en el historial
 
 // Config de módulos para sidebar y home
 const MODULOS_CONFIG = {
@@ -117,6 +120,25 @@ function _initThemeToggle() {
   });
 }
 
+function _initFullscreen() {
+  const btn  = document.getElementById('fullscreenBtn');
+  const icon = document.getElementById('fullscreenIcon');
+  const lbl  = document.getElementById('fullscreenLabel');
+  if (!btn) return;
+
+  function _syncFullscreenButton() {
+    const fs = !!document.fullscreenElement;
+    icon.className  = fs ? 'bi bi-fullscreen-exit' : 'bi bi-fullscreen';
+    lbl.textContent = fs ? 'Salir' : 'Pantalla completa';
+  }
+
+  btn.addEventListener('click', () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  });
+  document.addEventListener('fullscreenchange', _syncFullscreenButton);
+}
+
 // API HELPER (fetch con JWT)
 let _refrescandoPermisos = false;
 
@@ -183,9 +205,10 @@ function filtrarTabla(mod) {
   });
 }
 
-// ── MODALES 
+// ── MODALES
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
+  if (_modalHistorySet.has(id)) { _modalHistorySet.delete(id); history.back(); }
 }
 
 function showAlert(id, msg, type = 'error') {
@@ -239,13 +262,44 @@ function openModal(tipo) {
   if (tipo === 'actStock')      { /* se abre desde abrirActualizarStock() */ }
 }
 
-// Cerrar modales al hacer click fuera
+// Observa apertura de un modal y empuja estado al historial para que ESC/atrás funcionen
+function _observeModalOpen(el, cls) {
+  new MutationObserver(muts => {
+    muts.forEach(m => {
+      if (m.type !== 'attributes' || m.attributeName !== 'class') return;
+      const wasOpen = (m.oldValue || '').split(' ').includes(cls);
+      if (!wasOpen && el.classList.contains(cls)) {
+        _modalHistorySet.add(el.id);
+        history.pushState({ modal: el.id }, '');
+      }
+    });
+  }).observe(el, { attributes: true, attributeOldValue: true });
+}
+
+// Cerrar modales al hacer click fuera + configurar observers
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', e => {
-      if (e.target === overlay) overlay.classList.remove('open');
+      if (e.target !== overlay) return;
+      const wasInHistory = _modalHistorySet.has(overlay.id);
+      overlay.classList.remove('open');
+      if (wasInHistory) { _modalHistorySet.delete(overlay.id); history.back(); }
     });
+    _observeModalOpen(overlay, 'open');
   });
+  const membModal = document.getElementById('memb-modal-overlay');
+  if (membModal) _observeModalOpen(membModal, 'visible');
+});
+
+// Cerrar modal activo con ESC (escritorio)
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const openOverlays = document.querySelectorAll('.modal-overlay.open');
+  if (openOverlays.length) { history.back(); return; }
+  const membModal = document.getElementById('memb-modal-overlay');
+  if (membModal?.classList.contains('visible')) { history.back(); return; }
+  const boletaModal = document.getElementById('memb-boleta-modal');
+  if (boletaModal?.style.display === 'flex') history.back();
 });
 
 // ── CONFIRM / DELETE 
@@ -371,7 +425,7 @@ function buildHomeCards() {
     col.className = 'col-6 col-md-4 col-lg-3';
     col.innerHTML = `<div class="stat-card" onclick="goTo('${d.ruta}')">
       <div class="stat-icon" style="background:${d.color}"><i class="bi ${d.icon}"></i></div>
-      <div><div class="stat-value" id="${d.countId}">—</div><div class="stat-label">${d.label}</div></div>
+      <div class="stat-text"><div class="stat-value" id="${d.countId}">—</div><div class="stat-label">${d.label}</div></div>
     </div>`;
     c.appendChild(col);
   });
@@ -404,6 +458,7 @@ setInterval(refrescarPermisos, 8_000);
 
 // NAVEGACIÓN
 function goTo(view, fromHistory = false) {
+  _activeView = view;
   if (view !== 'home' && !MIS_OPCIONES.some(o => normRuta(o.ruta) === view)) {
     showToast('Sin permisos', 'error');
     return;
@@ -428,12 +483,42 @@ function goTo(view, fromHistory = false) {
   if (view === 'productos')      loadProductos();
   if (view === 'inventario')     loadInventario();
   if (view === 'asistencias')  { filtroAsistHoy(); _preloadClientesAsist(); }
-  if (view === 'ventas')               loadVentas();
-  if (view === 'verificacion-pagos')   vpCargar(1);
-  if (view === 'auditoria')          { cargarUsuariosAuditoria(); cargarModulosAuditoria(); loadAuditoria(1); }
+  if (view === 'ventas')             loadVentas();
+  if (view === 'verificacion-pagos') vpCargar(1);
+  if (view === 'auditoria')        { cargarUsuariosAuditoria(); cargarModulosAuditoria(); loadAuditoria(1); }
 }
 
 window.addEventListener('popstate', e => {
+  // Cerrar el modal más reciente si hay alguno abierto
+  const openOverlays = document.querySelectorAll('.modal-overlay.open');
+  if (openOverlays.length) {
+    const last = openOverlays[openOverlays.length - 1];
+    _modalHistorySet.delete(last.id);
+    last.classList.remove('open');
+    history.pushState({ vista: _activeView }, '', '/dashboard');
+    return;
+  }
+  // Membresías usa .visible en lugar de .open
+  const membModal = document.getElementById('memb-modal-overlay');
+  if (membModal?.classList.contains('visible')) {
+    _modalHistorySet.delete('memb-modal-overlay');
+    membModal.classList.remove('visible');
+    history.pushState({ vista: _activeView }, '', '/dashboard');
+    return;
+  }
+  // Comprobante de servicio usa style.display en lugar de clases
+  const boletaModal = document.getElementById('memb-boleta-modal');
+  if (boletaModal?.style.display === 'flex') {
+    _modalHistorySet.delete('memb-boleta-modal');
+    boletaModal.style.display = 'none';
+    history.pushState({ vista: _activeView }, '', '/dashboard');
+    return;
+  }
+  // Estado de modal ya cerrado por otro medio (click-outside, closeModal): absorber sin navegar
+  if (e.state?.modal) {
+    history.pushState({ vista: _activeView }, '', '/dashboard');
+    return;
+  }
   const view = e.state?.vista || 'home';
   goTo(view, true);
 });
@@ -670,9 +755,9 @@ document.addEventListener('DOMContentLoaded', () => {
     categorias:     async () => { dataCategorias    = await api('GET', '/api/categorias');          const el = document.getElementById('countCategorias');     if (el) el.textContent = dataCategorias.filter(c => c.estado === 1).length; },
     presentaciones: async () => { dataPresentaciones= await api('GET', '/api/presentaciones');     const el = document.getElementById('countPresentaciones'); if (el) el.textContent = dataPresentaciones.filter(p => p.estado === 1).length; }, // ← NUEVO
     productos:      async () => { const s           = await api('GET', '/api/productos/stats');    const el = document.getElementById('countProductos');      if (el) el.textContent = s.activos; },
-    inventario:     async () => { const d           = await api('GET', '/api/inventario');         const el = document.getElementById('countInventario');     if (el) el.textContent = d.kpis.stock_critico + ' críticos'; },
+    inventario:     async () => { const d           = await api('GET', '/api/inventario');         const el = document.getElementById('countInventario');     if (el) el.textContent = d.kpis.stock_critico; },
     asistencias:    async () => { const s           = await api('GET', '/api/asistencias/stats'); const el = document.getElementById('countAsistencias');    if (el) el.textContent = s.hoy; },
-    ventas:         async () => { const v           = await api('GET', '/api/ventas?limit=1');    const el = document.getElementById('countVentas');         if (el) el.textContent = v.total + ' ventas'; },
+    ventas:         async () => { const v           = await api('GET', '/api/ventas?limit=1');    const el = document.getElementById('countVentas');         if (el) el.textContent = v.total; },
   };
 
   for (const [ruta, fn] of Object.entries(accesos)) {

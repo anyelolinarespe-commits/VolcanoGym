@@ -28,9 +28,13 @@ import auditoriaRoutes from './routes/auditoriaRoutes.js';
 dotenv.config();
 
 // ── Migraciones automáticas al iniciar ──────────────────────────────────────
-
 pool.query(`ALTER TABLE membresia ADD COLUMN IF NOT EXISTS fecha_congelamiento DATE`)
   .catch(e => console.warn('Migration fecha_congelamiento:', e.message));
+
+// Permitir fecha_fin = fecha_inicio (planes de 1 día)
+pool.query(`ALTER TABLE membresia DROP CONSTRAINT IF EXISTS chk_memb_fechas`)
+  .then(() => pool.query(`ALTER TABLE membresia ADD CONSTRAINT chk_memb_fechas CHECK (fecha_fin >= fecha_inicio)`))
+  .catch(e => console.warn('Migration chk_memb_fechas:', e.message));
 
 // Tabla central de auditoría
 pool.query(`
