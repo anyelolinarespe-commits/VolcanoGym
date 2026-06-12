@@ -28,7 +28,6 @@ import auditoriaRoutes from './routes/auditoriaRoutes.js';
 dotenv.config();
 
 // ── Migraciones automáticas al iniciar ──────────────────────────────────────
-
 pool.query(`ALTER TABLE membresia ADD COLUMN IF NOT EXISTS fecha_congelamiento DATE`)
   .catch(e => console.warn('Migration fecha_congelamiento:', e.message));
 

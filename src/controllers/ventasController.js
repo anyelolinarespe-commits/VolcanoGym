@@ -621,3 +621,80 @@ export const enviarEmailVenta = async (req, res) => {
     res.status(500).json({ message: 'No se pudo enviar el correo: ' + err.message });
   }
 };
+
+// GET /api/ventas/verificacion/pagos
+// Resumen de ventas con saldo pendiente y cuotas para verificación de cobros
+export const getVerificacionPagos = async (req, res) => {
+  try {
+    const { buscar = '', estado = 'todos', page = 1, limit = 15 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+    const params = [];
+    let i = 1;
+    const filtros = ["v.estado_venta = 'registrada'"];
+
+    if (buscar) {
+      filtros.push(`(v.numero_venta ILIKE $${i} OR COALESCE(c.nombre||' '||c.apellido, v.nombre_cliente_libre) ILIKE $${i} OR COALESCE(c.dni, v.dni_cliente_libre) ILIKE $${i})`);
+      params.push(`%${buscar}%`); i++;
+    }
+    if (estado === 'pendiente')  filtros.push('v.saldo_pendiente > 0');
+    if (estado === 'pagado')     filtros.push('v.saldo_pendiente = 0');
+
+    const where = 'WHERE ' + filtros.join(' AND ');
+
+    const result = await pool.query(`
+      SELECT
+        v.id,
+        v.numero_venta,
+        v.serie_comprobante,
+        tc.nombre            AS tipo_comprobante,
+        v.metodo_pago,
+        v.total,
+        v.saldo_pendiente,
+        v.descuento_general,
+        v.created_at,
+        u.nombre || ' ' || u.apellido  AS vendedor,
+        CASE WHEN v.id_cliente IS NOT NULL
+             THEN c.nombre || ' ' || c.apellido
+             ELSE v.nombre_cliente_libre END AS cliente,
+        COALESCE(c.dni, v.dni_cliente_libre) AS dni_cliente,
+        (SELECT json_agg(json_build_object(
+            'nombre',    d.nombre_snapshot,
+            'cantidad',  d.cantidad,
+            'precio',    d.precio_unitario,
+            'subtotal',  d.subtotal
+        ) ORDER BY d.id) FROM venta_detalle d WHERE d.id_venta = v.id) AS productos,
+        (SELECT json_agg(json_build_object(
+            'id_cuota',         cv.id_cuota_venta,
+            'num_cuota',        cv.num_cuota,
+            'monto',            cv.monto,
+            'fecha_programada', cv.fecha_programada,
+            'fecha_limite',     cv.fecha_limite,
+            'fecha_pago',       cv.fecha_pago,
+            'metodo_pago',      cv.metodo_pago,
+            'num_comprobante',  cv.num_comprobante,
+            'estado_cuota',     cv.estado_cuota
+        ) ORDER BY cv.num_cuota) FROM cuota_venta cv WHERE cv.id_venta = v.id) AS cuotas,
+        COUNT(*) OVER() AS total_registros
+      FROM venta v
+      JOIN tipo_comprobante tc ON tc.id = v.id_tipo_comprobante
+      JOIN usuarios u ON u.id_usuario = v.id_usuario_reg
+      LEFT JOIN cliente c ON c.id_cliente = v.id_cliente
+      ${where}
+      ORDER BY v.saldo_pendiente DESC, v.id DESC
+      LIMIT $${i++} OFFSET $${i++}
+    `, [...params, Number(limit), offset]);
+
+    const total = Number(result.rows[0]?.total_registros ?? 0);
+    res.json({
+      ok: true,
+      data: result.rows,
+      total,
+      page:       Number(page),
+      limit:      Number(limit),
+      totalPages: Math.ceil(total / Number(limit))
+    });
+  } catch (err) {
+    console.error('getVerificacionPagos:', err.message);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+};

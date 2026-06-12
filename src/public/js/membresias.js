@@ -66,7 +66,7 @@ const _PM = (() => {
               <label class="pm-lbl">Monto:</label>
               <input type="number" class="pm-monto" min="0.01" step="0.01"
                 value="${parseFloat(sp.monto || 0).toFixed(2)}"
-                oninput="_PM._setMonto(${i}, this.value)"
+                oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0.01';_PM._setMonto(${i}, this.value);"
                 onfocus="this.select()"
                 style="width:120px;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-weight:700;color:#0f3460">
               <span class="pm-total-hint" style="font-size:11px;color:#888">de ${_fmtS(_total)}</span>
@@ -194,7 +194,11 @@ const _PM = (() => {
         },
 
         _setMonto(i, val) {
-            _splits[i].monto = parseFloat(val) || 0;
+            const parsed = parseFloat(val) || 0;
+            _splits[i].monto = parsed < 0 ? 0 : parsed;
+            // Reflejar corrección en el input
+            const inputs = document.querySelectorAll('.pm-monto');
+            if (inputs[i] && parsed < 0) inputs[i].value = '0';
             _updateTotalBar();
         },
 
@@ -379,7 +383,66 @@ function _buildCuotasSection(cuotas, montoTotal, montoPagado, esCompacto = false
         <tbody>${rows}</tbody>
       </table>`;
 
-    return summary + table;
+    // Historial de movimientos agrupado por cuota
+    const capMetodo = m => m ? m.charAt(0).toUpperCase() + m.slice(1) : '—';
+    const cuotasConMovimientos = (cuotas || []).filter(c => {
+        const abonos = Array.isArray(c.abonos) ? c.abonos : [];
+        return abonos.length > 0 || (c.estado_cuota === 'pagado' && c.metodo_pago);
+    });
+
+    let desglose = '';
+    if (cuotasConMovimientos.length > 0) {
+        const pd3 = esCompacto ? '2px 0' : '3px 0';
+        const bloques = cuotasConMovimientos.map(c => {
+            const abonos    = Array.isArray(c.abonos) ? c.abonos : [];
+            const numCuota  = c.num_cuota || '?';
+            // Si tiene abonos, el monto original es la suma de ellos; si no, es c.monto directamente
+            const montoOrigVal = abonos.length > 0
+                ? abonos.reduce((s, a) => s + parseFloat(a.monto || 0), 0)
+                : parseFloat(c.monto || 0);
+            const montoOrig = fmtS(montoOrigVal);
+
+            let lineas = '';
+            let subtotalAbonado = 0;
+
+            if (abonos.length > 0) {
+                // Cuota pagada con múltiples abonos
+                lineas = abonos.map(a => {
+                    subtotalAbonado += parseFloat(a.monto || 0);
+                    return `<li style="margin:${pd3};font-size:${fs};color:#333">
+                        ${fmtF(a.fecha_pago)} &mdash; <b>${fmtS(a.monto)}</b> via ${capMetodo(a.metodo_pago)}
+                    </li>`;
+                }).join('');
+                lineas += `<li style="margin:${pd3};font-size:${fs};font-style:italic;color:#555;list-style:none;padding-left:0;border-top:1px dashed #ccc;margin-top:3px;padding-top:3px">
+                    Subtotal abonado a Cuota ${numCuota}: <b>${fmtS(subtotalAbonado)}</b>
+                </li>`;
+            } else {
+                // Pago directo de cuota en un solo movimiento
+                subtotalAbonado = parseFloat(c.monto || 0);
+                lineas = `<li style="margin:${pd3};font-size:${fs};color:#333">
+                    ${fmtF(c.fecha_pago)} &mdash; <b>${fmtS(c.monto)}</b> via ${capMetodo(c.metodo_pago)}
+                </li>`;
+            }
+
+            return `
+              <div style="margin-bottom:6px">
+                <div style="font-size:${fs};font-weight:700;margin-bottom:2px">
+                  &#9658; Referencia: Cuota ${numCuota} (Monto Orig: ${montoOrig})
+                </div>
+                <ul style="margin:0;padding-left:18px;list-style:circle">${lineas}</ul>
+              </div>`;
+        }).join('');
+
+        desglose = `
+          <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #ccc">
+            <div style="font-size:${fs};font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px">
+              Historial de movimientos por cuota:
+            </div>
+            ${bloques}
+          </div>`;
+    }
+
+    return summary + table + desglose;
 }
 
 function filtroMembresia(tipo, el) {
@@ -1265,10 +1328,13 @@ function _pcCheckAbono(deudaTotal) {
     const input = document.getElementById('pcMonto');
     const aviso = document.getElementById('avisoAbonoParcial');
     if (!input || !aviso) return;
+    // Bloquear negativos y cero
+    if (parseFloat(input.value) < 0 || input.value === '-') input.value = '0.01';
+    // Bloquear valor mayor a la deuda
+    if (parseFloat(input.value) > deudaTotal) input.value = deudaTotal.toFixed(2);
     const ing = parseFloat(input.value);
     const esAbono = !isNaN(ing) && ing > 0 && ing < deudaTotal - 0.01;
     aviso.style.display = esAbono ? '' : 'none';
-    // Actualizar total del componente _PM
     _PM.updateTotal(parseFloat(input.value) || deudaTotal);
 }
 
@@ -2183,7 +2249,24 @@ async function saveMembresia() {
     // Fecha de inicio = hoy
     const hoy = new Date().toISOString().split('T')[0];
     const fi = document.getElementById('memb-fecha-inicio');
-    if (fi) { fi.value = hoy; fi.min = hoy; }
+    if (fi) {
+      fi.value = hoy;
+      fi.min   = hoy;
+      // Evitar edición manual a fecha anterior (el atributo min no bloquea teclado en todos los navegadores)
+      if (!fi._minGuardListener) {
+        fi._minGuardListener = true;
+        fi.addEventListener('change', function() {
+          const minVal = this.min || new Date().toISOString().split('T')[0];
+          if (this.value && this.value < minVal) {
+            this.value = minVal;
+            window._mcaSelFecha && _mcaSelFecha(minVal);
+            showToast('No se puede seleccionar una fecha anterior a hoy.', 'warning');
+          } else if (this.value) {
+            window._mcaSelFecha && _mcaSelFecha(this.value);
+          }
+        });
+      }
+    }
 
     estado.clienteEliminado = false;
     estado.membresiaActiva = null;

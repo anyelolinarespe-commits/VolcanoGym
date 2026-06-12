@@ -268,6 +268,13 @@ export const createMembresia = async (req, res) => {
     if (!id_cliente || !id_plan || !fecha_inicio || !monto_total || !metodo_pago)
         return res.status(400).json({ message: 'Faltan campos requeridos: cliente, plan, fecha_inicio, monto_total, metodo_pago' });
 
+    // Rechazar fechas de inicio anteriores a hoy
+    const hoyLocal = new Date();
+    hoyLocal.setHours(0, 0, 0, 0);
+    const fechaInicioDate = new Date(fecha_inicio + 'T00:00:00');
+    if (fechaInicioDate < hoyLocal)
+        return res.status(400).json({ message: `La fecha de inicio no puede ser anterior a hoy (${hoyLocal.toISOString().split('T')[0]}).` });
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -606,6 +613,26 @@ export const pagarCuota = async (req, res) => {
     const metodoPrimario = detalles[0].metodo_pago;
     const esMixto        = detalles.length > 1;
     const comprobante    = num_comprobante || genComprobante('MEM');
+
+    // Verificar códigos de operación duplicados (solo métodos digitales)
+    const METODOS_DIGITALES = ['yape', 'plin', 'transferencia'];
+    for (const d of detalles) {
+        if (!METODOS_DIGITALES.includes(d.metodo_pago)) continue;
+        const codigo = (d.codigo_seguridad || '').trim();
+        if (!codigo) continue;
+
+        const dup = await pool.query(
+            `SELECT 1 FROM pago_detalle  WHERE codigo_seguridad = $1
+             UNION ALL
+             SELECT 1 FROM abono_cuota   WHERE num_comprobante  = $1
+             LIMIT 1`,
+            [codigo]
+        );
+        if (dup.rows.length > 0)
+            return res.status(409).json({
+                message: `El código de operación "${codigo}" ya fue registrado anteriormente. Verifica que no sea un pago duplicado.`
+            });
+    }
 
     const client = await pool.connect();
     try {
