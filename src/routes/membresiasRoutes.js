@@ -16,7 +16,8 @@ import {
     consultarDNI,
     crearMembresia,
     listarMembresias,
-    detalleMembresia
+    detalleMembresia,
+    enviarBoletaEmail
 } from '../controllers/membresiasController.js';
 
 const router = express.Router();
@@ -27,6 +28,9 @@ router.use(verificarToken);
 
 // GET /api/membresias/stats
 router.get('/stats', getMembresiasStats);
+
+// POST /api/membresias/enviar-boleta
+router.post('/enviar-boleta', enviarBoletaEmail);
 
 // GET /api/membresias/dni/:dni  → consulta RENIEC / BD
 router.get('/dni/:dni', consultarDNI);

@@ -1,14 +1,31 @@
 import { pool } from '../config/bd.js';
+import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 
 // GET /api/categorias
 export const getCategorias = async (req, res) => {
     try {
+        const { q, id } = req.query;
+        const where  = ['estado != 2'];
+        const params = [];
+        let   i      = 1;
+
+        if (id !== undefined) {
+            const idNum = parseInt(id, 10);
+            if (Number.isInteger(idNum) && idNum > 0) {
+                where.push(`id_categoria = $${i++}`);
+                params.push(idNum);
+            }
+        } else if (q) {
+            where.push(`LOWER(nombre) LIKE $${i++}`);
+            params.push(`%${q.toLowerCase()}%`);
+        }
+
         const result = await pool.query(`
-            SELECT id_categoria, nombre, descripcion, estado, created_at
+            SELECT id_categoria, nombre, descripcion, porcentaje_descuento, estado, created_at
             FROM categoria_producto
-            WHERE estado != 2
+            WHERE ${where.join(' AND ')}
             ORDER BY created_at DESC
-        `);
+        `, params);
         res.json(result.rows);
     } catch (err) {
         console.error(err);
@@ -18,7 +35,7 @@ export const getCategorias = async (req, res) => {
 
 // POST /api/categorias
 export const createCategoria = async (req, res) => {
-    const { nombre, descripcion } = req.body;
+    const { nombre, descripcion, porcentaje_descuento } = req.body;
     if (!nombre) return res.status(400).json({ message: 'El nombre es requerido' });
     try {
         const existe = await pool.query(
@@ -29,10 +46,19 @@ export const createCategoria = async (req, res) => {
             return res.status(409).json({ message: 'Ya existe una categoría con ese nombre' });
 
         const result = await pool.query(
-            `INSERT INTO categoria_producto (nombre, descripcion, creado_por)
-             VALUES ($1, $2, $3) RETURNING *`,
-            [nombre.trim(), descripcion || null, req.usuario.id]
+            `INSERT INTO categoria_producto (nombre, descripcion, porcentaje_descuento, creado_por)
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [nombre.trim(), descripcion || null, Number(porcentaje_descuento ?? 0), req.usuario.id]
         );
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'CREAR',
+            modulo:         'Categorías',
+            descripcion:    `Categoría creada: "${nombre.trim()}"`,
+            ip:             getIP(req)
+        });
+
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -43,16 +69,45 @@ export const createCategoria = async (req, res) => {
 // PUT /api/categorias/:id
 export const updateCategoria = async (req, res) => {
     const { id } = req.params;
-    const { nombre, descripcion, estado } = req.body;
+    const { nombre, descripcion, porcentaje_descuento, estado } = req.body;
     if (!nombre) return res.status(400).json({ message: 'El nombre es requerido' });
     try {
+        const prevRes = await pool.query(
+            `SELECT nombre, descripcion, porcentaje_descuento, estado
+             FROM categoria_producto WHERE id_categoria=$1 AND estado != 2`, [id]
+        );
+        if (!prevRes.rows.length) return res.status(404).json({ message: 'Categoría no encontrada' });
+        const old = prevRes.rows[0];
+
         const result = await pool.query(
             `UPDATE categoria_producto
-             SET nombre=$1, descripcion=$2, estado=$3
-             WHERE id_categoria=$4 AND estado != 2 RETURNING *`,
-            [nombre.trim(), descripcion || null, estado ?? 1, id]
+             SET nombre=$1, descripcion=$2, porcentaje_descuento=$3, estado=$4
+             WHERE id_categoria=$5 AND estado != 2 RETURNING *`,
+            [nombre.trim(), descripcion || null, Number(porcentaje_descuento ?? 0), estado ?? 1, id]
         );
         if (result.rowCount === 0) return res.status(404).json({ message: 'Categoría no encontrada' });
+
+        const ESTADO_CAT = { 0: 'Inactivo', 1: 'Activo', 2: 'Eliminado' };
+        const cambios = [];
+        if (old.nombre !== nombre.trim())
+            cambios.push(`nombre: "${old.nombre}" → "${nombre.trim()}"`);
+        if (String(old.estado) !== String(estado ?? 1))
+            cambios.push(`estado: ${ESTADO_CAT[old.estado] ?? old.estado} → ${ESTADO_CAT[String(estado ?? 1)] ?? estado}`);
+        if (Number(old.porcentaje_descuento) !== Number(porcentaje_descuento ?? 0))
+            cambios.push(`descuento: ${old.porcentaje_descuento}% → ${Number(porcentaje_descuento ?? 0)}%`);
+        if ((old.descripcion || '') !== (descripcion || ''))
+            cambios.push('descripción actualizada');
+        const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Categorías',
+            descripcion:    `Categoría #${id} "${nombre.trim()}" — ${diffStr}`,
+            ip:             getIP(req)
+        });
+
         res.json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -79,6 +134,16 @@ export const deleteCategoria = async (req, res) => {
             [req.usuario.id, id]
         );
         if (result.rowCount === 0) return res.status(404).json({ message: 'Categoría no encontrada' });
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'ELIMINAR',
+            modulo:         'Categorías',
+            descripcion:    `Categoría #${id} eliminada (soft-delete)`,
+            ip:             getIP(req)
+        });
+
         res.json({ message: 'Categoría eliminada correctamente' });
     } catch (err) {
         console.error(err);

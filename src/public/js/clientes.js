@@ -8,7 +8,8 @@
 //    • Filtro de fechas en historial
 // ══════════════════════════════════════════════════════════════════════════════
 
-let _filtroClienteActual = 'todos';
+let _filtroClienteActual  = 'todos';
+let _clienteSearchTimer   = null;
 
 // Separa dígitos en grupos de 3 visualmente; los espacios tienen user-select:none
 // para que al copiar con el ratón se obtenga el número limpio.
@@ -21,26 +22,35 @@ function fmtTel(raw) {
 }
 
 // ── CARGAR CLIENTES ───────────────────────────────────────────────────────────
-async function loadClientes() {
+async function loadClientes(page = 1) {
   document.getElementById('tbodyClientes').innerHTML =
     '<tr class="loading-row"><td colspan="11">Cargando...</td></tr>';
   try {
-    dataClientes = await api('GET', '/api/clientes');
-    const stats  = await api('GET', '/api/clientes/stats');
+    const raw    = document.getElementById('searchClientes')?.value || '';
+    const parsed = parseSearchInput(raw);
+    const params = new URLSearchParams({ page, limit: 25 });
+    if (parsed.type === 'id')    params.set('id', parsed.value);
+    else if (parsed.value)       params.set('q', parsed.value);
+    if (_filtroClienteActual !== 'todos') params.set('filtro', _filtroClienteActual);
+
+    const [res, stats] = await Promise.all([
+      api('GET', `/api/clientes?${params}`),
+      api('GET', '/api/clientes/stats')
+    ]);
+    dataClientes      = res.data;
+    clientesFiltrados = res.data;
 
     document.getElementById('cl-activos').textContent    = stats.activos;
     document.getElementById('cl-vencidas').textContent   = stats.vencidas;
     document.getElementById('cl-congeladas').textContent = stats.congeladas;
+    document.getElementById('cl-sin-memb').textContent   = stats.sin_membresia ?? 0;
     document.getElementById('cl-mes').textContent        = stats.este_mes;
-    document.getElementById('cl-saldo').textContent      = dataClientes.filter(c => c.memb_saldo > 0).length;
+    document.getElementById('cl-saldo').textContent      = stats.con_saldo ?? 0;
 
     const el = document.getElementById('countClientes');
-    if (el) el.textContent = dataClientes.length;
+    if (el) el.textContent = res.total;
 
-    filtroCliente(
-      _filtroClienteActual,
-      document.querySelector(`#clienteStatsRow .stat-pill[data-f="${_filtroClienteActual}"]`)
-    );
+    renderClientes(res.data, res);
   } catch (e) {
     document.getElementById('tbodyClientes').innerHTML =
       `<tr class="empty-row"><td colspan="11">${e.message}</td></tr>`;
@@ -52,29 +62,38 @@ function filtroCliente(f, el) {
   _filtroClienteActual = f;
   document.querySelectorAll('#clienteStatsRow .stat-pill').forEach(p => p.classList.remove('active'));
   if (el) el.classList.add('active');
+  const sel = document.getElementById('filtroEstadoClientes');
+  if (sel) sel.value = f;
+  loadClientes(1);
+}
 
-  let data = dataClientes;
-  if (f === 'activos')   data = data.filter(c => c.activo);
-  if (f === 'vencidas')  data = data.filter(c => c.memb_estado === 'vencida');
-  if (f === 'congeladas') data = data.filter(c => c.memb_estado === 'congelada');
-  if (f === 'saldo')     data = data.filter(c => c.memb_saldo > 0);
-  if (f === 'mes') {
-    const now = new Date();
-    data = data.filter(c => {
-      const d = new Date(c.fecha_registro);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    });
+function filtroClienteSelect(f) {
+  _filtroClienteActual = f;
+  document.querySelectorAll('#clienteStatsRow .stat-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.f === f);
+  });
+  loadClientes(1);
+}
+
+function filtrarClientes() {
+  clearTimeout(_clienteSearchTimer);
+  // Si hay texto en el buscador, ignorar el filtro de estado para buscar en todos los clientes
+  const raw = document.getElementById('searchClientes')?.value || '';
+  if (raw.trim()) {
+    _filtroClienteActual = 'todos';
+    document.querySelectorAll('#clienteStatsRow .stat-pill').forEach(p => p.classList.remove('active'));
+    const selFiltro = document.getElementById('filtroEstadoClientes');
+    if (selFiltro) selFiltro.value = 'todos';
   }
-
-  clientesFiltrados = data;
-  renderClientes(data);
+  _clienteSearchTimer = setTimeout(() => loadClientes(1), 300);
 }
 
 // ── RENDER TABLA ──────────────────────────────────────────────────────────────
-function renderClientes(data) {
+function renderClientes(data, pag = null) {
   const tbody = document.getElementById('tbodyClientes');
   if (!data.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="11">Sin clientes</td></tr>';
+    _renderPagBar('tbodyClientes', null, 'loadClientes');
     return;
   }
 
@@ -117,12 +136,6 @@ function renderClientes(data) {
 
     const asesor = (c.asesor && estadoEfectivo !== 'anulada') ? c.asesor : '—';
 
-    // ── BOTÓN ÚNICO ADAPTATIVO ──────────────────────────────────────────────
-    // Activa o Vencida              → "Renovar"    (naranja, abre modal de acción)
-    // Congelada                     → "Congelada"  (azul, abre modal de acción)
-    // Anulada pero ya tuvo membresía→ "Renovar"    (naranja, abre modal sin acciones rápidas)
-    // Sin ninguna membresía previa  → "Matricular" (verde)
-
     const _nom = (c.nombre + ' ' + c.apellido).replace(/'/g, "\\'");
     const _nomCorto = (() => {
       const ns = (c.nombre  || '').trim().split(/\s+/);
@@ -130,9 +143,17 @@ function renderClientes(data) {
       return [...ns.slice(0,2), ...as.slice(0,2)].join(' ');
     })();
     const tienePrevias = parseInt(c.total_membresias || 0) > 0;
+    const tieneDeuda   = c.memb_saldo > 0 && estadoEfectivo !== 'anulada' && c.id_membresia;
     let btnMemb = '';
 
-    if (estadoEfectivo === 'activa' || estadoEfectivo === 'vencida') {
+    if (tieneDeuda) {
+      // Deuda pendiente → acción prioritaria: cobrar
+      btnMemb = `
+        <button class="btn-cl-pagar"
+          onclick="openModalCuotas(${c.id_membresia}, '${_nom}')">
+          <i class="bi bi-cash-coin"></i> Pagar
+        </button>`;
+    } else if (estadoEfectivo === 'activa') {
       btnMemb = `
         <button class="btn-cl-renovar"
           onclick="abrirModalAccionMemb(${c.id_cliente}, ${c.id_membresia || 'null'}, '${_nom}', '${estadoEfectivo}')">
@@ -144,16 +165,8 @@ function renderClientes(data) {
           onclick="abrirModalAccionMemb(${c.id_cliente}, ${c.id_membresia || 'null'}, '${_nom}', '${estadoEfectivo}')">
           <i class="bi bi-snow"></i> Congelada
         </button>`;
-    } else if (estadoEfectivo === 'anulada' && tienePrevias) {
-      // Última membresía anulada → el cliente ya fue matriculado, mostrar Renovar
-      // Abrimos el modal de membresía en modo renovación (sin barra de acciones rápidas)
-      btnMemb = `
-        <button class="btn-cl-renovar"
-          onclick="matricularCliente(${c.id_cliente})">
-          <i class="bi bi-arrow-repeat"></i> Renovar
-        </button>`;
     } else {
-      // Sin ninguna membresía previa → primera vez
+      // Vencida, anulada o sin membresía previa → volver a matricular
       btnMemb = `
         <button class="btn-cl-matricular"
           onclick="matricularCliente(${c.id_cliente})">
@@ -161,11 +174,11 @@ function renderClientes(data) {
         </button>`;
     }
 
-    return `<tr>
+    return `<tr style="cursor:pointer" ondblclick="editCliente(${c.id_cliente})">
       <td>
         <button class="btn-cl-ver" title="Ver historial del cliente"
           onclick="verHistorialCliente(${c.id_cliente})">
-          <i class="bi bi-eye"></i> Ver
+          <i class="bi bi-eye"></i>
         </button>
       </td>
       <td style="max-width:160px">
@@ -180,10 +193,10 @@ function renderClientes(data) {
       <td>${estadoBadge}</td>
       <td>${tipoTag}</td>
       <td><span class="asesor-tag">${asesor}</span></td>
-      <td>
+      <td ondblclick="event.stopPropagation()">
         <div style="display:flex;gap:5px;align-items:center">
         ${btnMemb}
-        <button class="btn-icon" title="Editar cliente" onclick="editCliente(${c.id_cliente})">
+        <button class="btn-icon edit" title="Editar cliente" onclick="editCliente(${c.id_cliente})">
           <i class="bi bi-pencil"></i>
         </button>
         <button class="btn-icon danger" title="Eliminar cliente"
@@ -194,6 +207,8 @@ function renderClientes(data) {
       </td>
     </tr>`;
   }).join('');
+
+  _renderPagBar('tbodyClientes', pag, 'loadClientes');
 }
 
 // ── INYECTAR CSS BOTONES ──────────────────────────────────────────────────────
@@ -202,31 +217,32 @@ function renderClientes(data) {
   const style = document.createElement('style');
   style.id = 'cl-botones-style';
   style.textContent = `
+    /* Ancho fijo compartido para TODOS los botones de la tabla de clientes */
     .btn-cl-ver {
-      display:inline-flex;align-items:center;gap:4px;
-      padding:5px 11px;font-size:12px;font-weight:600;
-      background:#e8f0fe;color:#1a73e8;border:1px solid #c5d8fc;
-      border-radius:7px;cursor:pointer;white-space:nowrap;
-      transition:background .15s;
-    }
-    .btn-cl-ver:hover { background:#d2e3fc; }
-
-    /* Ancho fijo compartido para que todos los botones adaptativos
-       (Renovar / Matricular / Congelada) queden alineados en la columna */
-    .btn-cl-renovar,
-    .btn-cl-matricular,
-    .btn-cl-congelada {
-      display:inline-flex;align-items:center;justify-content:center;gap:4px;
-      width:100px;padding:5px 0;font-size:12px;font-weight:600;
+      display:inline-flex;align-items:center;justify-content:center;
+      width:40px;padding:4px 0;font-size:13px;font-weight:600;
       border-radius:7px;cursor:pointer;white-space:nowrap;
       transition:background .15s;border-width:1px;border-style:solid;
     }
+    .btn-cl-renovar,
+    .btn-cl-matricular,
+    .btn-cl-congelada,
+    .btn-cl-pagar {
+      display:inline-flex;align-items:center;justify-content:center;gap:4px;
+      width:88px;padding:4px 0;font-size:11.5px;font-weight:600;
+      border-radius:7px;cursor:pointer;white-space:nowrap;
+      transition:background .15s;border-width:1px;border-style:solid;
+    }
+    .btn-cl-ver        { background:#e8f0fe;color:#1a73e8;border-color:#c5d8fc; }
+    .btn-cl-ver:hover  { background:#d2e3fc; }
     .btn-cl-renovar    { background:#fff8e1;color:#f57f17;border-color:#ffe082; }
     .btn-cl-renovar:hover { background:#fff3cd; }
     .btn-cl-matricular { background:#e8f5e9;color:#2e7d32;border-color:#a5d6a7; }
     .btn-cl-matricular:hover { background:#c8e6c9; }
     .btn-cl-congelada  { background:#e3f2fd;color:#1565c0;border-color:#90caf9; }
     .btn-cl-congelada:hover { background:#bbdefb; }
+    .btn-cl-pagar      { background:#ffebee;color:#c62828;border-color:#ef9a9a; }
+    .btn-cl-pagar:hover { background:#ffcdd2; }
 
     /* ── Modal Membresía — header acciones rápidas (Renovar/Congelada) ── */
     #membAccionesRapidas .memb-btn-freeze:hover { filter: brightness(0.93); }
@@ -493,6 +509,27 @@ function onClienteFechaNacChange() {
   onClienteMayorEdadChange();
 }
 
+// ── TIPO DE DOCUMENTO ─────────────────────────────────────────────────────────
+function onClienteTipoDocChange() {
+  const tipo  = document.getElementById('clienteTipoDoc')?.value || 'DNI';
+  const input = document.getElementById('clienteDni');
+  const label = document.getElementById('clienteDniLabel');
+  if (!input) return;
+  if (tipo === 'DNI') {
+    input.placeholder  = '00000000';
+    input.maxLength    = 8;
+    input.inputMode    = 'numeric';
+    input.value        = input.value.replace(/\D/g, '').slice(0, 8);
+    if (label) label.innerHTML = 'DNI <span class="req">*</span>';
+  } else {
+    input.placeholder  = 'Ej: 000123456';
+    input.maxLength    = 12;
+    input.inputMode    = 'text';
+    input.value        = input.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toUpperCase();
+    if (label) label.innerHTML = 'Carnet Ext. <span class="req">*</span>';
+  }
+}
+
 // ── RESET FORMULARIO ──────────────────────────────────────────────────────────
 function resetClienteForm() {
   ['clienteId','clienteNombre','clienteApellido','clienteDni',
@@ -503,6 +540,9 @@ function resetClienteForm() {
     if (el) el.value = '';
   });
   document.getElementById('clienteDni').readOnly    = false;
+  const tipoDocSel = document.getElementById('clienteTipoDoc');
+  if (tipoDocSel) { tipoDocSel.value = 'DNI'; tipoDocSel.disabled = false; }
+  onClienteTipoDocChange();
   document.getElementById('clienteMayorEdad').value = 'si';
   document.getElementById('alertCliente').className = 'alert-msg';
 
@@ -541,8 +581,13 @@ function editCliente(id) {
   document.getElementById('clienteId').value       = id;
   document.getElementById('clienteNombre').value   = c.nombre;
   document.getElementById('clienteApellido').value = c.apellido;
+
+  const tipoDocSel = document.getElementById('clienteTipoDoc');
+  if (tipoDocSel) { tipoDocSel.value = c.tipo_documento || 'DNI'; tipoDocSel.disabled = true; }
+
   document.getElementById('clienteDni').value      = c.dni;
   document.getElementById('clienteDni').readOnly   = true;
+  onClienteTipoDocChange();
   document.getElementById('clienteCelular').value  = c.celular || '';
   document.getElementById('clienteFechaNac').value = c.fecha_nacimiento
     ? c.fecha_nacimiento.split('T')[0] : '';
@@ -568,7 +613,7 @@ function editCliente(id) {
   // Hero: modo editar
   document.getElementById('modalClienteTitle').textContent = 'Editar cliente';
   const heroSub = document.getElementById('clHeroSub');
-  if (heroSub) heroSub.textContent = `${c.nombre} ${c.apellido} · DNI ${c.dni}`;
+  if (heroSub) heroSub.textContent = `${c.nombre} ${c.apellido} · ${c.tipo_documento || 'DNI'} ${c.dni}`;
   const heroAv = document.getElementById('clHeroAvatar');
   if (heroAv) {
     heroAv.style.background = 'linear-gradient(135deg,#ff8f00,#ffa000)';
@@ -629,11 +674,12 @@ async function handleClienteFotoChange(input) {
 
 // ── GUARDAR ───────────────────────────────────────────────────────────────────
 async function saveCliente() {
-  const id         = document.getElementById('clienteId').value;
-  const dni        = document.getElementById('clienteDni').value.trim();
-  const nombre     = document.getElementById('clienteNombre').value.trim();
-  const apellido   = document.getElementById('clienteApellido').value.trim();
-  const celular    = document.getElementById('clienteCelular').value.trim();
+  const id             = document.getElementById('clienteId').value;
+  const dni            = document.getElementById('clienteDni').value.trim().toUpperCase();
+  const tipo_documento = document.getElementById('clienteTipoDoc')?.value || 'DNI';
+  const nombre         = document.getElementById('clienteNombre').value.trim();
+  const apellido       = document.getElementById('clienteApellido').value.trim();
+  const celular        = document.getElementById('clienteCelular').value.trim();
   const fnac       = document.getElementById('clienteFechaNac').value;
   const fotoPerfil = document.getElementById('clienteFotoPerfil').value.trim();
 
@@ -645,15 +691,24 @@ async function saveCliente() {
   const ce2Par  = document.getElementById('ce2Parentesco').value.trim();
 
   if (!nombre || !apellido || (!id && !dni)) {
-    showAlert('alertCliente', 'Nombre, apellido y DNI son requeridos');
+    showAlert('alertCliente', 'Nombre, apellido y número de documento son requeridos');
     return;
   }
 
-  // Validar que el DNI no esté ya registrado (solo al crear, no al editar)
+  if (tipo_documento === 'DNI' && dni && !/^\d{8}$/.test(dni)) {
+    showAlert('alertCliente', 'El DNI debe tener exactamente 8 dígitos numéricos');
+    return;
+  }
+  if (tipo_documento === 'CE' && dni && !/^[A-Z0-9]{8,12}$/.test(dni)) {
+    showAlert('alertCliente', 'El Carnet de Extranjería debe tener entre 8 y 12 caracteres alfanuméricos');
+    return;
+  }
+
+  // Validar que el documento no esté ya registrado (solo al crear, no al editar)
   if (!id && dni) {
-    const dniExistente = dataClientes.find(c => c.dni === dni);
+    const dniExistente = dataClientes.find(c => c.dni === dni && (c.tipo_documento || 'DNI') === tipo_documento);
     if (dniExistente) {
-      showAlert('alertCliente', `El DNI ${dni} ya está registrado para ${dniExistente.nombre} ${dniExistente.apellido}`);
+      showAlert('alertCliente', `El ${tipo_documento} ${dni} ya está registrado para ${dniExistente.nombre} ${dniExistente.apellido}`);
       return;
     }
   }
@@ -699,7 +754,7 @@ async function saveCliente() {
     if (id) {
       await api('PUT', `/api/clientes/${id}`, body);
     } else {
-      await api('POST', '/api/clientes', { ...body, dni });
+      await api('POST', '/api/clientes', { ...body, dni, tipo_documento });
     }
     closeModal('modalCliente');
     loadClientes();
@@ -784,6 +839,9 @@ async function verHistorialCliente(idCliente) {
   }
 
   const modal = document.getElementById('modalHistorialCliente');
+  // Resetear scroll ANTES de mostrarlo para que siempre abra desde arriba
+  const _boxPre = modal.querySelector('.modal-box');
+  if (_boxPre) _boxPre.scrollTop = 0;
   modal.classList.add('open');
 
   document.getElementById('hcAvatar').textContent    = '?';
@@ -822,8 +880,10 @@ async function _cargarHistorial(idCliente, fechaInicio = '', fechaFin = '') {
 
 let _hcAsistencias = [];
 let _calMes = null; // { year, month }
+let _historialActual = null; // datos del último historial cargado (para boleta)
 
 function _renderHistorial(data) {
+  _historialActual = data; // cachear para que verBoletaMembresia pueda acceder
   const { cliente, membresias, ventas, asistencias, flujo_caja, total_pagado } = data;
 
   const hcAvatar = document.getElementById('hcAvatar');
@@ -1034,10 +1094,22 @@ function _renderHistorial(data) {
   if (!ventas || !ventas.length) {
     contVentas.innerHTML = '<div class="hc-empty">Sin ventas registradas</div>';
   } else {
+    const _sunatBadge = (estado) => {
+      const map = {
+        sin_emitir: ['#fff3e0','#e65100','Nota de Venta'],
+        enviado:    ['#e3f2fd','#1565c0','Enviado'],
+        aceptado:   ['#e8f5e9','#2e7d32','Aceptado'],
+        rechazado:  ['#fce4ec','#c62828','Rechazado'],
+        anulado:    ['#f3e5f5','#6a1b9a','Anulado'],
+      };
+      const [bg, color, label] = map[estado] || ['#f5f5f5','#888', estado || '—'];
+      return `<span style="background:${bg};color:${color};font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;white-space:nowrap">${label}</span>`;
+    };
     contVentas.innerHTML = `
-      <table class="hc-table">
+      <div style="overflow-x:auto">
+      <table class="hc-table" style="min-width:580px">
         <thead><tr>
-          <th>Fecha</th><th>Monto</th><th>Método</th><th>Boleta</th>
+          <th>Fecha</th><th>Documento</th><th>Productos</th><th>Método</th><th>Total</th><th>Estado</th><th></th>
         </tr></thead>
         <tbody>
           ${ventas.map(v => {
@@ -1050,20 +1122,31 @@ function _renderHistorial(data) {
             const metodo = v.metodo_pago
               ? v.metodo_pago.charAt(0).toUpperCase() + v.metodo_pago.slice(1)
               : '—';
+            const numDoc = v.serie_electronica && v.numero_electronico
+              ? `${v.serie_electronica}-${String(v.numero_electronico).padStart(6,'0')}`
+              : (v.numero_venta || '—');
+            const deuda = parseFloat(v.saldo_pendiente || 0);
+            const deudaHtml = deuda > 0
+              ? `<br><span style="color:#e53935;font-size:10px;font-weight:600">Debe S/${deuda.toFixed(2)}</span>`
+              : '';
             return `<tr>
-              <td style="font-size:12px;color:#555">${fv}</td>
-              <td><strong>S/. ${parseFloat(v.monto || 0).toFixed(2)}</strong></td>
+              <td style="font-size:11px;color:#777;white-space:nowrap">${fv}</td>
+              <td style="font-size:12px;font-weight:600;white-space:nowrap">${numDoc}</td>
+              <td style="font-size:11px;color:#555;max-width:180px;line-height:1.4">${v.productos || '—'}</td>
               <td style="font-size:12px">${metodo}</td>
+              <td style="white-space:nowrap"><strong>S/ ${parseFloat(v.monto || 0).toFixed(2)}</strong>${deudaHtml}</td>
+              <td>${_sunatBadge(v.estado_sunat)}</td>
               <td>
-                <button class="hc-btn-boleta" title="Imprimir boleta venta"
+                <button class="hc-btn-boleta" title="Ver detalle de venta"
                   onclick="verBoletaVenta(${v.id_venta})">
-                  <i class="bi bi-printer"></i>
+                  <i class="bi bi-eye"></i>
                 </button>
               </td>
             </tr>`;
           }).join('')}
         </tbody>
-      </table>`;
+      </table>
+      </div>`;
   }
 
   // ── Asistencias ──
@@ -1117,6 +1200,11 @@ function _renderHistorial(data) {
         <strong style="color:#c62828;margin-left:8px">S/ ${parseFloat(total_pagado||0).toFixed(2)}</strong>
       </div>`;
   }
+
+  setTimeout(() => {
+    const _box = document.querySelector('#modalHistorialCliente .modal-box');
+    if (_box) _box.scrollTop = 0;
+  }, 80);
 }
 
 function filtrarHistorial() {
@@ -1129,17 +1217,86 @@ function filtrarHistorial() {
 }
 
 function verBoletaMembresia(idMembresia) {
-  alert(`Boleta membresía #${idMembresia} — función de impresión próximamente`);
+  if (!_historialActual) return;
+
+  const m = _historialActual.membresias?.find(x => x.id_membresia === idMembresia);
+  if (!m) return;
+
+  const fmtFecha = typeof window.memb_fmtFecha === 'function'
+    ? window.memb_fmtFecha
+    : (f) => {
+        if (!f) return '—';
+        const d = String(f).includes('T') ? new Date(f) : new Date(f + 'T12:00:00');
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
+      };
+
+  const cliente   = _historialActual.cliente || {};
+  const cuotas    = m.cuotas || [];
+  const montoPagado = cuotas
+    .filter(c => c.estado_cuota === 'pagado')
+    .reduce((s, c) => s + parseFloat(c.monto || 0), 0);
+
+  // Calcular duración usando unidad correcta (dias/meses/años)
+  let duracion = '—';
+  if (m.duracion_meses) {
+    const fmtD = typeof window.memb_fmtDuracion === 'function' ? window.memb_fmtDuracion : null;
+    duracion = fmtD
+      ? fmtD(m.duracion_meses, m.duracion_unidad || 'meses')
+      : (() => {
+          const v = parseInt(m.duracion_meses);
+          const u = m.duracion_unidad || 'meses';
+          const s = { dias:'día', meses:'mes', anos:'año' }[u] || u;
+          const p = { dias:'días', meses:'meses', anos:'años' }[u] || u;
+          return `${v} ${v === 1 ? s : p}`;
+        })();
+  }
+
+  const fechaEmision = m.created_at
+    ? new Date(m.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : fmtFecha(m.fecha_inicio);
+
+  const boletaDatos = {
+    id_membresia:    m.id_membresia,
+    num_comprobante: `B001-${String(m.id_membresia).padStart(4, '0')}`,
+    fecha_emision:   fechaEmision,
+    nombre:          cliente.nombre  || '—',
+    apellido:        cliente.apellido || '—',
+    dni:             cliente.dni      || '—',
+    celular:         cliente.celular  || cliente.telefono || '—',
+    plan:            m.plan_nombre    || '—',
+    duracion,
+    fecha_inicio:    fmtFecha(m.fecha_inicio),
+    fecha_fin:       fmtFecha(m.fecha_fin),
+    monto_total:     parseFloat(m.monto_total  || 0),
+    monto_pagado:    montoPagado,
+    metodo_pago:     cuotas[0]?.metodo_pago || '—',
+    cuotas,
+    observaciones:   m.observaciones || ''
+  };
+
+  if (typeof window.memb_imprimirBoletaConDatos === 'function') {
+    window.memb_imprimirBoletaConDatos(boletaDatos);
+  } else {
+    showToast('El módulo de membresías no está cargado. Recarga la página.', 'warning');
+  }
 }
 
 function verBoletaVenta(idVenta) {
-  alert(`Boleta venta #${idVenta} — función de impresión próximamente`);
+  if (typeof verDetalleVenta === 'function') {
+    // El modal de historial tiene z-index:1100, el detalle de venta debe quedar por encima
+    const modalDV = document.getElementById('modalDetalleVenta');
+    if (modalDV) modalDV.style.zIndex = '1200';
+    verDetalleVenta(idVenta);
+  } else {
+    showToast('El módulo de ventas no está cargado. Recarga la página.', 'warning');
+  }
 }
 
 function _buildModalHistorial() {
   return `
   <div class="modal-overlay" id="modalHistorialCliente" style="z-index:1100">
-    <div class="modal-box" style="width:960px;max-width:98vw;max-height:94vh;overflow-y:auto;padding:0">
+    <div class="modal-box" style="width:960px;max-width:98vw;max-height:94vh;overflow-y:auto;padding:0;overflow-anchor:none">
 
       <!-- HEADER con datos del cliente -->
       <div style="background:linear-gradient(135deg,#0f3460 0%,#16213e 100%);padding:20px 24px 16px;color:#fff;position:relative;border-radius:12px 12px 0 0">

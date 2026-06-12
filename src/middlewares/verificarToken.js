@@ -12,13 +12,16 @@ export const verificarToken = async (req, res, next) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // Verificar que el usuario sigue activo en la BD
+        // Verificar que el usuario Y su perfil siguen activos en la BD
         const { rows } = await pool.query(
-            'SELECT estado FROM usuarios WHERE id_usuario = $1',
+            `SELECT u.estado, p.estado AS perfil_estado
+             FROM usuarios u
+             JOIN perfiles p ON u.id_perfil = p.id_perfil
+             WHERE u.id_usuario = $1`,
             [decoded.id]
         );
 
-        if (!rows.length || rows[0].estado !== 1) {
+        if (!rows.length || rows[0].estado !== 1 || rows[0].perfil_estado !== 1) {
             return res.status(401).json({ message: 'Tu sesión ha sido desactivada.' });
         }
 
