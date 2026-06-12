@@ -1,0 +1,3645 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Volcano Gym</title>
+  <link rel="icon" type="image/png" href="/icono.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Volcano Gym">
+  <meta name="theme-color" content="#e94560">
+  <link rel="apple-touch-icon" href="/icono.png">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="dashboard-responsive.css">
+</head>
+
+<body>
+  <aside id="sidebar">
+    <div class="sidebar-brand">
+      <img src="/logo.png" alt="Volcano Gym" class="sidebar-logo">
+    </div>
+    <div id="navMenu"></div>
+    <div class="sidebar-footer">
+      <a class="nav-item" id="btnLogout">
+        <i class="bi bi-box-arrow-left"></i><span>Cerrar sesión</span>
+      </a>
+    </div>
+  </aside>
+
+  <div id="sidebarOverlay"></div>
+
+  <div id="main">
+    <div id="topbar">
+      <button class="toggle-btn" id="toggleSidebar"><i class="bi bi-list"></i></button>
+      <div class="topbar-right">
+        <button class="theme-toggle" id="themeToggle" title="Cambiar tema">
+          <i class="bi bi-moon-stars" id="themeIcon"></i>
+          <span id="themeLabel">Oscuro</span>
+        </button>
+        <span style="font-size:13px;color:#666">Bienvenido,</span>
+        <span class="user-badge" id="topbarUser">—</span>
+        <button class="btn-logout-mobile" id="btnLogoutMobile" title="Cerrar sesión">
+          <i class="bi bi-box-arrow-right"></i>
+        </button>
+      </div>
+    </div>
+
+    <div id="content">
+
+      <div class="view active" id="view-home">
+        <h4 style="font-weight:700;color:#1a1a2e;margin-bottom:6px;">Dashboard</h4>
+        <p style="color:#888;font-size:14px;margin-bottom:24px;">Bienvenido al sistema de gestión</p>
+        <div class="row g-3" id="homeCards"></div>
+
+        <!-- Balance de Ingresos -->
+        <div id="homeBalance" style="margin-top:32px;display:none;">
+          <div class="balance-header">
+            <div class="balance-title-wrap">
+              <span class="balance-title"><i class="bi bi-bar-chart-line me-2"></i>Balance de Ingresos</span>
+              <span class="balance-subtitle">Ingresos consolidados del gimnasio</span>
+            </div>
+            <select id="balancePeriodo" class="balance-periodo-sel" onchange="cargarBalance()">
+              <option value="3">Últimos 3 meses</option>
+              <option value="6">Últimos 6 meses</option>
+              <option value="12" selected>Últimos 12 meses</option>
+            </select>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6 col-md-3">
+              <div class="bkpi-card">
+                <div class="bkpi-label">Total este mes</div>
+                <div class="bkpi-value" id="bkpiTotal">—</div>
+                <div class="bkpi-badge" id="bkpiVariacion"></div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="bkpi-card">
+                <div class="bkpi-label">Membresías este mes</div>
+                <div class="bkpi-value bkpi-blue" id="bkpiMemb">—</div>
+                <div class="bkpi-sub">Cuotas cobradas</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="bkpi-card">
+                <div class="bkpi-label">Ventas este mes</div>
+                <div class="bkpi-value bkpi-green" id="bkpiVentas">—</div>
+                <div class="bkpi-sub">Productos vendidos</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="bkpi-card bkpi-card-deuda">
+                <div class="bkpi-label">Deuda pendiente</div>
+                <div class="bkpi-value bkpi-red" id="bkpiDeuda">—</div>
+                <div class="bkpi-sub">Sin cobrar</div>
+              </div>
+            </div>
+          </div>
+          <div class="balance-chart-wrap">
+            <canvas id="balanceChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="view" id="view-clientes">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-person-badge me-2"></i>Clientes</span>
+          <button class="btn-save" onclick="openModal('cliente')"><i class="bi bi-plus-lg me-1"></i>Nuevo
+            cliente</button>
+        </div>
+        <div class="stats-row" id="clienteStatsRow">
+          <div class="stat-pill active" data-f="todos" onclick="filtroCliente('todos',this)">Todos</div>
+          <div class="stat-pill" data-f="activos" onclick="filtroCliente('activos',this)"><span class="sp-num sp-activos" id="cl-activos">—</span> activos</div>
+          <div class="stat-pill" data-f="vencidas" onclick="filtroCliente('vencidas',this)"><span class="sp-num sp-vencidas" id="cl-vencidas">—</span> vencidas</div>
+          <div class="stat-pill" data-f="congeladas" onclick="filtroCliente('congeladas',this)"><span class="sp-num sp-congeladas" id="cl-congeladas">—</span> congeladas</div>
+          <div class="stat-pill" data-f="sin_membresia" onclick="filtroCliente('sin_membresia',this)"><span class="sp-num" style="color:#9c27b0" id="cl-sin-memb">—</span> sin membresía</div>
+          <div class="stat-pill" data-f="mes" onclick="filtroCliente('mes',this)"><span class="sp-num sp-mes" id="cl-mes">—</span> este mes</div>
+          <div class="stat-pill" data-f="saldo" onclick="filtroCliente('saldo',this)"><span class="sp-num sp-saldo" id="cl-saldo">—</span> cuentas por cobrar</div>
+        </div>
+        <div class="table-card">
+          <div class="table-toolbar">
+            <input type="text" id="searchClientes" placeholder="🔍 Buscar por nombre o DNI..."
+              autocomplete="off" oninput="filtrarClientes()">
+            <select id="filtroEstadoClientes" onchange="filtroClienteSelect(this.value)">
+              <option value="todos">Todos</option>
+              <option value="activos">Activos</option>
+              <option value="vencidas">Vencidas</option>
+              <option value="congeladas">Congeladas</option>
+              <option value="sin_membresia">Sin membresía</option>
+              <option value="mes">Este mes</option>
+              <option value="saldo">Cuentas por cobrar</option>
+            </select>
+          </div>
+          <div style="overflow-x:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>VER</th>
+                  <th>NOMBRE</th>
+                  <th>DNI</th>
+                  <th>CELULAR</th>
+                  <th>F. REGISTRO</th>
+                  <th>PLAN VIGENTE</th>
+                  <th>VENCE</th>
+                  <th>ESTADO</th>
+                  <th>TIPO</th>
+                  <th>ASESOR</th>
+                  <th>ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyClientes">
+                <tr class="loading-row">
+                  <td colspan="11">Cargando...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="view" id="view-membresias">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-card-checklist me-2"></i>Membresías</span>
+          <button class="btn-save" onclick="abrirMembModal()"><i class="bi bi-plus-lg me-1"></i>Nueva
+            membresía</button>
+        </div>
+        <p
+          style="background:#fff3cd;border-radius:8px;padding:10px 16px;font-size:13px;margin-bottom:16px;color:#856404;">
+          📌 Cláusula 5a: Las membresías se renuevan automáticamente al vencimiento. Cláusula 6a: No aplica
+          devolución de matrícula o cualquier tipo de pago.
+        </p>
+        <div class="stats-row" id="membStatsRow">
+          <div class="stat-pill active" onclick="filtroMembresia('todos',this)">Todos</div>
+          <div class="stat-pill" onclick="filtroMembresia('activa',this)"><span class="sp-num sp-activos" id="mb-activas">—</span> activas</div>
+          <div class="stat-pill" onclick="filtroMembresia('vencida',this)"><span class="sp-num sp-vencidas" id="mb-vencidas">—</span> vencidas</div>
+          <div class="stat-pill" onclick="filtroMembresia('congelada',this)"><span class="sp-num sp-congeladas" id="mb-congeladas">—</span> congeladas</div>
+          <div class="stat-pill" onclick="filtroMembresia('deuda',this)"><span class="sp-num sp-saldo" id="mb-deuda">—</span> con deuda</div>
+          <div class="stat-pill" onclick="filtroMembresia('este_mes',this)"><span class="sp-num sp-mes" id="mb-mes">—</span> este mes</div>
+          <div class="stat-pill" onclick="filtroMembresia('programada',this)"><span class="sp-num" style="background:#1565c0;color:#fff" id="mb-programadas">—</span> programadas</div>
+          <div class="stat-pill" onclick="filtroMembresia('anulada',this)"><span class="sp-num" style="background:#6a1b9a;color:#fff" id="mb-anuladas">—</span> anuladas</div>
+        </div>
+        <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+          <select id="filtroMembEstado" class="form-control" style="width:180px" onchange="onMembFiltroChange()">
+            <option value="todos">Todos los estados</option>
+            <option value="activa">Activa</option>
+            <option value="vencida">Vencida</option>
+            <option value="anulada">Anulada</option>
+            <option value="congelada">Congelada</option>
+            <option value="programada">Programada</option>
+          </select>
+          <select id="filtroMembPlan" class="form-control" style="width:180px" onchange="loadMembresias()">
+            <option value="todos">Todos los planes</option>
+          </select>
+          <input type="text" id="searchMembresias" class="form-control" style="width:220px"
+            placeholder="🔍 Buscar DNI o nombre..." oninput="filtrarMembresias()">
+        </div>
+        <div id="listadoMembresias">
+          <div style="text-align:center;padding:40px;color:#aaa">Cargando...</div>
+        </div>
+      </div>
+
+      <div class="view" id="view-planes">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-grid-3x3-gap me-2"></i>Planes</span>
+          <button class="btn-save" onclick="openModal('plan')"><i class="bi bi-plus-lg me-1"></i>Nuevo plan</button>
+        </div>
+        <div class="stats-row" id="planStatsRow">
+          <div class="stat-pill active" onclick="filtroPlan('todos',this)">Todos</div>
+          <div class="stat-pill" onclick="filtroPlan('membresias',this)"><span class="sp-num sp-activos" id="pl-membresias">—</span> membresías</div>
+          <div class="stat-pill" onclick="filtroPlan('rutinas',this)"><span class="sp-num sp-rutinas" id="pl-rutinas">—</span> rutinas</div>
+          <div class="stat-pill" onclick="filtroPlan('anuales',this)"><span class="sp-num sp-anuales" id="pl-anuales">—</span> anuales</div>
+          <div class="stat-pill" onclick="filtroPlan('inactivos',this)"><span class="sp-num sp-vencidas" id="pl-inactivos">—</span> inactivos</div>
+          <input type="text" id="searchPlanes" class="planes-search" placeholder="🔍 Buscar..." autocomplete="off" oninput="filtrarPlanes()">
+        </div>
+        <div class="row g-3" id="gridPlanes">
+          <div style="text-align:center;padding:40px;color:#aaa">Cargando...</div>
+        </div>
+      </div>
+
+
+<div class="view" id="view-perfiles">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-shield-check me-2"></i>Perfiles</span>
+          <button class="btn-save" onclick="openModal('perfil')"><i class="bi bi-plus-lg me-1"></i>Nuevo Perfil</button>
+        </div>
+        <div class="table-card">
+          <div class="table-toolbar">
+            <input type="text" id="searchPerfiles" placeholder="🔍 Buscar perfil..." oninput="filtrarTabla('perfiles')">
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Nombre</th>
+                <th>Descripción</th>
+                <th>Estado</th>
+                <th>Creado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyPerfiles">
+              <tr class="loading-row">
+                <td colspan="6">Cargando...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="view" id="view-usuarios">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-people me-2"></i>Usuarios</span>
+          <button class="btn-save" onclick="openModal('usuario')"><i class="bi bi-plus-lg me-1"></i>Nuevo
+            Usuario</button>
+        </div>
+        <div class="table-card">
+          <div class="table-toolbar">
+            <input type="search" id="searchUsuarios" placeholder="🔍 Buscar usuario… (#ID para buscar por ID)"
+              oninput="filtrarUsuarios()">
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Nombre</th>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Perfil</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyUsuarios">
+              <tr class="loading-row">
+                <td colspan="7">Cargando...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="view" id="view-categorias">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-tag me-2"></i>Gestión de Categorías</span>
+          <button class="btn-save" onclick="nuevaCategoria()">
+            <i class="bi bi-plus-lg me-1"></i>Nueva Categoría
+          </button>
+        </div>
+        <div class="table-card">
+          <div class="table-toolbar">
+            <input type="search" id="searchCategorias" placeholder="🔍 Buscar categoría… (#ID para buscar por ID)"
+              oninput="filtrarCategorias()">
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>NOMBRE</th>
+                <th>DESCRIPCIÓN</th>
+                <th style="text-align:center">DESCUENTO</th>
+                <th style="text-align:center">ESTADO</th>
+                <th style="text-align:center">ACCIONES</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyCategorias">
+              <tr class="loading-row"><td colspan="6">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="view" id="view-presentaciones">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-box2 me-2"></i>Gestión de Presentaciones</span>
+          <button class="btn-save" onclick="openModal('presentacion')">
+            <i class="bi bi-plus-lg me-1"></i>Nueva Presentación
+          </button>
+        </div>
+        <p style="background:#e8f5e9;border-radius:8px;padding:10px 16px;font-size:13px;color:#2e7d32;margin-bottom:16px">
+          📦 Las presentaciones definen el tipo de envase o formato del producto (Pote, Bolsa, Frasco…).
+          Cada presentación puede tener un precio distinto por producto.
+        </p>
+        <div class="table-card" style="padding:16px">
+          <div class="table-toolbar" style="margin-bottom:16px;display:flex;gap:10px;align-items:center">
+            <input type="text" id="searchPresentaciones" placeholder="🔍 Buscar presentación..."
+              oninput="filtrarPresentaciones(this.value)" style="flex:1;min-width:0">
+            <select id="filtroCategoriaPresentaciones"
+              onchange="filtrarPresentaciones(document.getElementById('searchPresentaciones').value)"
+              style="min-width:180px;height:38px;border:1px solid #ddd;border-radius:6px;padding:0 10px;font-size:13px;cursor:pointer">
+              <option value="">Todas las categorías</option>
+            </select>
+          </div>
+          <div id="contenedorPresentaciones">
+            <div style="text-align:center;padding:32px;color:#bbb">Cargando...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="view" id="view-productos">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-box-seam me-2"></i>Gestión de Productos</span>
+          <button class="btn-save" onclick="openModal('producto')">
+            <i class="bi bi-plus-lg me-1"></i>Nuevo Producto
+          </button>
+        </div>
+        <div style="font-size:13px;color:#888;margin-top:2px">Administra los productos del gimnasio</div>
+      
+        <div class="stats-row">
+          <div class="stat-pill"><span class="sp-num sp-activos"   id="prod-activos">—</span> activos</div>
+          <div class="stat-pill"><span class="sp-num sp-inactivos" id="prod-inactivos">—</span> inactivos</div>
+          <div class="stat-pill"><span class="sp-num" style="color:#e65100" id="prod-stock">—</span> stock bajo</div>
+        </div>
+      
+        <div class="filter-chips">
+          <span class="chip chip-prod active" data-fp="todos"      onclick="filtroProducto('todos',this)">Todos</span>
+          <span class="chip chip-prod"        data-fp="activos"    onclick="filtroProducto('activos',this)">Activos</span>
+          <span class="chip chip-prod"        data-fp="inactivos"  onclick="filtroProducto('inactivos',this)">Inactivos</span>
+          <span class="chip chip-prod"        data-fp="stock_bajo" onclick="filtroProducto('stock_bajo',this)">⚠ Stock bajo</span>
+        </div>
+      
+        <div class="table-card">
+          <div class="table-toolbar">
+            <input type="text" id="searchProductos" placeholder="🔍 Buscar producto..."
+              oninput="_aplicarFiltrosProductos()">
+            <div class="combo-cat" id="comboCat">
+              <div class="combo-cat-wrap">
+                <i class="bi bi-tag combo-cat-icon"></i>
+                <input type="text" id="comboCatInput" placeholder="Todas las categorías"
+                  autocomplete="off"
+                  oninput="_comboCatFiltrar()"
+                  onfocus="_comboCatAbrir()"
+                  onblur="_comboCatBlur()">
+                <i class="bi bi-x-lg combo-cat-clear" id="comboCatClear"
+                   title="Quitar filtro de categoría" onclick="_comboCatLimpiar()"></i>
+                <i class="bi bi-chevron-down combo-cat-arrow" onmousedown="event.preventDefault();_comboCatToggle()"></i>
+              </div>
+              <ul class="combo-cat-list" id="comboCatList"></ul>
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+            <table style="table-layout:fixed;width:100%">
+              <colgroup>
+                <col style="width:50px">
+                <col>
+                <col style="width:160px">
+                <col style="width:120px">
+                <col style="width:130px">
+                <col style="width:90px">
+                <col style="width:100px">
+                <col style="width:90px">
+                <col style="width:115px">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th style="text-align:center">ID</th>
+                  <th>NOMBRE</th>
+                  <th>CATEGORÍA</th>
+                  <th style="text-align:right">PRECIO COSTO</th>
+                  <th style="text-align:right">PRECIO VENTA</th>
+                  <th style="text-align:center">OFERTA</th>
+                  <th style="text-align:center">STOCK MÍN.</th>
+                  <th style="text-align:center">ESTADO</th>
+                  <th style="text-align:center">ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyProductos">
+                <tr class="loading-row"><td colspan="9">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ INVENTARIO ══════════════════════════════════════════════════════ -->
+      <div class="view" id="view-inventario">
+        <div class="mod-header">
+          <div>
+            <span class="mod-title"><i class="bi bi-archive me-2"></i>Gestión de Inventario</span>
+            <div style="font-size:13px;color:#888;margin-top:2px">Control de stock y movimiento de productos</div>
+          </div>
+        </div>
+
+        <!-- KPI cards -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+          <div id="inv-card-todos" onclick="filtroInvKpi('todos')" style="background:#fff;border-radius:12px;padding:16px;border:2px solid #3949ab;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);cursor:pointer;transition:box-shadow .15s,border-color .15s">
+            <div style="width:44px;height:44px;border-radius:10px;background:#e8eaf6;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="bi bi-boxes" style="font-size:20px;color:#3949ab"></i>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">TOTAL PRODUCTOS</div>
+              <div style="font-size:26px;font-weight:800;color:#1a1a2e;line-height:1.1" id="inv-total">—</div>
+            </div>
+          </div>
+          <div id="inv-card-critico" onclick="filtroInvKpi('critico')" style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8f0;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);cursor:pointer;transition:box-shadow .15s,border-color .15s">
+            <div style="width:44px;height:44px;border-radius:10px;background:#ffebee;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="bi bi-exclamation-circle" style="font-size:20px;color:#c62828"></i>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">STOCK CRÍTICO</div>
+              <div style="font-size:26px;font-weight:800;color:#c62828;line-height:1.1" id="inv-critico">—</div>
+            </div>
+          </div>
+          <div id="inv-card-optimo" onclick="filtroInvKpi('optimo')" style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8f0;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);cursor:pointer;transition:box-shadow .15s,border-color .15s">
+            <div style="width:44px;height:44px;border-radius:10px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="bi bi-check-circle" style="font-size:20px;color:#2e7d32"></i>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">STOCK ÓPTIMO</div>
+              <div style="font-size:26px;font-weight:800;color:#2e7d32;line-height:1.1" id="inv-optimo">—</div>
+            </div>
+          </div>
+          <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8f0;display:flex;align-items:center;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+            <div style="width:44px;height:44px;border-radius:10px;background:#e3f2fd;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="bi bi-cash-coin" style="font-size:20px;color:#1565c0"></i>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">VALOR TOTAL</div>
+              <div style="font-size:18px;font-weight:800;color:#1565c0;line-height:1.2" id="inv-valor">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="table-toolbar">
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#555">
+              Mostrar
+              <select id="invMostrar" class="form-control" style="width:65px;padding:4px 6px;font-size:13px"
+                onchange="limitarFilasInventario(this.value)">
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+              registros
+            </div>
+            <input type="text" id="searchInventario" placeholder="🔍 Buscar producto..."
+              oninput="filtrarInventario()" style="width:200px">
+          </div>
+          <div style="overflow-x:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>PRODUCTO</th>
+                  <th style="text-align:center">STOCK GENERAL</th>
+                  <th style="text-align:center">STOCK MÍNIMO</th>
+                  <th style="text-align:center">ESTADO</th>
+                  <th style="text-align:right">VALOR</th>
+                  <th>ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyInventario">
+                <tr class="loading-row"><td colspan="7">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ ASISTENCIAS ══════════════════════════════════════════════════════ -->
+      <div class="view" id="view-asistencias">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-calendar-check me-2"></i>Asistencias</span>
+        </div>
+
+        <!-- KPI CARDS -->
+        <div class="asist-kpi-row">
+          <div class="asist-kpi-card">
+            <div class="asist-kpi-label">ASISTENCIA HOY</div>
+            <div class="asist-kpi-value" id="kpi-asist-hoy">—</div>
+          </div>
+          <div class="asist-kpi-card">
+            <div class="asist-kpi-label">PROMEDIO SEMANAL</div>
+            <div class="asist-kpi-value" id="kpi-promedio-semanal">—</div>
+          </div>
+          <div class="asist-kpi-card">
+            <div class="asist-kpi-label">HORA PICO</div>
+            <div class="asist-kpi-value asist-kpi-hora" id="kpi-hora-pico">—</div>
+          </div>
+        </div>
+
+        <!-- REGISTRO RÁPIDO -->
+        <div class="asist-quick-panel">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+            <i class="bi bi-person-check" style="font-size:18px;color:#26a69a"></i>
+            <strong class="asist-panel-title">Registrar Asistencia</strong>
+          </div>
+          <div style="position:relative;max-width:500px">
+            <input type="text" id="asistBuscarCliente" class="form-control"
+              placeholder="🔍 Buscar cliente por nombre o DNI..."
+              oninput="buscarClienteAsist()" autocomplete="off"
+              style="font-size:14px;padding:10px 14px">
+            <div id="asistSugerencias" style="position:relative;width:100%"></div>
+          </div>
+          <div id="asistClientePreview" class="asist-client-preview" style="display:none"></div>
+        </div>
+
+        <!-- STATS -->
+        <div class="stats-row" id="asistStatsRow">
+          <div class="stat-pill active" id="asist-pill-hoy" onclick="filtroAsistHoy()">
+            <span class="sp-num" style="color:#26a69a" id="asist-hoy">—</span> hoy
+          </div>
+          <div class="stat-pill" id="asist-pill-semana" onclick="filtroAsistEstaSemana()">
+            <span class="sp-num" style="color:#1976d2" id="asist-semana">—</span> esta semana
+          </div>
+          <div class="stat-pill" id="asist-pill-mes" onclick="filtroAsistEsteMes()">
+            <span class="sp-num" style="color:#7c4dff" id="asist-mes">—</span> este mes
+          </div>
+          <div class="stat-pill" id="asist-pill-todos" onclick="resetFiltrosAsist()">Todos</div>
+        </div>
+
+        <!-- FILTROS -->
+        <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+          <input type="date" id="asistFechaInicio" class="form-control" style="width:165px"
+            onchange="loadAsistencias()">
+          <input type="date" id="asistFechaFin" class="form-control" style="width:165px"
+            onchange="loadAsistencias()">
+          <input type="text" id="searchAsistencias" class="form-control" style="width:220px"
+            placeholder="🔍 Buscar cliente..." oninput="loadAsistencias()">
+          <button class="btn-cancel" style="padding:8px 14px;font-size:13px"
+            onclick="resetFiltrosAsist()">
+            <i class="bi bi-x-circle me-1"></i>Limpiar
+          </button>
+        </div>
+
+        <!-- TABLA -->
+        <div class="table-card">
+          <div style="overflow-x:auto">
+          <table style="table-layout:fixed;min-width:860px">
+            <colgroup>
+              <col style="width:44px">
+              <col style="width:180px">
+              <col style="width:90px">
+              <col style="width:90px">
+              <col style="width:80px">
+              <col style="width:74px">
+              <col style="width:110px">
+              <col style="width:74px">
+              <col style="width:120px">
+              <col style="width:80px">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>CLIENTE</th>
+                <th>DNI</th>
+                <th>FECHA</th>
+                <th>HORA</th>
+                <th>DÍA</th>
+                <th>MEMBRESÍA</th>
+                <th>DEUDA</th>
+                <th>REGISTRADO POR</th>
+                <th>ACCIONES</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyAsistencias">
+              <tr class="loading-row"><td colspan="10">Cargando...</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+      <!-- ══ /ASISTENCIAS ═════════════════════════════════════════════════════ -->
+
+      <!-- ══ VENTAS ══════════════════════════════════════════════════════════ -->
+      <!-- ══ VERIFICACIÓN DE PAGOS ══════════════════════════════════════════ -->
+      <div class="view" id="view-verificacion-pagos">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-check2-circle me-2"></i>Verificación de Pagos</span>
+        </div>
+
+        <!-- Filtros -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+          <input type="text" id="vpBuscar" class="form-control" placeholder="Buscar por N° venta, cliente o DNI..."
+            style="max-width:280px" oninput="vpBuscarTimer()">
+          <select id="vpEstado" class="form-control" style="max-width:160px" onchange="vpCargar(1)">
+            <option value="pendiente" selected>Pendientes</option>
+            <option value="todos">Todos</option>
+            <option value="pagado">Aprobados</option>
+          </select>
+          <button class="btn-save" onclick="vpCargar(1)" style="background:#1565c0">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+          </button>
+        </div>
+
+        <!-- Resumen rápido -->
+        <div id="vpResumen" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>
+
+        <!-- Tabla -->
+        <div style="overflow-x:auto">
+          <table class="tabla-base" id="vpTabla">
+            <thead>
+              <tr>
+                <th>N° Venta</th>
+                <th>Cliente</th>
+                <th>Productos</th>
+                <th style="text-align:right">Total</th>
+                <th>N° Operación</th>
+                <th>Referencia</th>
+                <th style="text-align:center">Comprobante</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th style="text-align:center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="vpTbody">
+              <tr><td colspan="10" class="cargando">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="vpPaginacion" style="margin-top:12px;display:flex;justify-content:center;gap:6px"></div>
+      </div>
+
+      <div class="view" id="view-ventas">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-receipt me-2"></i>Ventas</span>
+          <button class="btn-save" onclick="abrirNuevaVenta()">
+            <i class="bi bi-plus-lg me-1"></i>Nueva Venta
+          </button>
+        </div>
+
+        <div class="table-card">
+          <div class="table-toolbar">
+            <span id="ventaContador" style="font-size:13px;color:#888">—</span>
+            <input type="text" id="buscarVenta" placeholder="🔍 Buscar documento o cliente..."
+              oninput="loadVentas(1)" style="width:260px;margin-left:auto">
+          </div>
+          <div style="overflow-x:auto">
+            <table style="table-layout:fixed">
+              <colgroup>
+                <col style="width:40px">
+                <col style="width:115px">
+                <col style="width:150px">
+                <col style="width:105px">
+                <col style="width:80px">
+                <col style="width:78px">
+                <col style="width:88px">
+                <col style="width:78px">
+                <col style="width:88px">
+                <col style="width:180px">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nº DOCUMENTO</th>
+                  <th>CLIENTE</th>
+                  <th>VENDEDOR</th>
+                  <th>FECHA</th>
+                  <th>TOTAL</th>
+                  <th>PAGO</th>
+                  <th>DEUDA</th>
+                  <th>ESTADO</th>
+                  <th>ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyVentas">
+                <tr class="loading-row"><td colspan="10">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="paginacionVentas" class="vt-paginacion"></div>
+        </div>
+      </div>
+      <!-- ══ /VENTAS ══════════════════════════════════════════════════════════ -->
+
+      <!-- ══ AUDITORÍA ══════════════════════════════════════════════════════════ -->
+      <div class="view" id="view-auditoria">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-journal-text me-2"></i>Auditoría</span>
+          <button class="btn-cancel" style="padding:8px 14px;font-size:13px" onclick="limpiarFiltrosAuditoria()">
+            <i class="bi bi-x-circle me-1"></i>Limpiar
+          </button>
+        </div>
+
+        <!-- FILTROS -->
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+          <input type="search" id="audFiltroTexto" class="form-control" style="width:220px"
+                 placeholder="🔍 Buscar descripción… (#ID)" oninput="filtrarAuditoria()">
+          <select id="audFiltroUsuario" class="form-control" style="width:200px" onchange="filtrarAuditoria()">
+            <option value="">Todos los usuarios</option>
+          </select>
+          <select id="audFiltroModulo" class="form-control" style="width:170px" onchange="filtrarAuditoria()">
+            <option value="">Todos los módulos</option>
+          </select>
+          <select id="audFiltroAccion" class="form-control" style="width:160px" onchange="filtrarAuditoria()">
+            <option value="">Todas las acciones</option>
+            <option value="CREAR">CREAR</option>
+            <option value="EDITAR">EDITAR</option>
+            <option value="ELIMINAR">ELIMINAR</option>
+            <option value="LOGIN">LOGIN</option>
+            <option value="LOGOUT">LOGOUT</option>
+          </select>
+          <input type="date" id="audFechaInicio" class="form-control" style="width:160px" onchange="filtrarAuditoria()">
+          <input type="date" id="audFechaFin"    class="form-control" style="width:160px" onchange="filtrarAuditoria()">
+        </div>
+
+        <!-- TABLA -->
+        <div class="table-card">
+          <div style="overflow-x:auto">
+            <table style="min-width:900px">
+              <thead>
+                <tr>
+                  <th style="width:50px">#</th>
+                  <th>Usuario</th>
+                  <th style="width:120px">Acción</th>
+                  <th style="width:130px">Módulo</th>
+                  <th>Descripción</th>
+                  <th style="width:110px">IP</th>
+                  <th style="width:130px">Fecha y Hora</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyAuditoria">
+                <tr class="loading-row"><td colspan="7">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="paginacionAuditoria" style="margin-top:12px;text-align:center"></div>
+        </div>
+      </div>
+      <!-- ══ /AUDITORÍA ══════════════════════════════════════════════════════════ -->
+
+    </div>
+  </div>
+
+<!-- ════════════════════════════ MODALES VENTAS ════════════════════════════ -->
+
+<!-- Modal: Nueva Venta -->
+<div class="modal-overlay" id="modalNuevaVenta">
+  <div class="vt-modal-shell">
+    <div class="vt-modal-header">
+      <div>
+        <i class="bi bi-receipt" style="font-size:20px;margin-right:8px"></i>
+        <strong>Nueva Venta</strong>
+      </div>
+      <button class="vt-btn-x" onclick="closeModal('modalNuevaVenta')"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="vt-modal-body">
+
+      <!-- CLIENTE -->
+      <div class="vt-section-label">
+        <i class="bi bi-person-circle"></i> CLIENTE
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <div style="flex:1">
+          <label class="form-label">DNI / RUC</label>
+          <input type="text" id="nv-dni" class="form-control" placeholder="Ej. 41981377"
+            maxlength="11" oninput="this.value=this.value.replace(/\D/g,'')"
+            onkeydown="if(event.key==='Enter')buscarClienteVenta()">
+        </div>
+        <button class="vt-btn-buscar" onclick="buscarClienteVenta()" style="margin-top:20px">
+          <i class="bi bi-search me-1"></i>Buscar
+        </button>
+        <button class="vt-btn-sin-cliente" onclick="usarSinCliente()" style="margin-top:20px">
+          <i class="bi bi-person-dash me-1"></i>Sin Cliente
+        </button>
+      </div>
+      <div id="nv-cliente-info"></div>
+
+      <!-- COMPROBANTE Y PAGO -->
+      <div class="vt-section-label" style="margin-top:18px">
+        <i class="bi bi-file-earmark-text"></i> COMPROBANTE Y PAGO
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:6px">
+        <div>
+          <label class="form-label">Serie de Comprobante</label>
+          <input type="text" id="nv-serie" class="form-control" value="Nota de Venta" readonly>
+        </div>
+        <div>
+          <label class="form-label">Número de Venta</label>
+          <input type="text" id="nv-numero" class="form-control" readonly>
+        </div>
+        <div>
+          <label class="form-label">Forma de Pago</label>
+          <select id="nv-metodo-pago" class="form-control">
+            <option value="efectivo">Efectivo</option>
+            <option value="yape">Yape</option>
+            <option value="plin">Plin</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="tarjeta">Tarjeta (Débito/Crédito)</option>
+          </select>
+        </div>
+      </div>
+      <!-- Sección Efectivo: monto recibido + vuelto -->
+      <div id="nv-efectivo-section" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin-top:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end">
+          <div>
+            <label class="form-label">Monto Recibido (S/)</label>
+            <input type="number" id="nv-monto-recibido" class="form-control"
+              min="0" step="0.10" placeholder="0.00"
+              oninput="calcularVuelto()" style="font-size:16px;font-weight:700">
+          </div>
+          <div id="nv-vuelto-box" style="padding:10px 14px;border-radius:8px;text-align:center;background:#fff;border:1px solid #d1fae5">
+            <div style="font-size:11px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Vuelto</div>
+            <div id="nv-vuelto-valor" style="font-size:22px;font-weight:800;color:#16a34a">S/ 0.00</div>
+          </div>
+        </div>
+        <div id="nv-vuelto-alerta" style="display:none;margin-top:8px;padding:6px 10px;background:#fef2f2;border-radius:6px;font-size:12.5px;color:#dc2626;font-weight:600">
+          ⚠ El monto recibido es menor al total
+        </div>
+      </div>
+      <div style="display:none" id="nv-grid-pago-oculto">
+        <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:16px 18px;margin-top:8px">
+          <div style="font-size:11px;font-weight:700;color:#e65100;text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px">
+            <i class="bi bi-qr-code-scan me-1"></i>Datos del Pago Digital
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+            <div>
+              <label class="form-label">N° de Operación *</label>
+              <input type="text" id="nv-pago-operacion" class="form-control" placeholder="Ej. 1234567890" maxlength="60">
+            </div>
+            <div>
+              <label class="form-label">Nombre / Referencia *</label>
+              <input type="text" id="nv-pago-referencia" class="form-control" placeholder="Nombre del titular" maxlength="150">
+            </div>
+          </div>
+          <div>
+            <label class="form-label">Captura del Comprobante *</label>
+            <div id="nv-comp-drop-zone"
+              style="border:2px dashed #ffa726;border-radius:10px;padding:22px 16px;text-align:center;cursor:pointer;background:#fffde7;transition:all .15s"
+              onclick="document.getElementById('nv-pago-file').click()"
+              ondragover="event.preventDefault();this.style.borderColor='#e65100';this.style.background='#fff3e0'"
+              ondragleave="this.style.borderColor='#ffa726';this.style.background='#fffde7'"
+              ondrop="event.preventDefault();this.style.borderColor='#ffa726';this.style.background='#fffde7';handleComprobanteFile(event.dataTransfer.files[0])">
+              <i class="bi bi-cloud-upload" style="font-size:28px;color:#e65100;display:block;margin-bottom:6px"></i>
+              <div style="font-size:13px;font-weight:600;color:#e65100">Arrastra aquí o haz clic para subir</div>
+              <div style="font-size:11px;color:#999;margin-top:4px">PNG, JPG, WEBP · Máx 5 MB</div>
+            </div>
+            <input type="file" id="nv-pago-file" accept="image/*" style="display:none"
+                   onchange="handleComprobanteFile(this.files[0])">
+            <input type="hidden" id="nv-pago-url">
+            <span id="nv-pago-file-name" style="font-size:12px;color:#16a34a;margin-top:6px;display:block"></span>
+          </div>
+          <div id="nv-pago-comprobante-preview" style="margin-top:10px"></div>
+        </div>
+      </div>
+
+      <!-- PRODUCTOS -->
+      <div class="vt-section-label" style="margin-top:18px">
+        <i class="bi bi-box-seam"></i> PRODUCTOS
+      </div>
+      <div style="margin-bottom:12px">
+        <button class="vt-btn-agregar-prod" onclick="abrirModalProducto()">
+          <i class="bi bi-plus-circle me-1"></i>Agregar Producto
+        </button>
+      </div>
+
+      <!-- Tabla carrito -->
+      <div style="overflow-x:auto">
+        <table class="vt-tabla-carrito">
+          <thead>
+            <tr>
+              <th>PRODUCTO</th>
+              <th>PRECIO</th>
+              <th>CANTIDAD</th>
+              <th>SUBTOTAL</th>
+              <th>ACCIÓN</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyCarrito">
+            <tr><td colspan="5" class="text-center" style="padding:1rem;color:#888">Sin productos agregados</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Total -->
+      <div class="vt-total-box" id="nv-total-box" style="display:none">
+        <div>
+          <div style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:.5px">TOTAL A PAGAR</div>
+          <div class="vt-total-num" id="nv-total-pagar">S/ 0.00</div>
+          <div style="font-size:11px;color:#16a34a;font-weight:600;margin-top:2px">Precio incluye IGV (18%)</div>
+        </div>
+        <div style="text-align:right;font-size:13px;color:#666">
+          Forma de Pago<br>
+          <strong id="nv-label-metodo">Contado</strong>
+        </div>
+      </div>
+
+      <!-- Descuento general -->
+      <div style="margin-top:16px">
+        <label class="form-label">DESCUENTO GENERAL (S/)</label>
+        <input type="number" id="nv-descuento-general" class="form-control"
+          value="0" min="0" step="0.01" style="max-width:200px">
+        <p style="font-size:11.5px;color:#b45309;margin-top:6px">
+          ⚠ Solo debe ser completado con autorización del Administrador o Dueño del Negocio.
+          De ser aplicado, detallar el motivo en la sección de Observaciones.
+        </p>
+      </div>
+
+      <!-- Observación -->
+      <div style="margin-top:12px">
+        <label class="form-label">OBSERVACIÓN</label>
+        <textarea id="nv-observacion" class="form-control" rows="2"
+          placeholder="Observaciones de la venta..."></textarea>
+      </div>
+
+    </div>
+    <div id="alertVenta" style="display:none;margin:0 24px 4px;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:500"></div>
+    <div class="vt-modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modalNuevaVenta')">
+        <i class="bi bi-x me-1"></i>Cancelar
+      </button>
+      <button class="btn-save" id="btnGuardarVenta" data-original="Guardar Venta"
+        onclick="guardarVenta()">
+        <i class="bi bi-check-lg me-1"></i>Guardar Venta
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Seleccionar Producto -->
+<div class="modal-overlay" id="modalSeleccionarProducto">
+  <div class="vt-modal-shell" style="max-width:680px">
+    <div class="vt-modal-header" style="background:linear-gradient(135deg,#6a11cb,#2575fc)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <i class="bi bi-box-seam" style="font-size:22px"></i>
+        <div>
+          <div style="font-size:16px;font-weight:700">Seleccionar Producto</div>
+          <div style="font-size:12px;opacity:.8">Busca y agrega productos a tu venta</div>
+        </div>
+      </div>
+      <button class="vt-btn-x" onclick="closeModal('modalSeleccionarProducto')"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="vt-modal-body">
+      <div style="position:relative;margin-bottom:12px">
+        <input type="text" id="buscarProductoVenta" class="form-control"
+          placeholder="🔍 Busca por nombre, código o ID..."
+          style="padding-left:14px">
+      </div>
+      <div id="listaProductosVenta" style="max-height:420px;overflow-y:auto">
+        <div style="text-align:center;padding:30px;color:#aaa">Escribe para buscar productos...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Enviar Comprobante por Email -->
+<div class="modal-overlay" id="modalEnviarEmail">
+  <div class="modal-box" style="max-width:460px;padding:28px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+      <i class="bi bi-envelope-fill" style="font-size:24px;color:#1565c0"></i>
+      <div>
+        <div style="font-size:16px;font-weight:700;color:#1a1a2e">Enviar Comprobante</div>
+        <div style="font-size:12px;color:#888" id="email-num-comp">—</div>
+      </div>
+    </div>
+    <div style="background:#f0f7ff;border:1px solid #bbdefb;border-radius:8px;padding:10px 14px;font-size:12.5px;color:#1565c0;margin-bottom:16px">
+      <i class="bi bi-info-circle me-1"></i>
+      Se enviará el comprobante completo con el detalle de productos al correo indicado.
+    </div>
+    <div id="alertEmail" style="display:none;padding:8px 12px;border-radius:8px;font-size:12.5px;margin-bottom:12px"></div>
+    <label class="form-label">Correo electrónico del destinatario *</label>
+    <input type="email" id="emailDestinatario" class="form-control"
+      placeholder="ejemplo@correo.com"
+      onkeydown="if(event.key==='Enter')confirmarEnvioEmail()">
+    <div id="email-cliente-hint" style="font-size:11.5px;color:#888;margin-top:4px"></div>
+    <input type="hidden" id="emailVentaId">
+    <div class="modal-footer" style="margin-top:20px">
+      <button class="btn-cancel" onclick="closeModal('modalEnviarEmail')">Cancelar</button>
+      <button class="btn-save" id="btnEnviarEmail" onclick="confirmarEnvioEmail()"
+        style="background:linear-gradient(135deg,#1565c0,#1976d2)">
+        <i class="bi bi-send me-1"></i>Enviar correo
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Ver Detalle Venta -->
+<div class="modal-overlay" id="modalDetalleVenta">
+  <div class="vt-detalle-shell">
+
+    <!-- Header -->
+    <div class="vt-detalle-header">
+      <div style="display:flex;align-items:center;gap:10px">
+        <i class="bi bi-receipt" style="font-size:20px"></i>
+        <div>
+          <div style="font-size:16px;font-weight:700">Detalle de Venta</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+            <span id="dventa-num" style="font-size:13px;opacity:.8">—</span>
+            <span id="dventa-estado-badge"></span>
+          </div>
+        </div>
+      </div>
+      <button class="vt-btn-x" onclick="closeModal('modalDetalleVenta')"><i class="bi bi-x-lg"></i></button>
+    </div>
+
+    <!-- Body -->
+    <div class="vt-detalle-body" id="dventa-print-area">
+
+      <!-- Cliente -->
+      <div class="vt-dv-card">
+        <div class="vt-dv-label"><i class="bi bi-person-circle me-1"></i>CLIENTE</div>
+        <div id="dventa-cliente-nombre" style="font-size:16px;font-weight:800;color:#1a1a2e;margin-bottom:6px"></div>
+        <div id="dventa-cliente-dni" style="display:inline-flex;align-items:center;gap:4px;background:#e3f2fd;color:#1565c0;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:700;margin-bottom:6px"></div>
+        <div id="dventa-cliente-celular" style="font-size:13px;color:#555;margin-top:4px"></div>
+        <div id="dventa-cliente-telefono" style="font-size:13px;color:#555;margin-top:2px"></div>
+      </div>
+
+      <!-- Fecha + Forma de Pago -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div class="vt-dv-card">
+          <div class="vt-dv-label"><i class="bi bi-calendar3 me-1"></i>FECHA EMISIÓN</div>
+          <div id="dventa-fecha" style="font-size:15px;font-weight:600;color:#1a1a2e;margin-top:4px"></div>
+        </div>
+        <div class="vt-dv-card" style="background:#f0f7ff;border-color:#bbdefb">
+          <div class="vt-dv-label" style="color:#1565c0"><i class="bi bi-credit-card me-1"></i>FORMA DE PAGO</div>
+          <div id="dventa-metodo" style="font-size:15px;font-weight:700;color:#1565c0;margin-top:4px"></div>
+        </div>
+      </div>
+
+      <!-- Tabla productos -->
+      <table class="vt-dv-tabla">
+        <thead>
+          <tr>
+            <th style="width:36px;text-align:center">N°</th>
+            <th>PRODUCTO</th>
+            <th style="text-align:center">CANT.</th>
+            <th style="text-align:right">PRECIO UNIT.</th>
+            <th style="text-align:right">TOTAL</th>
+          </tr>
+        </thead>
+        <tbody id="dventa-detalle"></tbody>
+      </table>
+
+      <!-- Totales -->
+      <div class="vt-dv-totales">
+        <div class="vt-dv-total-row"><span>Subtotal (base imponible)</span><span id="dventa-subtotal"></span></div>
+        <div class="vt-dv-total-row"><span>IGV (18%)</span><span id="dventa-igv"></span></div>
+        <div id="dventa-descuento-row" class="vt-dv-total-row" style="display:none;color:#16a34a;font-size:12px">
+          <span>Descuento aplicado</span><span id="dventa-descuento"></span>
+        </div>
+        <div class="vt-dv-total-row vt-dv-total-final">
+          <span>TOTAL</span><span id="dventa-total"></span>
+        </div>
+      </div>
+
+      <!-- Vendedor -->
+      <div id="dventa-observacion-row" style="display:none;margin-bottom:10px">
+        <div class="vt-dv-card" style="border-left:3px solid #f59e0b;background:#fffbeb">
+          <div class="vt-dv-label" style="color:#b45309"><i class="bi bi-chat-left-text me-1"></i>OBSERVACIÓN</div>
+          <div id="dventa-observacion" style="font-size:13.5px;color:#555;font-style:italic"></div>
+        </div>
+      </div>
+
+      <div class="vt-dv-vendedor"><i class="bi bi-person-badge me-1"></i>Vendedor: <strong id="dventa-vendedor"></strong></div>
+
+    </div>
+
+    <!-- Footer acciones -->
+    <div class="vt-detalle-footer">
+      <button class="btn-cancel" onclick="closeModal('modalDetalleVenta')">
+        <i class="bi bi-x me-1"></i>Cerrar
+      </button>
+      <button class="vt-btn-print ticket" onclick="imprimirDetalleVenta('ticket')">
+        <i class="bi bi-printer me-1"></i>Ticket 80mm
+      </button>
+      <button class="vt-btn-print a4" onclick="imprimirDetalleVenta('a4')">
+        <i class="bi bi-printer-fill me-1"></i>Imprimir A4
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ CSS VENTAS ══════════════════════════════════ -->
+<style>
+/* ── VIEW VENTAS ─────────────────────────────────────────────── */
+.vt-paginacion { display:flex; gap:6px; padding:12px; justify-content:center; flex-wrap:wrap; }
+.btn-pag { background:#f0f2f7; border:none; border-radius:6px; padding:5px 11px;
+  font-size:13px; cursor:pointer; transition:background .15s; }
+.btn-pag:hover { background:#e0e4ef; }
+.btn-pag.activo { background:var(--accent); color:#fff; }
+
+/* Badges tabla */
+.vt-badge-metodo { display:inline-block; padding:3px 10px; border-radius:20px;
+  font-size:11.5px; font-weight:600; background:#e8f5e9; color:#2e7d32; white-space:nowrap; }
+.vt-badge-metodo.yape { background:#f3e5f5; color:#7b1fa2; }
+.vt-badge-metodo.plin  { background:#e3f2fd; color:#1565c0; }
+.vt-badge-metodo.transferencia { background:#fff3e0; color:#e65100; }
+.vt-badge-metodo.tarjeta { background:#e8f5e9; color:#2e7d32; }
+
+.badge-estado { display:inline-block; padding:3px 10px; border-radius:20px;
+  font-size:11px; font-weight:700; white-space:nowrap; }
+.badge-estado.sin-emitir  { background:#f5f5f5; color:#757575; }
+.badge-estado.enviado     { background:#e3f2fd; color:#1565c0; }
+.badge-estado.aceptado    { background:#e8f5e9; color:#2e7d32; }
+.badge-estado.rechazado   { background:#ffebee; color:#c62828; }
+.badge-estado.anulado     { background:#fce4ec; color:#880e4f; }
+.badge-estado.registrada  { background:#e8f5e9; color:#2e7d32; font-weight:700; }
+.badge-estado.anulada-v   { background:#ffebee; color:#c62828; }
+
+/* Botones acciones en tabla */
+.vt-btn-accion { background:#f0f2f7; border:none; border-radius:7px;
+  padding:4px 9px; font-size:12px; cursor:pointer; display:inline-flex;
+  align-items:center; gap:4px; transition:background .15s; white-space:nowrap;
+  justify-content:center; }
+.vt-btn-accion:hover { background:#e0e4ef; }
+.vt-btn-accion.emitir { background:#e8f5e9; color:#2e7d32; font-weight:600;
+  min-width:80px; }
+.vt-btn-accion.emitir:hover { background:#c8e6c9; }
+.vt-btn-accion.danger { color:#c62828; }
+.vt-btn-accion.danger:hover { background:#ffebee; }
+.vt-row-actions { display:flex; gap:4px; align-items:center; flex-wrap:nowrap; }
+
+/* ── MODAL SHELL ─────────────────────────────────────────────── */
+.vt-modal-shell {
+  background:#fff; border-radius:18px; width:680px; max-width:97vw;
+  max-height:92vh; display:flex; flex-direction:column;
+  box-shadow:0 32px 80px rgba(0,0,0,.28);
+  animation:slideUp .2s ease;
+  overflow:hidden;
+}
+.vt-modal-header {
+  background:linear-gradient(135deg,#1a1a2e,#0f3460);
+  color:#fff; padding:18px 22px; display:flex;
+  justify-content:space-between; align-items:center;
+  flex-shrink:0; font-size:16px; font-weight:700;
+}
+.vt-modal-body { padding:22px 24px; overflow-y:auto; flex:1; }
+.vt-modal-footer {
+  padding:14px 22px; border-top:1px solid #eef0f4;
+  display:flex; justify-content:flex-end; gap:10px;
+  flex-shrink:0; background:#fff;
+}
+.vt-btn-x {
+  background:rgba(255,255,255,.15); border:none; color:#fff;
+  border-radius:8px; padding:6px 10px; cursor:pointer; font-size:14px;
+  transition:background .15s;
+}
+.vt-btn-x:hover { background:rgba(255,255,255,.3); }
+
+/* ── SECTIONS ─────────────────────────────────────────────────── */
+.vt-section-label {
+  font-size:11.5px; font-weight:700; color:#1565c0; letter-spacing:.8px;
+  text-transform:uppercase; margin-bottom:10px;
+  display:flex; align-items:center; gap:6px;
+  padding-bottom:6px; border-bottom:1px solid #e3f2fd;
+}
+
+/* ── CLIENTE FOUND ─────────────────────────────────────────────── */
+.nv-cliente-found {
+  padding:12px 16px; border-radius:10px; margin-bottom:2px;
+  display:flex; align-items:center; gap:12px; font-size:14px;
+}
+.nv-cliente-found.found {
+  background:#e8f5e9; border:1px solid #a5d6a7;
+}
+.nv-cliente-found.api {
+  background:#e3f2fd; border:1px solid #90caf9;
+}
+.nv-cliente-found strong { font-size:15px; font-weight:700; display:block; }
+.nv-cliente-found small  { color:#666; font-size:12px; }
+.nv-cliente-not-found {
+  padding:10px 14px; border-radius:10px;
+  background:#fff3cd; border:1px solid #ffe082;
+  font-size:13px; color:#856404; display:flex; align-items:center; gap:8px;
+}
+.vt-btn-link { background:none; border:none; color:#1565c0; cursor:pointer;
+  font-size:13px; text-decoration:underline; padding:0 4px; }
+
+/* ── BOTONES MODAL ─────────────────────────────────────────────── */
+.vt-btn-buscar {
+  background:linear-gradient(135deg,#1565c0,#1976d2);
+  color:#fff; border:none; border-radius:8px; padding:9px 18px;
+  font-size:13.5px; font-weight:600; cursor:pointer; white-space:nowrap;
+  display:flex; align-items:center; gap:4px;
+}
+.vt-btn-buscar:hover { background:linear-gradient(135deg,#0d47a1,#1565c0); }
+.vt-btn-sin-cliente {
+  background:#f0f2f7; border:1px solid #dde1eb; color:#333;
+  border-radius:8px; padding:9px 14px; font-size:13px; cursor:pointer;
+  white-space:nowrap; display:flex; align-items:center; gap:4px;
+}
+.vt-btn-sin-cliente:hover { background:#e0e4ef; }
+.vt-btn-agregar-prod {
+  background:linear-gradient(135deg,#1565c0,#1976d2);
+  color:#fff; border:none; border-radius:8px; padding:9px 20px;
+  font-size:13.5px; font-weight:600; cursor:pointer; flex:1;
+  display:flex; align-items:center; justify-content:center; gap:5px;
+}
+.vt-btn-agregar-prod:hover { background:linear-gradient(135deg,#0d47a1,#1565c0); }
+
+/* ── TABLA CARRITO ─────────────────────────────────────────────── */
+.vt-tabla-carrito { width:100%; border-collapse:collapse; font-size:13.5px; }
+.vt-tabla-carrito thead tr { background:linear-gradient(90deg,#1565c0,#1976d2); color:#fff; }
+.vt-tabla-carrito thead th { padding:9px 12px; text-align:left; font-size:12px;
+  font-weight:700; letter-spacing:.5px; }
+.vt-tabla-carrito tbody td { padding:9px 12px; border-bottom:1px solid #f0f2f7; }
+.vt-tabla-carrito tbody tr:last-child td { border-bottom:none; }
+.vt-tabla-carrito tbody tr:hover td { background:#f8f9ff; }
+
+/* Qty control */
+.qty-control { display:flex; align-items:center; gap:4px; }
+.qty-control button {
+  background:#f0f2f7; border:none; border-radius:6px;
+  width:26px; height:26px; font-size:16px; line-height:1;
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+}
+.qty-control button:hover { background:#e0e4ef; }
+.qty-input { width:52px; text-align:center; border:1px solid #e0e0e0;
+  border-radius:6px; padding:3px 4px; font-size:13px; }
+
+.vt-btn-trash {
+  background:#ffebee; border:none; border-radius:6px;
+  padding:5px 8px; color:#c62828; cursor:pointer; font-size:14px;
+}
+.vt-btn-trash:hover { background:#ffcdd2; }
+
+/* Total box */
+.vt-total-box {
+  background:linear-gradient(135deg,#e3f2fd,#f8f9ff);
+  border:1px solid #bbdefb; border-radius:12px;
+  padding:14px 20px; margin-top:16px;
+  display:flex; justify-content:space-between; align-items:center;
+}
+.vt-total-num { font-size:26px; font-weight:800; color:#1565c0; }
+
+/* ── PRODUCTO CARD (selector modal) ─────────────────────────────── */
+.prod-card-venta {
+  border:1px solid #eef0f4; border-radius:10px; margin-bottom:10px;
+  overflow:hidden; transition:box-shadow .15s;
+}
+.prod-card-venta:hover { box-shadow:0 4px 14px rgba(0,0,0,.09); }
+.prod-header-venta {
+  padding:10px 14px; background:#f8f9ff;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.prod-header-venta strong { font-size:14.5px; color:#1a1a2e; }
+.cat-badge { font-size:11px; color:#666; background:#f0f2f7;
+  padding:2px 8px; border-radius:20px; margin-left:8px; }
+.pp-list { display:flex; flex-direction:column; }
+.pp-item {
+  padding:10px 14px; display:flex; align-items:center; justify-content:space-between;
+  cursor:pointer; transition:background .12s; border-top:1px solid #f0f2f7;
+  flex-wrap:wrap; gap:6px;
+}
+.pp-item:hover { background:#e3f2fd; }
+.pp-nombre { font-size:13.5px; font-weight:600; color:#333; }
+.pp-precios { display:flex; align-items:center; gap:6px; }
+.precio-tachado { font-size:12px; color:#aaa; text-decoration:line-through; }
+.precio-final { font-size:14px; font-weight:700; color:#1a1a2e; }
+.badge-oferta {
+  background:#e94560; color:#fff; font-size:10.5px; font-weight:700;
+  padding:2px 7px; border-radius:20px;
+}
+.pp-stock { font-size:12px; color:#555; display:flex; align-items:center; gap:4px; }
+.pp-stock.bajo { color:#e65100; }
+.pp-igv-tag { font-size:10px; color:#16a34a; font-weight:700; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:4px; padding:1px 5px; }
+
+/* ── TIPO COMPROBANTE CARD ──────────────────────────────────────── */
+.vt-tipo-comp-card {
+  border:2px solid #e0e0e0; border-radius:12px; padding:16px;
+  cursor:pointer; transition:border .15s; position:relative; display:block;
+}
+.vt-tipo-comp-card:hover { border-color:#1976d2; }
+.vt-tipo-comp-card.selected { border-color:#2e7d32; background:#f1f8e9; }
+.vt-tipo-comp-card input[type=radio] { display:none; }
+.vt-tipo-inner { display:flex; align-items:center; gap:12px; }
+.vt-tipo-badge {
+  background:#1976d2; color:#fff; font-size:10.5px; font-weight:700;
+  padding:2px 8px; border-radius:20px; margin-left:auto; white-space:nowrap;
+}
+.vt-tipo-check { position:absolute; top:8px; right:8px;
+  font-size:18px; color:#2e7d32; display:none; }
+.vt-tipo-check.visible { display:block; }
+
+/* Input número completo */
+.vt-input-num-completo {
+  background:linear-gradient(135deg,#e3f2fd,#f3e5f5) !important;
+  font-weight:700 !important; color:#1a1a2e !important;
+  text-align:center; font-size:15px !important;
+}
+
+/* ── TOTALES GRID ───────────────────────────────────────────────── */
+.vt-totales-grid {
+  background:#f8f9ff; border-radius:10px; padding:14px 18px;
+  display:flex; flex-direction:column; gap:8px; margin-top:8px;
+}
+.vt-total-row { display:flex; justify-content:space-between;
+  font-size:13.5px; color:#444; }
+.vt-total-final { font-size:15.5px; font-weight:800; color:#1a1a2e;
+  padding-top:8px; border-top:1.5px solid #dde1eb; }
+
+/* ── DETALLE VENTA ──────────────────────────────────────────────── */
+/* Shell */
+.vt-detalle-shell {
+  background:#fff; border-radius:18px; width:680px; max-width:97vw;
+  max-height:93vh; display:flex; flex-direction:column;
+  box-shadow:0 32px 80px rgba(0,0,0,.28); animation:slideUp .2s ease; overflow:hidden;
+}
+.vt-detalle-header {
+  background:linear-gradient(135deg,#1a1a2e,#0f3460);
+  color:#fff; padding:18px 22px; display:flex;
+  justify-content:space-between; align-items:flex-start;
+  flex-shrink:0;
+}
+.vt-detalle-body {
+  padding:20px 24px; overflow-y:auto; flex:1;
+}
+.vt-detalle-footer {
+  padding:12px 22px; border-top:1px solid #eef0f4;
+  display:flex; justify-content:flex-end; gap:10px;
+  flex-shrink:0; background:#f8f9ff;
+}
+/* Cards internas */
+.vt-dv-card {
+  background:#fff; border:1px solid #e8ecf4; border-radius:12px;
+  padding:14px 16px; margin-bottom:14px;
+}
+.vt-dv-label {
+  font-size:11px; font-weight:700; color:#1565c0;
+  letter-spacing:.8px; text-transform:uppercase; margin-bottom:6px;
+  display:flex; align-items:center;
+}
+/* Tabla productos */
+.vt-dv-tabla { width:100%; border-collapse:collapse; font-size:13.5px; margin-bottom:14px; border-radius:10px; overflow:hidden; }
+.vt-dv-tabla thead tr { background:linear-gradient(90deg,#1a237e,#1565c0); color:#fff; }
+.vt-dv-tabla thead th { padding:9px 12px; font-size:11.5px; font-weight:700; letter-spacing:.4px; }
+.vt-dv-tabla tbody td { padding:10px 12px; border-bottom:1px solid #f0f2f7; }
+.vt-dv-tabla tbody tr:last-child td { border-bottom:none; }
+.vt-dv-tabla tbody tr:hover td { background:#f8f9ff; }
+.vt-dv-total-col { font-weight:700; color:#2e7d32; }
+/* Totales */
+.vt-dv-totales {
+  background:#f8f9ff; border:1px solid #e3f2fd;
+  border-radius:10px; padding:12px 16px; margin-bottom:14px;
+}
+.vt-dv-total-row {
+  display:flex; justify-content:space-between;
+  font-size:13.5px; color:#444; padding:4px 0;
+}
+.vt-dv-total-final {
+  font-size:16px; font-weight:800; color:#1a1a2e;
+  margin-top:6px; padding-top:8px; border-top:1.5px solid #dde1eb;
+}
+.vt-dv-total-final span:last-child { color:#1565c0; }
+/* Vendedor */
+.vt-dv-vendedor {
+  font-size:13px; color:#666;
+  padding:10px 14px; background:#f8f9ff; border-radius:8px;
+  border-left:3px solid #1565c0;
+}
+/* Botones imprimir */
+.vt-btn-print {
+  border:none; border-radius:8px; padding:9px 18px;
+  font-size:13px; font-weight:600; cursor:pointer;
+  display:flex; align-items:center; gap:6px; color:#fff;
+  transition:opacity .15s;
+}
+.vt-btn-print:hover { opacity:.88; }
+.vt-btn-print.ticket { background:linear-gradient(135deg,#37474f,#546e7a); }
+.vt-btn-print.a4     { background:linear-gradient(135deg,#1565c0,#1976d2); }
+/* Badge estado venta en header */
+.vt-estado-badge {
+  display:inline-block; padding:2px 9px; border-radius:20px;
+  font-size:11px; font-weight:700;
+}
+.vt-estado-badge.registrada { background:rgba(255,255,255,.2); color:#fff; }
+.vt-estado-badge.anulada    { background:#ffcdd2; color:#c62828; }
+/* ── PRINT STYLES ── */
+@media print {
+  body * { visibility:hidden !important; }
+  #dventa-print-content, #dventa-print-content * { visibility:visible !important; }
+  #dventa-print-content {
+    position:fixed; inset:0; background:#fff;
+    padding:10px; font-family:Arial,sans-serif;
+  }
+}
+</style>
+
+<style>
+/* ═══════════════════════════════════════════════════
+   MODAL CLIENTE — diseño premium Volcano Gym
+═══════════════════════════════════════════════════ */
+#modalCliente .cl-shell {
+  display: flex;
+  flex-direction: column;
+  width: 600px;
+  max-height: 92vh;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 32px 80px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.06);
+  background: #fff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ── HERO ── */
+.cl-hero {
+  position: relative;
+  background: linear-gradient(135deg, #0d1b2a 0%, #1b2a3b 45%, #1a3a5c 100%);
+  padding: 24px 26px 20px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.cl-hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 55% 90% at 95% 50%, rgba(0,180,120,.15) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 60% at 5% 0%, rgba(0,120,255,.1) 0%, transparent 60%);
+  pointer-events: none;
+}
+.cl-hero-inner {
+  display: flex; align-items: center; gap: 14px; position: relative;
+}
+.cl-hero-avatar {
+  width: 52px; height: 52px; border-radius: 16px; flex-shrink: 0;
+  background: linear-gradient(135deg,#1976d2,#42a5f5);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; color: #fff;
+  box-shadow: 0 4px 18px rgba(25,118,210,.45);
+  transition: background .3s;
+}
+.cl-hero-text { flex: 1; min-width: 0; }
+.cl-hero-title {
+  margin: 0 0 3px; font-size: 16px; font-weight: 800;
+  color: #fff; letter-spacing: -.2px;
+}
+.cl-hero-sub {
+  margin: 0; font-size: 12px; color: rgba(255,255,255,.5);
+}
+.cl-hero-close {
+  background: rgba(255,255,255,.1); border: none;
+  width: 32px; height: 32px; border-radius: 50%;
+  color: rgba(255,255,255,.65); font-size: 15px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .15s, color .15s; flex-shrink: 0;
+}
+.cl-hero-close:hover { background: rgba(255,255,255,.22); color: #fff; }
+
+/* ── AVISO MENOR ── */
+.cl-notice {
+  display: flex; align-items: flex-start; gap: 9px;
+  margin: 14px 26px 0;
+  padding: 10px 14px;
+  background: linear-gradient(135deg,#e8f5e9,#f1f8e9);
+  border: 1.5px solid #a5d6a7;
+  border-radius: 11px;
+  font-size: 12px; color: #2e7d32; line-height: 1.5;
+}
+.cl-notice i { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+
+/* ── SCROLL ── */
+.cl-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto; overflow-x: hidden;
+  padding: 18px 26px 6px;
+  scroll-behavior: smooth;
+}
+.cl-scroll::-webkit-scrollbar { width: 5px; }
+.cl-scroll::-webkit-scrollbar-track { background: transparent; }
+.cl-scroll::-webkit-scrollbar-thumb { background: #dde1ea; border-radius: 99px; }
+.cl-scroll::-webkit-scrollbar-thumb:hover { background: #b0b8cc; }
+
+/* ── SECTION LABEL ── */
+.cl-section {
+  font-size: 10px; font-weight: 800; letter-spacing: 1px;
+  text-transform: uppercase; color: #9199ab;
+  margin: 0 0 10px; display: flex; align-items: center; gap: 6px;
+}
+.cl-section::after {
+  content: ''; flex: 1; height: 1px; background: #eef0f4;
+}
+.cl-section + * { margin-top: 0; }
+
+/* ── CAMPOS ── */
+.cl-field { margin-bottom: 14px; }
+.cl-label {
+  font-size: 11.5px; font-weight: 700; color: #3d4556;
+  display: block; margin-bottom: 5px; letter-spacing: .1px;
+}
+.cl-label .req { color: #e53935; margin-left: 2px; }
+.cl-label .opt { color: #aab0be; font-weight: 400; margin-left: 4px; font-size: 10.5px; }
+.cl-input, .cl-select {
+  width: 100%; padding: 9px 12px;
+  font-size: 13px; color: #1a1a2e;
+  background: #f7f8fc;
+  border: 1.5px solid #e8eaf0;
+  border-radius: 10px;
+  outline: none;
+  transition: border-color .18s, box-shadow .18s, background .18s;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.cl-input:focus, .cl-select:focus {
+  border-color: #1976d2;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(25,118,210,.11);
+}
+.cl-input::placeholder { color: #b0b8cc; }
+.cl-input[readonly] {
+  background: #f0f0f6; color: #6b7280;
+  cursor: not-allowed;
+}
+
+/* ── AVATAR PREVIEW ── */
+.cl-avatar-preview {
+  width: 52px; height: 52px; border-radius: 14px;
+  background: linear-gradient(135deg,#e3f2fd,#bbdefb);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; color: #1976d2; border: 2px dashed #90caf9;
+  flex-shrink: 0; overflow: hidden;
+}
+.cl-avatar-preview img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; }
+.cl-foto-row {
+  display: flex; gap: 12px; align-items: center;
+}
+.cl-btn-foto {
+  padding: 8px 16px; font-size: 12px; font-weight: 600;
+  background: #e8f0fe; color: #1a73e8;
+  border: 1.5px solid #c5d8fc; border-radius: 9px;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  transition: background .15s, border-color .15s; align-self: flex-start;
+  font-family: inherit;
+}
+.cl-btn-foto:hover { background: #d2e3fc; border-color: #93bef9; }
+
+/* ── CONTACTOS ── */
+.cl-contact-card {
+  background: #f7f8fc;
+  border: 1.5px solid #e8eaf0;
+  border-radius: 13px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  transition: border-color .18s;
+}
+.cl-contact-card:focus-within {
+  border-color: #90caf9;
+  background: #f0f7ff;
+}
+.cl-contact-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 800; letter-spacing: .8px;
+  text-transform: uppercase; color: #1976d2;
+  background: #e3f2fd; border-radius: 6px;
+  padding: 3px 8px; margin-bottom: 10px;
+}
+
+/* ── ALERT ── */
+#alertCliente { margin-bottom: 0; }
+#alertCliente:empty { display: none; }
+
+/* ── FOOTER ── */
+.cl-footer {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  padding: 14px 26px 18px;
+  border-top: 1px solid #eef0f4;
+  background: #fff;
+}
+.cl-btn-cancel {
+  padding: 9px 20px; font-size: 13px; font-weight: 600;
+  background: #f0f2f7; color: #5a6375;
+  border: none; border-radius: 10px; cursor: pointer;
+  transition: background .15s;
+}
+.cl-btn-cancel:hover { background: #e2e5ee; }
+.cl-btn-save {
+  padding: 9px 24px; font-size: 13px; font-weight: 800;
+  background: linear-gradient(135deg,#1976d2,#1565c0);
+  color: #fff; border: none; border-radius: 10px; cursor: pointer;
+  display: flex; align-items: center; gap: 7px;
+  box-shadow: 0 4px 18px rgba(25,118,210,.38);
+  transition: transform .12s, box-shadow .15s;
+  letter-spacing: .1px;
+}
+.cl-btn-save:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(25,118,210,.48); }
+.cl-btn-save:active { transform: translateY(0); }
+</style>
+
+<div class="modal-overlay" id="modalCliente">
+  <div class="cl-shell">
+
+    <!-- ── HERO ── -->
+    <div class="cl-hero">
+      <div class="cl-hero-inner">
+        <div class="cl-hero-avatar" id="clHeroAvatar">
+          <i class="bi bi-person-plus-fill"></i>
+        </div>
+        <div class="cl-hero-text">
+          <h3 class="cl-hero-title" id="modalClienteTitle">Registrar nuevo cliente</h3>
+          <p class="cl-hero-sub" id="clHeroSub">Completa los datos personales del cliente</p>
+        </div>
+        <button class="cl-hero-close" onclick="closeModal('modalCliente')" title="Cerrar">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── AVISO CLÁUSULA ── -->
+    <div class="cl-notice">
+      <i class="bi bi-info-circle-fill"></i>
+      <span><strong>Cláusula 1a:</strong> Si el cliente es menor de 18 años, un adulto con tenencia debe suscribir el contrato.</span>
+    </div>
+
+    <!-- ── ALERT ── -->
+    <div style="padding: 0 26px">
+      <div class="alert-msg" id="alertCliente" style="margin-top:10px"></div>
+    </div>
+
+    <input type="hidden" id="clienteId">
+
+    <!-- ── SCROLL BODY ── -->
+    <div class="cl-scroll">
+
+      <!-- SECCIÓN 1: Identidad -->
+      <div class="cl-section"><i class="bi bi-person-badge-fill" style="color:#1976d2"></i> Datos personales</div>
+
+      <div class="row g-2">
+        <div class="col-6">
+          <div class="cl-field">
+            <label class="cl-label">Nombres <span class="req">*</span></label>
+            <input class="cl-input" id="clienteNombre" placeholder="Nombres completos" autocomplete="off">
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="cl-field">
+            <label class="cl-label">Apellidos <span class="req">*</span></label>
+            <input class="cl-input" id="clienteApellido" placeholder="Apellidos" autocomplete="off">
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-2">
+        <div class="col-4">
+          <div class="cl-field">
+            <label class="cl-label">Tipo doc. <span class="req">*</span></label>
+            <select class="cl-select" id="clienteTipoDoc" onchange="onClienteTipoDocChange()">
+              <option value="DNI">DNI</option>
+              <option value="CE">Carnet Ext.</option>
+            </select>
+          </div>
+        </div>
+        <div class="col-8">
+          <div class="cl-field">
+            <label class="cl-label" id="clienteDniLabel">DNI <span class="req">*</span></label>
+            <input class="cl-input" id="clienteDni" placeholder="00000000" maxlength="8" inputmode="numeric" autocomplete="off">
+          </div>
+        </div>
+      </div>
+      <div class="row g-2">
+        <div class="col-12">
+          <div class="cl-field">
+            <label class="cl-label">Celular <span class="opt">(opcional)</span></label>
+            <input class="cl-input" id="clienteCelular" placeholder="9XXXXXXXX" maxlength="15" autocomplete="off">
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-2">
+        <div class="col-6">
+          <div class="cl-field">
+            <label class="cl-label">Fecha de nacimiento <span class="opt">(opcional)</span></label>
+            <input class="cl-input" id="clienteFechaNac" type="date" onchange="onClienteFechaNacChange()">
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="cl-field">
+            <label class="cl-label">¿Mayor de 18 años?</label>
+            <select class="cl-select" id="clienteMayorEdad" onchange="onClienteMayorEdadChange()">
+              <option value="si">✅  Sí, mayor de edad</option>
+              <option value="no">⚠️  No (requiere tutor)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN 2: Foto -->
+      <div class="cl-section" style="margin-top:18px"><i class="bi bi-image-fill" style="color:#1976d2"></i> Foto de perfil</div>
+
+      <div class="cl-field">
+        <label class="cl-label">Foto de perfil <span class="opt">(opcional)</span></label>
+        <div class="cl-foto-row">
+          <div class="cl-avatar-preview" id="clAvatarPreview">
+            <i class="bi bi-person-fill" style="font-size:26px"></i>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;flex:1">
+            <input type="file" id="clienteFotoFile" accept="image/*" style="display:none"
+              onchange="handleClienteFotoChange(this)">
+            <input type="hidden" id="clienteFotoPerfil">
+            <button type="button" class="cl-btn-foto" onclick="document.getElementById('clienteFotoFile').click()">
+              <i class="bi bi-upload"></i> Seleccionar imagen
+            </button>
+            <span id="clFotoStatus" style="font-size:11px;color:#888;min-height:16px"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN 3: Contactos de emergencia -->
+      <div class="cl-section" style="margin-top:18px">
+        <i class="bi bi-telephone-fill" style="color:#e53935"></i> Contactos de emergencia
+        <span style="font-size:9px;font-weight:600;color:#b0b8cc;text-transform:none;letter-spacing:0" id="clContactosSubtitle">(opcional, máx. 2)</span>
+      </div>
+
+      <!-- Aviso tutor obligatorio (visible solo si es menor) -->
+      <div id="clTutorAviso" style="display:none;margin-bottom:12px;padding:10px 14px;background:#fff3e0;border:1.5px solid #ff9800;border-radius:10px;font-size:12.5px;color:#e65100;font-weight:600">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        Cláusula 1a: El cliente es menor de 18 años. El <strong>Contacto 1 debe ser el adulto tutor</strong> que suscribe el contrato (nombre, parentesco y teléfono obligatorios).
+      </div>
+
+      <p style="font-size:11.5px;color:#9199ab;margin:-4px 0 12px" id="clContactosDesc">Si ingresa un teléfono, el nombre y parentesco son obligatorios.</p>
+
+      <!-- Contacto 1 -->
+      <div class="cl-contact-card" id="clContacto1Card">
+        <div class="cl-contact-badge" id="clContacto1Badge"><i class="bi bi-1-circle-fill"></i> Contacto 1</div>
+        <div class="row g-2">
+          <div class="col-6">
+            <div class="cl-field" style="margin-bottom:0">
+              <label class="cl-label" style="font-size:11px">Nombre</label>
+              <input class="cl-input" id="ce1Nombre" placeholder="Nombre completo" autocomplete="off">
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="cl-field" style="margin-bottom:0">
+              <label class="cl-label" style="font-size:11px">Parentesco <span class="req">*</span></label>
+              <input class="cl-input" id="ce1Parentesco" placeholder="Ej: Madre, Padre, Hermano/a" autocomplete="off">
+            </div>
+          </div>
+        </div>
+        <div class="cl-field" style="margin-top:10px;margin-bottom:0">
+          <label class="cl-label" style="font-size:11px">Teléfono</label>
+          <input class="cl-input" id="ce1Telefono" placeholder="9XXXXXXXX" maxlength="15" autocomplete="off">
+        </div>
+      </div>
+
+      <!-- Contacto 2 -->
+      <div class="cl-contact-card">
+        <div class="cl-contact-badge" style="background:#fce4ec;color:#c62828"><i class="bi bi-2-circle-fill"></i> Contacto 2</div>
+        <div class="row g-2">
+          <div class="col-6">
+            <div class="cl-field" style="margin-bottom:0">
+              <label class="cl-label" style="font-size:11px">Nombre</label>
+              <input class="cl-input" id="ce2Nombre" placeholder="Nombre completo" autocomplete="off">
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="cl-field" style="margin-bottom:0">
+              <label class="cl-label" style="font-size:11px">Parentesco <span class="req">*</span></label>
+              <input class="cl-input" id="ce2Parentesco" placeholder="Ej: Esposo/a, Tío/a" autocomplete="off">
+            </div>
+          </div>
+        </div>
+        <div class="cl-field" style="margin-top:10px;margin-bottom:0">
+          <label class="cl-label" style="font-size:11px">Teléfono</label>
+          <input class="cl-input" id="ce2Telefono" placeholder="9XXXXXXXX" maxlength="15" autocomplete="off">
+        </div>
+      </div>
+
+    </div><!-- /cl-scroll -->
+
+    <!-- ── FOOTER STICKY ── -->
+    <div class="cl-footer">
+      <button class="cl-btn-cancel" onclick="closeModal('modalCliente')">Cancelar</button>
+      <button class="cl-btn-save" id="clBtnSave" onclick="saveCliente()">
+        <i class="bi bi-check-circle-fill"></i>
+        <span id="clBtnSaveText">Registrar cliente</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     MODAL NUEVA MEMBRESÍA  — reemplazar el bloque id="modalMembresia"
+     ════════════════════════════════════════════════════════════ -->
+<style>
+/* ═══════════════════════════════════════════════════
+   MODAL MEMBRESÍA — diseño premium Volcano Gym
+═══════════════════════════════════════════════════ */
+#modalMembresia .memb-shell {
+  display: flex;
+  flex-direction: column;
+  width: 600px;
+  max-height: 92vh;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 32px 80px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.06);
+  background: #fff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ── HERO HEADER ── */
+.memb-hero {
+  position: relative;
+  background: linear-gradient(135deg, #0d1b2a 0%, #1b2a3b 45%, #0f3460 100%);
+  padding: 24px 26px 20px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.memb-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 80% at 90% 50%, rgba(255,111,0,.18) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 60% at 10% 0%, rgba(255,200,0,.08) 0%, transparent 60%);
+  pointer-events: none;
+}
+.memb-hero-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  position: relative;
+}
+.memb-hero-icon {
+  width: 46px; height: 46px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #ff6f00, #ffa000);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; color: #fff;
+  box-shadow: 0 4px 16px rgba(255,111,0,.45);
+  flex-shrink: 0;
+}
+.memb-hero-text { flex: 1; min-width: 0; }
+.memb-hero-title {
+  margin: 0 0 2px;
+  font-size: 16px; font-weight: 800;
+  color: #fff; letter-spacing: -.2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.memb-hero-sub {
+  margin: 0;
+  font-size: 12px; color: rgba(255,255,255,.55);
+  font-weight: 400;
+}
+.memb-hero-close {
+  background: rgba(255,255,255,.1); border: none;
+  width: 32px; height: 32px; border-radius: 50%;
+  color: rgba(255,255,255,.7); font-size: 16px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .15s, color .15s; flex-shrink: 0;
+}
+.memb-hero-close:hover { background: rgba(255,255,255,.22); color: #fff; }
+
+/* ── ACCIONES RÁPIDAS ── */
+#membAccionesRapidas {
+  flex-shrink: 0;
+  display: none;
+  gap: 10px;
+  padding: 14px 26px;
+  background: #f8f9fb;
+  border-bottom: 1px solid #eef0f4;
+}
+#membAccionesRapidas.visible { display: flex; }
+
+.memb-btn-freeze, .memb-btn-delete {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  flex: 1; padding: 9px 14px;
+  font-size: 12px; font-weight: 700; border-radius: 10px;
+  cursor: pointer; transition: transform .1s, box-shadow .15s, background .15s;
+  border: none; letter-spacing: .1px;
+}
+.memb-btn-freeze {
+  background: linear-gradient(135deg,#e3f2fd,#bbdefb);
+  color: #1565c0;
+  box-shadow: 0 2px 8px rgba(21,101,192,.15);
+}
+.memb-btn-freeze:hover { background: linear-gradient(135deg,#bbdefb,#90caf9); box-shadow: 0 4px 14px rgba(21,101,192,.25); transform: translateY(-1px); }
+.memb-btn-delete {
+  background: linear-gradient(135deg,#ffebee,#ffcdd2);
+  color: #c62828;
+  box-shadow: 0 2px 8px rgba(198,40,40,.15);
+}
+.memb-btn-delete:hover { background: linear-gradient(135deg,#ffcdd2,#ef9a9a); box-shadow: 0 4px 14px rgba(198,40,40,.25); transform: translateY(-1px); }
+
+/* ── SCROLL BODY ── */
+.memb-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 22px 26px 6px;
+  scroll-behavior: smooth;
+}
+.memb-scroll::-webkit-scrollbar { width: 5px; }
+.memb-scroll::-webkit-scrollbar-track { background: transparent; }
+.memb-scroll::-webkit-scrollbar-thumb { background: #dde1ea; border-radius: 99px; }
+.memb-scroll::-webkit-scrollbar-thumb:hover { background: #b0b8cc; }
+
+/* ── ALERT ── */
+#alertMembresia { margin-bottom: 0; }
+#alertMembresia:empty { display: none; }
+
+/* ── SECCIÓN CLIENTE ── */
+.memb-section-label {
+  font-size: 10px; font-weight: 800; letter-spacing: 1px;
+  text-transform: uppercase; color: #9199ab;
+  margin: 0 0 10px; display: flex; align-items: center; gap: 6px;
+}
+.memb-section-label::after {
+  content: ''; flex: 1; height: 1px; background: #eef0f4;
+}
+
+/* ── CAMPO ── */
+.memb-field { margin-bottom: 14px; }
+.memb-label {
+  font-size: 11.5px; font-weight: 700; color: #3d4556;
+  display: block; margin-bottom: 5px; letter-spacing: .1px;
+}
+.memb-label .req { color: #e53935; margin-left: 2px; }
+.memb-input, .memb-select, .memb-textarea {
+  width: 100%; padding: 9px 12px;
+  font-size: 13px; color: #1a1a2e;
+  background: #f7f8fc;
+  border: 1.5px solid #e8eaf0;
+  border-radius: 10px;
+  outline: none;
+  transition: border-color .18s, box-shadow .18s, background .18s;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.memb-input:focus, .memb-select:focus, .memb-textarea:focus {
+  border-color: #ff8f00;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(255,143,0,.12);
+}
+.memb-input::placeholder { color: #b0b8cc; }
+.memb-input.readonly-field {
+  background: #f0f0f6; color: #6b7280;
+  cursor: not-allowed; font-weight: 700;
+}
+
+/* ── CLIENTE SELECCIONADO ── */
+#membClienteSeleccionado {
+  display: none;
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg,#e8f5e9,#f1f8e9);
+  border: 1.5px solid #a5d6a7;
+  border-radius: 10px;
+  font-size: 12.5px; color: #2e7d32; font-weight: 600;
+}
+
+/* ── INFO PLAN CARD ── */
+#membInfo {
+  display: none;
+  background: linear-gradient(135deg,#fff8e1,#fff3cd);
+  border: 1.5px solid #ffe082;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+.memb-info-grid {
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 8px;
+}
+.memb-info-item {
+  text-align: center;
+}
+.memb-info-item .info-val {
+  font-size: 14px; font-weight: 800; color: #e65100; display: block;
+}
+.memb-info-item .info-key {
+  font-size: 10px; font-weight: 600; color: #a0522d; text-transform: uppercase; letter-spacing: .5px;
+}
+
+/* ── RESUMEN CUOTAS ── */
+#membResumenCuotas {
+  display: none;
+  background: linear-gradient(135deg,#e8f5e9,#f1f8e9);
+  border: 1.5px solid #a5d6a7;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+}
+
+/* ── FRACCION INFO ── */
+#membFraccionInfo { display: none; }
+.memb-hint {
+  font-size: 11px; color: #9199ab; margin-top: 4px;
+  display: flex; align-items: center; gap: 4px;
+}
+
+/* ── PAGO1 HELP ── */
+#membPago1Help { font-size: 11px; color: #9199ab; margin-top: 4px; }
+
+/* ── SUGERENCIAS ── */
+#membClienteSugerencias { position: relative; z-index: 10; }
+
+/* ── FOOTER STICKY ── */
+.memb-footer {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  padding: 14px 26px 18px;
+  border-top: 1px solid #eef0f4;
+  background: #fff;
+}
+.memb-btn-cancel {
+  padding: 9px 20px; font-size: 13px; font-weight: 600;
+  background: #f0f2f7; color: #5a6375;
+  border: none; border-radius: 10px; cursor: pointer;
+  transition: background .15s;
+}
+.memb-btn-cancel:hover { background: #e2e5ee; }
+.memb-btn-save {
+  padding: 9px 24px; font-size: 13px; font-weight: 800;
+  background: linear-gradient(135deg, #ff8f00, #f57f17);
+  color: #fff; border: none; border-radius: 10px; cursor: pointer;
+  display: flex; align-items: center; gap: 7px;
+  box-shadow: 0 4px 18px rgba(255,143,0,.38);
+  transition: transform .12s, box-shadow .15s;
+  letter-spacing: .1px;
+}
+.memb-btn-save:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(255,143,0,.48); }
+.memb-btn-save:active { transform: translateY(0); }
+
+/* ── CONGELADA overlay ── */
+#membFormContent.frozen {
+  opacity: .42; pointer-events: none;
+}
+.memb-frozen-notice {
+  display: none;
+  align-items: center; gap: 8px;
+  padding: 9px 14px; margin-bottom: 14px;
+  background: linear-gradient(135deg,#e3f2fd,#bbdefb);
+  border: 1.5px solid #90caf9; border-radius: 10px;
+  font-size: 12px; font-weight: 700; color: #1565c0;
+}
+#membFormContent.frozen + .memb-frozen-notice,
+.memb-frozen-notice.visible { display: flex; }
+</style>
+
+<div class="modal-overlay" id="modalMembresia">
+  <div class="memb-shell">
+
+    <!-- ── HERO HEADER ── -->
+    <div class="memb-hero">
+      <div class="memb-hero-top">
+        <div class="memb-hero-icon" id="membHeroIcon">
+          <i class="bi bi-person-check"></i>
+        </div>
+        <div class="memb-hero-text">
+          <h3 class="memb-hero-title" id="modalMembresiaTitle">Nueva Membresía</h3>
+          <p class="memb-hero-sub" id="membHeroSub">Completa los datos para registrar</p>
+        </div>
+        <button class="memb-hero-close" onclick="closeModal('modalMembresia')" title="Cerrar">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── ACCIONES RÁPIDAS (solo en modo Renovar/Congelada) ── -->
+    <div id="membAccionesRapidas">
+      <button class="memb-btn-freeze" id="membBtnFreeze">
+        <i id="membBtnFreezeIcon" class="bi bi-snow"></i>
+        <span id="membBtnFreezeTexto">Congelar membresía</span>
+      </button>
+      <button class="memb-btn-delete" id="membBtnDelete">
+        <i class="bi bi-slash-circle"></i>
+        <span>Anular membresía</span>
+      </button>
+    </div>
+
+    <!-- ── SCROLL BODY ── -->
+    <div class="memb-scroll">
+      <input type="hidden" id="membresiaId">
+      <div class="alert-msg" id="alertMembresia"></div>
+
+      <!-- Aviso membresía congelada -->
+      <div class="memb-frozen-notice" id="membFrozenNotice">
+        <i class="bi bi-snow" style="font-size:16px"></i>
+        Descongela la membresía antes de poder renovar.
+      </div>
+
+      <div id="membFormContent">
+
+        <!-- SECCIÓN 1: Cliente -->
+        <div class="memb-section-label"><i class="bi bi-person-fill" style="color:#ff8f00"></i> Datos del cliente</div>
+
+        <div class="memb-field">
+          <label class="memb-label">Cliente <span class="req">*</span></label>
+          <input class="memb-input" id="membClienteBuscar"
+            placeholder="🔍  Buscar por nombre o DNI..."
+            oninput="buscarClienteMemb(this.value)" autocomplete="off">
+          <div id="membClienteSugerencias" style="position:relative"></div>
+          <input type="hidden" id="membClienteId">
+          <div id="membClienteSeleccionado"></div>
+        </div>
+
+        <!-- SECCIÓN 2: Plan y fechas -->
+        <div class="memb-section-label" style="margin-top:18px"><i class="bi bi-card-checklist" style="color:#ff8f00"></i> Plan y período</div>
+
+        <div class="row g-2 mb-0">
+          <div class="col-7">
+            <div class="memb-field">
+              <label class="memb-label">Plan <span class="req">*</span></label>
+              <select class="memb-select" id="membPlan" onchange="onPlanChange()">
+                <option value="">Seleccionar plan...</option>
+              </select>
+            </div>
+          </div>
+          <div class="col-5">
+            <div class="memb-field">
+              <label class="memb-label">Fecha de inicio <span class="req">*</span></label>
+              <input class="memb-input" id="membFechaInicio" type="date" onchange="calcularFechaFin()">
+            </div>
+          </div>
+        </div>
+
+        <!-- Info del plan -->
+        <div id="membInfo">
+          <div class="memb-info-grid">
+            <div class="memb-info-item">
+              <span class="info-val" id="mbDuracion">—</span>
+              <span class="info-key">Duración</span>
+            </div>
+            <div class="memb-info-item">
+              <span class="info-val" id="mbFin">—</span>
+              <span class="info-key">Vence</span>
+            </div>
+            <div class="memb-info-item">
+              <span class="info-val" id="mbPrecio">—</span>
+              <span class="info-key">Precio</span>
+            </div>
+          </div>
+          <div id="membRenovBadge" style="display:none;margin-top:8px;padding:6px 10px;background:#e8f5e9;border-radius:8px;font-size:12px;color:#2e7d32;font-weight:600">
+              <i class="bi bi-arrow-repeat me-1"></i>
+              Cliente recurrente — se aplica <b>precio renovación</b> automáticamente
+          </div>
+        </div>
+
+        <!-- SECCIÓN 3: Pago -->
+        <div class="memb-section-label" style="margin-top:18px"><i class="bi bi-cash-stack" style="color:#ff8f00"></i> Pago inicial</div>
+
+        <div class="row g-2">
+          <div class="col-6">
+            <div class="memb-field">
+              <label class="memb-label">Monto total (S/) <span class="req">*</span></label>
+              <input class="memb-input readonly-field" id="membMonto" type="number" step="0.01"
+                placeholder="0.00" readonly
+                title="Se establece automáticamente según el plan">
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="memb-field">
+              <label class="memb-label">Pago inicial — cuota 1 (S/) <span class="req">*</span></label>
+              <input class="memb-input" id="membPago1" type="number" step="0.01"
+                placeholder="0.00" oninput="_autoSetNumCuotas(); _validarMinimosCuotas();">
+              <div id="membPago1Help">Lo que paga hoy. El resto se fracciona.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fraccionamiento -->
+        <div id="membFraccionInfo" class="memb-field">
+          <label class="memb-label">N° de cuotas</label>
+          <select class="memb-select" id="membNumCuotas" onchange="onNumCuotasManualChange()">
+            <option value="1">1 cuota (pago único)</option>
+          </select>
+          <div class="memb-hint" id="membFraccionMsg" style="margin-top:6px">
+            <i class="bi bi-info-circle"></i>
+            <span id="membFraccionTxt">Al seleccionar más de 1 cuota se aplica el monto mínimo automáticamente.</span>
+          </div>
+          <div id="membMinimoHint" style="display:none;margin-top:6px;font-size:12.5px;font-weight:600;color:#2e7d32">
+            <i class="bi bi-currency-dollar"></i> Monto mínimo por cuota:&nbsp;<span id="membMinimoVal">S/ 0.00</span>
+          </div>
+        </div>
+
+        <!-- Resumen cuotas -->
+        <div id="membResumenCuotas"></div>
+
+        <!-- SECCIÓN 4: Método y Asesor -->
+        <div class="memb-section-label" style="margin-top:4px"><i class="bi bi-person-workspace" style="color:#ff8f00"></i> Método y asesor</div>
+
+        <!-- Componente _PM de pago mixto (se inicializa al seleccionar plan) -->
+        <div id="membPmContainer" style="margin-bottom:10px">
+          <div style="font-size:12px;color:#aaa;padding:8px;border:1px dashed #ddd;border-radius:8px;text-align:center">
+            Selecciona un plan para elegir el método de pago
+          </div>
+        </div>
+
+        <div class="memb-field">
+          <label class="memb-label">Asesor <span class="req">*</span></label>
+          <select class="memb-select" id="membAsesor">
+            <option value="">Seleccionar asesor...</option>
+          </select>
+        </div>
+
+        <!-- Observaciones -->
+        <div class="memb-section-label" style="margin-top:4px"><i class="bi bi-chat-left-text" style="color:#ff8f00"></i> Observaciones</div>
+        <div class="memb-field" style="margin-bottom:4px">
+          <textarea class="memb-textarea" id="membObservaciones" rows="2"
+            placeholder="Notas adicionales (opcional)..."></textarea>
+        </div>
+
+      </div><!-- /membFormContent -->
+    </div><!-- /memb-scroll -->
+
+    <!-- ── FOOTER STICKY ── -->
+    <div class="memb-footer">
+      <button class="memb-btn-cancel" onclick="closeModal('modalMembresia')">Cancelar</button>
+      <button class="memb-btn-save" onclick="saveMembresia()">
+        <i class="bi bi-check-circle-fill"></i> Registrar membresía
+      </button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     MODAL PLAN  — reemplazar el bloque id="modalPlan"
+     ════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalPlan">
+    <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+        <div class="modal-title" id="modalPlanTitle">Nuevo Plan</div>
+        <div class="alert-msg" id="alertPlan"></div>
+        <input type="hidden" id="planId">
+
+        <div class="mb-2">
+            <div class="form-label">Nombre del plan *</div>
+            <input class="form-control" id="planNombre" placeholder="Ej: Clásico 3 meses">
+        </div>
+
+        <div class="row g-2 mb-2">
+            <div class="col-6">
+                <div class="form-label">Tipo de cliente *</div>
+                <select class="form-control" id="planTipo">
+                    <option value="nuevo">Nuevo</option>
+                    <option value="renovacion">Renovación</option>
+                    <option value="interdiario">Interdiario</option>
+                    <option value="rutina">Rutina</option>
+                </select>
+            </div>
+            <div class="col-6">
+                <div class="form-label">Duración *</div>
+                <div style="display:flex;gap:8px">
+                    <input class="form-control" id="planDuracionValor" type="number" min="1" value="1" style="width:90px">
+                    <select class="form-control" id="planDuracionUnidad" style="flex:1">
+                        <option value="">Seleccionar opción</option>
+                        <option value="dias">Días</option>
+                        <option value="meses">Meses</option>
+                        <option value="anos">Años</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-2 mb-2">
+            <div class="col-6">
+                <div class="form-label">Precio nuevo cliente (S/) *</div>
+                <input class="form-control" id="planPrecio" type="number" step="0.01" placeholder="0.00" oninput="actualizarSimulacionInteres()">
+            </div>
+            <div class="col-6">
+                <div class="form-label">
+                    Precio renovación (S/)
+                    <span style="font-size:10px;color:#888;font-weight:400"> — opcional</span>
+                </div>
+                <input class="form-control" id="planPrecioRenov" type="number" step="0.01" placeholder="Dejar vacío = mismo precio"
+                    oninput="document.getElementById('planPrecioRenovHint').style.display=this.value?'block':'none'">
+            </div>
+        </div>
+        <div class="row g-2 mb-2">
+            <div class="col-12" id="planPrecioRenovHint" style="display:none">
+                <div style="background:#e8f5e9;border-radius:6px;padding:6px 10px;font-size:11px;color:#2e7d32">
+                    <i class="bi bi-arrow-repeat me-1"></i>
+                    Los clientes que ya se hayan matriculado antes pagarán el <b>precio renovación</b> automáticamente.
+                </div>
+            </div>
+        </div>
+        <div class="row g-2 mb-2">
+            <div class="col-6">
+                <div class="form-label">Estado</div>
+                <select class="form-control" id="planActivo">
+                    <option value="true">Activo</option>
+                    <option value="false">Inactivo</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="mb-2">
+            <div class="form-label">Descripción</div>
+            <textarea class="form-control" id="planDesc" rows="2"
+                placeholder="Descripción del plan..."></textarea>
+        </div>
+
+        <!-- Toggle fraccionamiento -->
+        <div class="mb-2" style="padding:10px;background:#f8f9fa;border-radius:8px">
+            <div class="d-flex align-items-center gap-2">
+                <input type="checkbox" id="planFraccion" onchange="toggleFraccion()"
+                    style="width:16px;height:16px">
+                <label for="planFraccion" class="form-label mb-0" style="cursor:pointer;font-weight:600">
+                    <i class="bi bi-credit-card-2-front me-1" style="color:#26a69a"></i>
+                    ¿Permite fraccionamiento de pago?
+                </label>
+            </div>
+
+            <!-- Opciones de fraccionamiento (ocultas si no está marcado) -->
+            <div id="planFraccionOpts" style="display:none;margin-top:12px">
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <div class="form-label">Número máx. de cuotas</div>
+                        <input class="form-control" id="planMaxCuotas" type="number" min="2" value="2" oninput="actualizarSimulacionInteres()">
+                        <div style="font-size:10px;color:#888;margin-top:2px">Mínimo 2</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="form-label">Días de plazo para pagar</div>
+                        <input class="form-control" id="planDiasLimite" type="number" min="1" value="20">
+                        <div style="font-size:10px;color:#888;margin-top:2px">Días de plazo total para saldar la deuda</div>
+                    </div>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-12">
+                        <div class="form-label">Monto mínimo por cuota (S/)</div>
+                        <input class="form-control" id="planMontoMin" type="number"
+                            step="0.01" min="0" value="0" placeholder="0.00">
+                        <div style="font-size:10px;color:#888;margin-top:2px">Deja en 0 para sin mínimo</div>
+                    </div>
+                </div>
+
+                <!-- Subsección de intereses -->
+                <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.1)">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <input type="checkbox" id="planInteresActivo" onchange="toggleInteres()"
+                            style="width:16px;height:16px">
+                        <label for="planInteresActivo" class="form-label mb-0"
+                            style="cursor:pointer;font-weight:600;font-size:13px">
+                            <i class="bi bi-percent me-1" style="color:#ef6c00"></i>
+                            ¿Aplica interés al fraccionamiento?
+                        </label>
+                    </div>
+                    <div id="planInteresOpts" style="display:none;margin-top:8px">
+                        <div class="row g-2 mb-1">
+                            <div class="col-6">
+                                <div class="form-label">Tasa de interés</div>
+                                <input class="form-control" id="planTasaInteres" type="number"
+                                    step="0.01" min="0" value="0" placeholder="0.00" oninput="actualizarSimulacionInteres()">
+                            </div>
+                            <div class="col-6">
+                                <div class="form-label">Tipo</div>
+                                <select class="form-control" id="planTipoInteres" onchange="actualizarSimulacionInteres()">
+                                    <option value="porcentaje">Porcentaje (%)</option>
+                                    <option value="monto_fijo">Monto fijo (S/)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="planInteresSimulacion" style="margin-top:6px"></div>
+                    </div>
+                </div>
+
+                <div style="background:#e8f5e9;border-radius:6px;padding:8px 10px;font-size:11px;color:#2e7d32;margin-top:8px">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Cuota 1 se paga hoy (≥ monto mínimo). Las cuotas restantes se distribuyen automáticamente.
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeModal('modalPlan')">Cancelar</button>
+            <button class="btn-save" onclick="savePlan()">Guardar plan</button>
+        </div>
+    </div>
+</div>
+
+  <div class="modal-overlay" id="modalMembEstado">
+    <div class="modal-box" style="width:380px">
+      <div class="modal-title">Actualizar Estado</div>
+      <div class="alert-msg" id="alertMembEstado"></div>
+      <input type="hidden" id="membEstadoId">
+      <div class="mb-3">
+        <div class="form-label">Estado de la membresía</div>
+        <select class="form-control" id="membEstadoVal">
+          <option value="activa">Activa</option>
+          <option value="vencida">Vencida</option>
+          <option value="anulada">Anulada</option>
+          <option value="congelada">Congelada</option>
+        </select>
+      </div>
+      <div class="mb-3" id="membSaldoUpdateGroup" style="display:none">
+        <div class="form-label">Saldo pendiente (S/)</div>
+        <input class="form-control" id="membSaldoUpdate" type="number" step="0.01" value="0">
+      </div>
+      <div class="mb-2">
+        <div class="form-label">Observaciones</div>
+        <textarea class="form-control" id="membObsUpdate" rows="2"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal('modalMembEstado')">Cancelar</button>
+        <button class="btn-save" onclick="saveMembEstado()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalPerfil">
+    <div class="modal-box">
+      <div class="modal-title" id="modalPerfilTitle">Nuevo Perfil</div>
+      <div class="alert-msg" id="alertPerfil"></div>
+      <input type="hidden" id="perfilId">
+      <div class="mb-3">
+        <div class="form-label">Nombre *</div><input class="form-control" id="perfilNombre"
+          placeholder="Ej: Recepcionista">
+      </div>
+      <div class="mb-3">
+        <div class="form-label">Descripción</div><textarea class="form-control" id="perfilDesc" rows="2"></textarea>
+      </div>
+      <div class="mb-3" id="perfilEstadoGroup" style="display:none">
+        <div class="form-label">Estado</div>
+        <select class="form-control" id="perfilEstado">
+          <option value="1">Activo</option>
+          <option value="0">Inactivo</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal('modalPerfil')">Cancelar</button>
+        <button class="btn-save" onclick="savePerfil()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalPermisos">
+    <div class="modal-box" style="width:520px">
+      <div class="modal-title"><i class="bi bi-key me-2" style="color:#7c4dff"></i>Asignar Permisos — <span
+          id="permisoPerfilNombre" style="color:#7c4dff"></span></div>
+      <div class="alert-msg" id="alertPermisos"></div>
+      <input type="hidden" id="permisoPerfilId">
+      <div class="perm-header">
+        <span id="permisoCount">0 opciones seleccionadas</span>
+        <span class="perm-toggle" onclick="toggleTodosPermisos()">Seleccionar / Deseleccionar todo</span>
+      </div>
+      <div class="permisos-list" id="permisosLista">
+        <div style="text-align:center;padding:20px;color:#aaa">Cargando...</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal('modalPermisos')">Cerrar</button>
+        <button class="btn-purple" onclick="savePermisos()"><i class="bi bi-check2 me-1"></i>Guardar Cambios</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalUsuario">
+    <div class="modal-box" style="width:580px;max-height:92vh;overflow-y:auto">
+      <div class="modal-title" id="modalUsuarioTitle">Nuevo Usuario</div>
+      <div class="alert-msg" id="alertUsuario"></div>
+      <input type="hidden" id="usuarioId">
+
+      <!-- Fila 1: Nombre y Apellido -->
+      <div class="row g-2 mb-2">
+        <div class="col-6">
+          <div class="form-label">Nombre *</div>
+          <input class="form-control" id="usuarioNombre">
+        </div>
+        <div class="col-6">
+          <div class="form-label">Apellido *</div>
+          <input class="form-control" id="usuarioApellido">
+        </div>
+      </div>
+
+      <!-- Fila 2: DNI y Celular -->
+      <div class="row g-2 mb-2">
+        <div class="col-6">
+          <div class="form-label">DNI</div>
+          <input class="form-control" id="usuarioDni" placeholder="00000000" maxlength="8" inputmode="numeric">
+        </div>
+        <div class="col-6">
+          <div class="form-label">Celular</div>
+          <input class="form-control" id="usuarioCelular" placeholder="9XXXXXXXX" maxlength="15">
+        </div>
+      </div>
+
+      <!-- Username -->
+      <div class="mb-2">
+        <div class="form-label">Username *</div>
+        <input class="form-control" id="usuarioUsername">
+      </div>
+
+      <!-- Email -->
+      <div class="mb-2">
+        <div class="form-label">Email *</div>
+        <input class="form-control" id="usuarioEmail" type="email">
+      </div>
+
+      <!-- Contraseña -->
+      <div class="mb-2" id="passGroup">
+        <div class="form-label">Contraseña <span id="passLabel">(requerida)</span></div>
+        <input class="form-control" id="usuarioPassword" type="password">
+      </div>
+
+      <!-- Perfil y Alias en fila -->
+      <div class="row g-2 mb-2">
+        <div class="col-6">
+          <div class="form-label">Perfil *</div>
+          <select class="form-control" id="usuarioPerfil"></select>
+        </div>
+        <div class="col-6">
+          <div class="form-label">Alias Asesor</div>
+          <input class="form-control" id="usuarioAlias" placeholder="Alias corto">
+        </div>
+      </div>
+
+      <!-- Foto de perfil -->
+      <div class="mb-2">
+        <div class="form-label">Foto de perfil <span style="color:#999;font-weight:400">(opcional)</span></div>
+        <input class="form-control" id="usuarioFotoPerfil" placeholder="URL o ruta de la imagen">
+      </div>
+
+      <!-- Estado (solo en edición) -->
+      <div class="mb-2" id="usuarioEstadoGroup" style="display:none">
+        <div class="form-label">Estado</div>
+        <select class="form-control" id="usuarioEstado">
+          <option value="1">Activo</option>
+          <option value="0">Inactivo</option>
+        </select>
+      </div>
+
+      <!-- Contactos de emergencia -->
+      <div style="margin:14px 0 6px;border-top:1px solid #eee;padding-top:12px">
+        <div style="font-weight:600;font-size:13px;color:#444;margin-bottom:8px">
+          🚨 Contactos de emergencia <span style="color:#999;font-weight:400">(opcional, máx. 2)</span>
+        </div>
+        <div style="font-size:11px;color:#888;margin-bottom:10px">
+          Si ingresa un teléfono, el nombre y el parentesco son obligatorios.
+        </div>
+
+        <!-- Contacto 1 -->
+        <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+          <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Contacto 1</div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <div class="form-label" style="font-size:11px">Nombre</div>
+              <input class="form-control" id="uCe1Nombre" placeholder="Nombre completo">
+            </div>
+            <div class="col-6">
+              <div class="form-label" style="font-size:11px">Parentesco *</div>
+              <input class="form-control" id="uCe1Parentesco" placeholder="Ej: Madre, Padre, Hermano/a">
+            </div>
+          </div>
+          <div class="form-label" style="font-size:11px">Teléfono</div>
+          <input class="form-control" id="uCe1Telefono" placeholder="9XXXXXXXX" maxlength="15">
+        </div>
+
+        <!-- Contacto 2 -->
+        <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
+          <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Contacto 2</div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <div class="form-label" style="font-size:11px">Nombre</div>
+              <input class="form-control" id="uCe2Nombre" placeholder="Nombre completo">
+            </div>
+            <div class="col-6">
+              <div class="form-label" style="font-size:11px">Parentesco *</div>
+              <input class="form-control" id="uCe2Parentesco" placeholder="Ej: Esposo/a, Tío/a">
+            </div>
+          </div>
+          <div class="form-label" style="font-size:11px">Teléfono</div>
+          <input class="form-control" id="uCe2Telefono" placeholder="9XXXXXXXX" maxlength="15">
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal('modalUsuario')">Cancelar</button>
+        <button class="btn-save" onclick="saveUsuario()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalCategoria">
+    <div class="modal-box" style="width:480px">
+      <div class="modal-title" id="modalCategoriaTitle">Nueva Categoría</div>
+      <div class="alert-msg" id="alertCategoria"></div>
+      <input type="hidden" id="categoriaId">
+      <div class="mb-3">
+        <div class="form-label">Nombre *</div>
+        <input class="form-control" id="categoriaNombre" placeholder="Ej: Medicinas">
+      </div>
+      <div class="mb-3">
+        <div class="form-label">Descripción</div>
+        <textarea class="form-control" id="categoriaDescripcion" rows="3"
+          placeholder="Descripción de la categoría..."></textarea>
+      </div>
+      <div class="mb-3">
+        <div class="form-label">Descuento (%)</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input class="form-control" type="number" id="categoriaDescuento"
+            min="0" max="100" step="0.01" placeholder="0"
+            style="max-width:120px" oninput="this.value=Math.min(100,Math.max(0,this.value))">
+          <span style="font-size:13px;color:#666">0 = sin descuento aplicado a la categoría</span>
+        </div>
+      </div>
+      <div class="mb-3" id="categoriaEstadoGroup" style="display:none">
+        <div class="form-label">Estado</div>
+        <select class="form-control" id="categoriaEstado">
+          <option value="1">Activo</option>
+          <option value="0">Inactivo</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal('modalCategoria')">Cancelar</button>
+        <button class="btn-save" onclick="saveCategoria()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalPresentacion">
+    <div class="modal-box" style="width:480px">
+      <div class="modal-title" id="modalPresentacionTitle">Nueva Presentación</div>
+      <div class="alert-msg" id="alertPresentacion"></div>
+      <input type="hidden" id="presentacionId">
+      <div class="mb-3">
+        <div class="form-label">Nombre *</div>
+        <input class="form-control" id="presentacionNombre" placeholder="Ej: Pote, Blíster, Caja x 30">
+      </div>
+      <div class="mb-3">
+        <div class="form-label">Descripción</div>
+        <textarea class="form-control" id="presentacionDescripcion" rows="2"
+          placeholder="Descripción opcional..."></textarea>
+      </div>
+      <div class="mb-3" id="presentacionCategoriaGroup">
+        <div class="form-label" id="presentacionCategoriaLabel">Categoría *</div>
+        <select class="form-control" id="presentacionCategoriaId">
+          <option value="">-- Seleccionar categoría --</option>
+        </select>
+        <input type="hidden" id="presentacionCategoriaOriginal">
+      </div>
+      <div class="mb-3" id="presentacionEstadoGroup" style="display:none">
+        <div class="form-label">Estado</div>
+        <select class="form-control" id="presentacionEstado">
+          <option value="1">Activo</option>
+          <option value="0">Inactivo</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal('modalPresentacion')">Cancelar</button>
+        <button class="btn-save" onclick="savePresentacion()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MODAL PRODUCTO — Nuevo / Editar
+       Tabs: Datos Generales | Presentaciones y Precios | Fotos
+  ════════════════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="modalProducto">
+    <div class="modal-box" style="width:640px;max-height:92vh;overflow:hidden;display:flex;flex-direction:column">
+
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 0;flex-shrink:0">
+        <div class="modal-title" id="modalProductoTitle" style="margin-bottom:0;font-size:18px">Nuevo Producto</div>
+        <button onclick="closeModal('modalProducto')"
+          style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1">&#10005;</button>
+      </div>
+
+      <!-- Tabs -->
+      <div style="display:flex;gap:0;border-bottom:2px solid #eee;padding:0 24px;margin-top:14px;flex-shrink:0">
+        <button id="tabBtn-datos"
+          class="tab-active"
+          onclick="activarTabProducto('datos')"
+          style="padding:10px 18px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;border-bottom:2px solid transparent;transition:all .15s;margin-bottom:-2px">
+          <i class="bi bi-clipboard-data me-1"></i>Datos Generales
+        </button>
+        <button id="tabBtn-presentaciones-producto"
+          onclick="activarTabProducto('presentaciones-producto')"
+          style="padding:10px 18px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;border-bottom:2px solid transparent;transition:all .15s;margin-bottom:-2px;display:none">
+          <i class="bi bi-box2 me-1"></i>Presentaciones
+        </button>
+        <button id="tabBtn-fotos-producto"
+          onclick="activarTabProducto('fotos-producto')"
+          style="padding:10px 18px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;border-bottom:2px solid transparent;transition:all .15s;margin-bottom:-2px;display:none">
+          <i class="bi bi-images me-1"></i>Fotos
+        </button>
+      </div>
+
+      <div class="alert-msg" id="alertProducto" style="margin:10px 24px 0"></div>
+      <input type="hidden" id="productoId">
+      <input type="hidden" id="ppProductoId">
+
+      <!-- TAB: DATOS GENERALES -->
+      <div id="tabPane-datos" style="overflow-y:auto;padding:16px 24px 0;flex:1">
+
+        <div class="row g-2 mb-2">
+          <div class="col-8">
+            <div class="form-label">Nombre *</div>
+            <input class="form-control" id="productoNombre" placeholder="Ej: Proteína Whey 1kg">
+          </div>
+          <div class="col-4">
+            <div class="form-label">Categoria *</div>
+            <select class="form-control" id="productoCategoriaSelect">
+              <option value="">-- Seleccionar Categoria --</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="mb-2">
+          <div class="form-label">Descripcion</div>
+          <textarea class="form-control" id="productoDescripcion" rows="2"
+            placeholder="Descripcion opcional..."></textarea>
+        </div>
+
+        <div class="row g-2 mb-2">
+          <div class="col-4">
+            <div class="form-label">Marca</div>
+            <input class="form-control" id="productoMarca" placeholder="Ej: Optimum Nutrition">
+          </div>
+          <div class="col-4">
+            <div class="form-label">Modelo</div>
+            <input class="form-control" id="productoModelo" placeholder="">
+          </div>
+          <div class="col-4">
+            <div class="form-label">SKU</div>
+            <input class="form-control" id="productoSku" placeholder="Codigo interno">
+          </div>
+        </div>
+
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <div class="form-label">Codigo Barras</div>
+            <div style="position:relative">
+              <input class="form-control" id="productoCodigoBarras" type="number"
+                placeholder="Solo numeros" style="padding-right:36px">
+              <i class="bi bi-upc-scan" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#bbb;font-size:16px"></i>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="form-label">Categoria asignada</div>
+            <div id="categoriaPresentacionesInfo"
+              style="font-size:12px;color:#26a69a;background:#f1faf9;border-radius:6px;padding:6px 10px;min-height:35px;display:flex;align-items:center">
+              Selecciona una categoria para ver las presentaciones disponibles
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Precios de la Presentación Principal ───────────────────────── -->
+        <!-- En EDICIÓN: readonly, se sincronizan con producto_presentacion    -->
+        <!-- En CREACIÓN: editables, se guardan al agregar la primera present. -->
+        <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin-bottom:10px;border:1px solid #e8e8e8">
+          <div style="font-size:11px;font-weight:700;color:#9199ab;letter-spacing:.5px;margin-bottom:8px">
+            <i class="bi bi-tag me-1"></i>PRECIOS
+            <span id="preciosRefLabel" style="font-weight:400;color:#bbb;margin-left:6px">
+              — de la presentación principal
+            </span>
+          </div>
+          <div class="row g-2">
+            <div class="col-4">
+              <div class="form-label">Precio Costo (S/)</div>
+              <input class="form-control" id="productoPrecioCosto" type="number" step="0.01" min="0"
+                placeholder="0.00" value="0" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';onPrecioChange();" onfocus="this.select()">
+            </div>
+            <div class="col-4">
+              <div class="form-label">Precio Venta (S/) *</div>
+              <input class="form-control" id="productoPrecioVenta" type="number" step="0.01" min="0"
+                placeholder="0.00" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';onPrecioChange();" onfocus="this.select()">
+            </div>
+            <div class="col-4">
+              <div class="form-label">Oferta (%)</div>
+              <input class="form-control" id="productoOferta" type="number" step="0.01"
+                min="0" max="100" value="0"
+                oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';if(parseFloat(this.value)>100)this.value='100';calcularPrecioOferta(this.value);" onfocus="this.select()">
+            </div>
+          </div>
+          <!-- Preview precio con oferta -->
+          <div id="precioOfertaPreview" style="display:none;margin-top:8px;font-size:12px;color:#2e7d32;background:#e8f5e9;border-radius:6px;padding:6px 10px">
+            <i class="bi bi-percent me-1"></i>
+            Precio final con oferta: <strong id="precioOfertaValor">—</strong>
+          </div>
+          <!-- Ganancia calculada en tiempo real -->
+          <div id="gananciaPreview" style="margin-top:6px;font-size:12px;color:#1565c0;display:none">
+            <i class="bi bi-graph-up me-1"></i>
+            Ganancia: <strong id="gananciaValor">—</strong>
+            <span id="gananciaPct" style="color:#888;margin-left:4px"></span>
+          </div>
+          <!-- Aviso en modo edición -->
+          <div id="preciosEditAviso" style="display:none;margin-top:8px;font-size:11px;color:#e65100;background:#fff3e0;border-radius:6px;padding:5px 10px">
+            <i class="bi bi-info-circle me-1"></i>
+            Editando los precios de <strong id="preciosPresentacionNombre">—</strong>.
+            Los cambios se aplicarán al guardar.
+          </div>
+        </div>
+
+        <!-- ── Presentación Principal + Stock Mín ─────────────────────────── -->
+        <div class="row g-2 mb-2">
+          <div class="col-5">
+            <div class="form-label">Presentación Principal</div>
+            <select class="form-control" id="productoPresentacionPrincipalRef"
+              onchange="onPresentacionPrincipalChange(this.value)">
+              <option value="">-- Seleccionar --</option>
+            </select>
+          </div>
+          <div class="col-3">
+            <div class="form-label">Stock Mín.</div>
+            <input class="form-control" id="productoStockMin" type="number" min="0" value="5" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';" onfocus="this.select()">
+          </div>
+          <div class="col-4" id="productoEstadoGroup" style="display:none">
+            <div class="form-label">Estado</div>
+            <select class="form-control" id="productoEstado">
+              <option value="1">Activo</option>
+              <option value="0">Inactivo</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ── Datos adicionales ───────────────────────────────────────────── -->
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <div class="form-label">Peso (kg)</div>
+            <input class="form-control" id="productoPeso" type="number" step="0.001" min="0" placeholder="" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value=''">
+          </div>
+          <div class="col-6">
+            <div class="form-label">Dimensiones (cm)</div>
+            <input class="form-control" id="productoDimensiones" placeholder="L x A x P">
+          </div>
+        </div>
+
+        <div class="row g-2 mb-2">
+          <div class="col-4">
+            <div class="form-label">Garantía (meses)</div>
+            <input class="form-control" id="productoGarantia" type="number" min="0" value="0" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';">
+          </div>
+        </div>
+
+        <div class="modal-footer" style="margin:0 -24px;padding:14px 24px;border-top:1px solid #eee">
+          <button class="btn-cancel" onclick="closeModal('modalProducto')">Cancelar</button>
+          <button class="btn-save" id="btnGuardarProducto" onclick="saveProducto()">
+            <i class="bi bi-check2 me-1"></i>Guardar producto
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB: PRESENTACIONES -->
+      <div id="tabPane-presentaciones-producto" style="display:none;overflow-y:auto;padding:16px 24px 0;flex:1">
+
+        <div style="margin-bottom:12px">
+          <div style="font-weight:700;font-size:13px;color:#1a1a2e">PRESENTACIONES Y PRECIOS</div>
+          <div style="font-size:12px;color:#888">Agregue diferentes presentaciones (CAJA, BLISTER, POTE, etc.) con sus respectivos precios</div>
+        </div>
+
+        <div class="alert-msg" id="alertPreciosPresentacion" style="margin-bottom:10px"></div>
+
+        <div id="ppListado" style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:1px solid #eee">
+          <div style="text-align:center;padding:24px;color:#bbb">Sin presentaciones aun</div>
+        </div>
+
+        <!-- Formulario inline agregar / editar -->
+        <div id="ppFormWrapper" style="background:#f8f9fa;border-radius:10px;padding:14px;border:2px solid #e0f2f1">
+          <div style="font-weight:700;font-size:13px;color:#1a1a2e;margin-bottom:10px">
+            <i class="bi bi-plus-circle me-1" style="color:#26a69a"></i>
+            <span id="ppFormTitle">AGREGAR NUEVA PRESENTACIÓN</span>
+          </div>
+          <input type="hidden" id="ppEditId">
+          <div class="row g-2 mb-2">
+            <div class="col-5">
+              <div class="form-label">Presentacion</div>
+              <select class="form-control" id="ppPresentacionSelect">
+                <option value="">-- Seleccionar --</option>
+              </select>
+            </div>
+            <div class="col-3">
+              <div class="form-label">Precio Costo</div>
+              <input class="form-control" id="ppNuevoCosto" type="number" step="0.01" min="0" placeholder="0.00" value="" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';" onfocus="this.select()">
+            </div>
+            <div class="col-4">
+              <div class="form-label">Precio Venta *</div>
+              <input class="form-control" id="ppNuevoVenta" type="number" step="0.01" min="0" placeholder="0.00" oninput="if(parseFloat(this.value)<0||this.value==='-')this.value='0';" onfocus="this.select()">
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#444">
+              <input type="checkbox" id="ppEsPrincipal" style="width:15px;height:15px;accent-color:#ff7043">
+              Marcar como presentacion principal
+            </label>
+            <div style="display:flex;gap:8px">
+              <button id="ppBtnCancelarEdit" class="btn-cancel"
+                onclick="cancelarEditPP()" style="display:none;padding:8px 16px">
+                Cancelar edicion
+              </button>
+              <button id="ppBtnGuardar" class="btn-save"
+                onclick="guardarPresentacionProducto()" style="padding:9px 20px">
+                <i class="bi bi-plus-lg me-1" id="ppBtnIcon"></i>
+                <span id="ppBtnLabel">Agregar Presentación</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="margin:16px -24px 0;padding:14px 24px;border-top:1px solid #eee">
+          <button class="btn-cancel" onclick="closeModal('modalProducto')">Cancelar</button>
+          <button class="btn-save" onclick="saveProducto()">
+            <i class="bi bi-check2 me-1"></i>Guardar
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB: FOTOS -->
+      <div id="tabPane-fotos-producto" style="display:none;overflow-y:auto;padding:16px 24px 0;flex:1">
+
+        <div class="alert-msg" id="alertFotos" style="margin-bottom:10px"></div>
+
+        <div id="fotoDropZone"
+          style="border:2px dashed #ddd;border-radius:12px;padding:24px;
+                 text-align:center;cursor:pointer;transition:all .2s;
+                 background:#fafafa;margin-bottom:12px">
+          <i class="bi bi-cloud-upload" style="font-size:36px;color:#bbb;display:block;margin-bottom:8px"></i>
+          <div style="font-weight:600;color:#555;margin-bottom:4px">
+            Arrastra una imagen aqui o haz clic para seleccionar
+          </div>
+          <div style="font-size:12px;color:#aaa">JPEG, PNG, WEBP o GIF - max. 5 MB</div>
+          <input type="file" id="fotoInput" accept="image/jpeg,image/png,image/webp,image/gif"
+            style="display:none" onchange="handleFotoInputChange(this)">
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <button id="btnSubirFoto" class="btn-save"
+            style="padding:9px 20px"
+            onclick="document.getElementById('fotoInput').click()">
+            <i class="bi bi-upload me-1"></i>Subir foto
+          </button>
+        </div>
+
+        <div style="font-size:11px;font-weight:800;letter-spacing:1px;color:#9199ab;margin-bottom:8px">
+          <i class="bi bi-images me-1"></i> GALERIA DE FOTOS
+          <span style="font-weight:400;color:#bbb;margin-left:8px">(star = marcar como principal · las fotos se guardan en servidor)</span>
+        </div>
+        <div id="fotosGaleria">
+          <div style="text-align:center;padding:20px;color:#bbb">
+            <i class="bi bi-image" style="font-size:32px;display:block;margin-bottom:8px"></i>
+            Sin fotos aun
+          </div>
+        </div>
+
+        <div class="modal-footer" style="margin:16px -24px 0;padding:14px 24px;border-top:1px solid #eee">
+          <button class="btn-cancel" onclick="closeModal('modalProducto')">Cerrar</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalConfirm">
+    <div class="modal-box" style="width:360px">
+      <div class="modal-title">⚠️ Confirmar acción</div>
+      <p style="color:#555;font-size:14px" id="confirmMsg">¿Estás seguro?</p>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal('modalConfirm')">Cancelar</button>
+        <button class="btn-save" style="background:#c62828" id="confirmBtn">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: VER INVENTARIO ══════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="modalVerInventario">
+    <div class="modal-box" style="width:720px;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="modal-title" id="verInvProductoNombre" style="margin-bottom:0">Inventario</div>
+        <button onclick="closeModal('modalVerInventario')"
+          style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1">&#10005;</button>
+      </div>
+      <div id="verInvBody">
+        <div style="text-align:center;padding:30px;color:#bbb">Cargando datos...</div>
+      </div>
+      <div class="modal-footer" style="margin-top:16px">
+        <button class="btn-cancel" onclick="closeModal('modalVerInventario')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: ACTUALIZAR STOCK ════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="modalActualizarStock">
+    <div class="modal-box" style="width:640px;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="modal-title" style="margin-bottom:0">
+          <i class="bi bi-pencil-square me-2" style="color:var(--accent)"></i>Actualizar Stock
+        </div>
+        <button onclick="closeModal('modalActualizarStock')"
+          style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1">&#10005;</button>
+      </div>
+
+      <input type="hidden" id="actStockProductoId">
+
+      <!-- Info producto -->
+      <div style="display:flex;gap:24px;align-items:center;margin-bottom:16px;background:#f8f9fa;border-radius:10px;padding:12px 16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">Producto</div>
+          <div style="font-weight:700;font-size:14px;color:#1a1a2e" id="actStockProductoNombre">—</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">Stock Actual</div>
+          <div style="font-size:22px;font-weight:800;color:#1565c0;line-height:1" id="actStockTotal">—</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#9199ab;font-weight:700;letter-spacing:.5px">Mínimo</div>
+          <div style="font-size:22px;font-weight:800;color:#e65100;line-height:1" id="actStockMinimo">—</div>
+        </div>
+      </div>
+
+      <!-- Tarjetas por presentación -->
+      <div style="font-size:12px;font-weight:700;color:var(--color-text-secondary);margin-bottom:8px;letter-spacing:.5px">
+        <i class="bi bi-box2 me-1"></i>PRESENTACIONES
+      </div>
+      <div id="actStockPresentaciones">
+        <div style="text-align:center;padding:20px;color:#bbb">Cargando...</div>
+      </div>
+
+      <!-- Campos globales -->
+      <div class="row g-2 mb-3" style="margin-top:16px">
+        <div class="col-6">
+          <div class="form-label">Boleta / Ref.</div>
+          <input class="form-control" id="actStockBoleta" placeholder="Ej: BOL-001-2026">
+        </div>
+        <div class="col-6">
+          <div class="form-label">Observación</div>
+          <input class="form-control" id="actStockObservacion" placeholder="Detalles del movimiento...">
+        </div>
+      </div>
+
+      <div class="alert-msg" id="alertActStock"></div>
+
+      <!-- Historial -->
+      <div style="margin-top:12px">
+        <div style="font-size:11px;font-weight:800;letter-spacing:1px;color:#9199ab;margin-bottom:10px">
+          <i class="bi bi-clock-history me-1"></i> HISTORIAL DE MOVIMIENTOS
+        </div>
+        <div id="actStockHistorial"></div>
+      </div>
+
+      <div class="modal-footer" style="margin-top:16px">
+        <button class="btn-cancel" onclick="closeModal('modalActualizarStock')">Cancelar</button>
+        <button class="btn-save" style="background:#43a047" onclick="closeModal('modalActualizarStock')">
+          <i class="bi bi-check2 me-1"></i>Guardar Cambios
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: STOCK POR PRESENTACIÓN (vista rápida desde productos) ═════ -->
+  <div class="modal-overlay" id="modalStockPresentacion">
+    <div class="modal-box" style="width:460px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 22px 12px">
+        <div class="modal-title" style="margin-bottom:0;font-size:17px">
+          <i class="bi bi-box2 me-2" style="color:#3949ab"></i>Stock por Presentación
+        </div>
+        <button onclick="closeModal('modalStockPresentacion')"
+          style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1">&#10005;</button>
+      </div>
+      <div id="stockPresBody" style="padding:0 22px 4px">
+        <div style="text-align:center;padding:24px;color:#bbb">Cargando...</div>
+      </div>
+      <div class="modal-footer" style="padding:12px 22px">
+        <button class="btn-cancel" onclick="closeModal('modalStockPresentacion')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       MODAL: Crear membresía — flujo integrado DNI (4 pasos)
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="memb-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="memb-modal-titulo">
+    <div class="memb-modal-cuerpo">
+
+      <!-- Header -->
+      <div class="memb-modal-header">
+        <div>
+          <h3 id="memb-modal-titulo" class="memb-modal-titulo">Nueva Membresía</h3>
+          <div class="memb-pasos-indicador" aria-label="Progreso del formulario">
+            <div class="memb-paso-indicador actual" data-paso="1">
+              <span class="memb-paso-num">1</span>
+              <span class="memb-paso-label">DNI</span>
+            </div>
+            <div class="memb-paso-linea"></div>
+            <div class="memb-paso-indicador" data-paso="2">
+              <span class="memb-paso-num">2</span>
+              <span class="memb-paso-label">Datos</span>
+            </div>
+            <div class="memb-paso-linea"></div>
+            <div class="memb-paso-indicador" data-paso="3">
+              <span class="memb-paso-num">3</span>
+              <span class="memb-paso-label">Plan</span>
+            </div>
+            <div class="memb-paso-linea"></div>
+            <div class="memb-paso-indicador" data-paso="4">
+              <span class="memb-paso-num">4</span>
+              <span class="memb-paso-label">Pago</span>
+            </div>
+          </div>
+        </div>
+        <button id="btn-cerrar-memb-modal" class="memb-btn-cerrar" aria-label="Cerrar modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Paso 1: DNI -->
+      <div id="memb-paso-1" class="memb-paso-contenido activo">
+        <div class="memb-paso-titulo-sec">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          Consultar documento del cliente
+        </div>
+        <p class="memb-paso-desc">Ingresa el documento para verificar si el cliente ya está registrado o consultar sus datos en RENIEC / Migraciones.</p>
+        <div class="memb-dni-campo" style="gap:8px;align-items:center">
+          <select id="memb-tipo-doc" class="memb-select-tipo-doc" style="flex:0 0 auto;height:44px;border:1.5px solid #cbd5e1;border-radius:10px;padding:0 10px;font-size:14px;background:#fff;color:#1e293b;cursor:pointer" onchange="onMembTipoDocChange()">
+            <option value="DNI">DNI</option>
+            <option value="CE">Carnet Ext.</option>
+          </select>
+          <input type="text" id="memb-dni-input" placeholder="Ej: 70123456" maxlength="8"
+            inputmode="numeric" class="memb-input-dni"
+            autocomplete="off" aria-label="Número de documento" />
+          <button id="btn-buscar-dni" class="memb-btn-buscar-dni" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Buscar
+          </button>
+        </div>
+        <div id="memb-dni-estado" class="memb-dni-estado" role="status" aria-live="polite"></div>
+      </div>
+
+      <!-- Paso 2: Datos del cliente -->
+      <div id="memb-paso-2" class="memb-paso-contenido">
+        <div class="memb-paso-titulo-sec">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Datos del cliente
+        </div>
+
+        <!-- Aviso Cláusula 1a -->
+        <div style="margin-bottom:12px;padding:9px 13px;background:#e8f5e9;border:1.5px solid #a5d6a7;border-radius:9px;font-size:12px;color:#2e7d32">
+          <i class="bi bi-info-circle-fill me-1"></i>
+          <strong>Cláusula 1a:</strong> Si el cliente es menor de 18 años, un adulto con tenencia debe suscribir el contrato.
+        </div>
+
+        <!-- Documento capturado en paso 1 (solo ingreso manual) -->
+        <div id="memb-p2-doc-info" style="display:none;margin-bottom:12px;padding:9px 13px;background:#f3e5f5;border:1.5px solid #ce93d8;border-radius:9px;font-size:12px;color:#6a1b9a">
+          <i class="bi bi-card-text me-1"></i>
+          Documento: <strong id="memb-p2-tipo-doc"></strong> &nbsp;·&nbsp; <strong id="memb-p2-num-doc"></strong>
+        </div>
+
+        <!-- Aviso cliente eliminado — reactivación automática -->
+        <div id="memb-p2-reactivar-aviso" style="display:none;margin-bottom:12px;padding:9px 13px;background:#fff3e0;border:1.5px solid #ffb74d;border-radius:9px;font-size:12px;color:#e65100">
+          <i class="bi bi-arrow-counterclockwise me-1"></i>
+          Este cliente estaba <strong>eliminado</strong>. Sus datos anteriores han sido precargados — puedes actualizarlos antes de continuar. Al confirmar, el cliente se <strong>reactivará automáticamente</strong>.
+        </div>
+
+        <div class="memb-form-grid">
+          <div class="memb-form-grupo">
+            <label for="memb-nombre">Nombre(s) <span class="memb-req">*</span></label>
+            <input type="text" id="memb-nombre" placeholder="Nombres" autocomplete="given-name" />
+          </div>
+          <div class="memb-form-grupo">
+            <label for="memb-apellido">Apellidos <span class="memb-req">*</span></label>
+            <input type="text" id="memb-apellido" placeholder="Apellidos" autocomplete="family-name" />
+          </div>
+          <div class="memb-form-grupo">
+            <label for="memb-celular">Celular</label>
+            <input type="tel" id="memb-celular" placeholder="Ej: 987654321" maxlength="15" />
+          </div>
+          <div class="memb-form-grupo">
+            <label for="memb-fecha-nac">Fecha de nacimiento</label>
+            <input type="date" id="memb-fecha-nac" onchange="wiz_onFechaNacChange()" />
+          </div>
+          <div class="memb-form-grupo memb-form-grupo-full">
+            <label for="memb-mayor-edad">¿Mayor de 18 años? <span class="memb-req">*</span></label>
+            <select id="memb-mayor-edad" onchange="wiz_onMayorEdadChange()"
+              style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px">
+              <option value="si">✅  Sí, mayor de edad</option>
+              <option value="no">⚠️  No (requiere tutor)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Aviso tutor obligatorio (visible solo si es menor) -->
+        <div id="memb-tutor-aviso" style="display:none;margin:10px 0;padding:10px 14px;background:#fff3e0;border:1.5px solid #ff9800;border-radius:10px;font-size:12.5px;color:#e65100;font-weight:600">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          El cliente es menor de 18 años. El <strong>Contacto 1 debe ser el adulto tutor</strong> (nombre, parentesco y teléfono obligatorios).
+        </div>
+
+        <!-- Contactos de emergencia -->
+        <div style="margin-top:14px;font-size:12px;font-weight:700;color:#374151;letter-spacing:.03em;text-transform:uppercase">
+          <i class="bi bi-telephone-fill me-1" style="color:#e53935"></i>
+          Contactos de emergencia
+          <span id="memb-contactos-subtitle" style="font-size:10px;font-weight:600;color:#9199ab;text-transform:none;margin-left:4px">(opcional, máx. 2)</span>
+        </div>
+        <p style="font-size:11.5px;color:#9199ab;margin:4px 0 10px">Si ingresa un teléfono, el nombre y parentesco son obligatorios.</p>
+
+        <!-- Contacto 1 -->
+        <div style="background:#f7f8fc;border:1.5px solid #e8eaf0;border-radius:10px;padding:12px;margin-bottom:8px" id="memb-contacto1-card">
+          <div style="font-size:11px;font-weight:700;color:#1976d2;margin-bottom:8px" id="memb-contacto1-badge">
+            <i class="bi bi-1-circle-fill me-1"></i> Contacto 1
+          </div>
+          <div class="memb-form-grid">
+            <div class="memb-form-grupo">
+              <label style="font-size:11px">Nombre <span id="memb-ce1-req"></span></label>
+              <input type="text" id="memb-ce1-nombre" placeholder="Nombre completo" autocomplete="off" />
+            </div>
+            <div class="memb-form-grupo">
+              <label style="font-size:11px">Parentesco <span class="memb-req">*</span></label>
+              <input type="text" id="memb-ce1-parentesco" placeholder="Ej: Madre, Padre, Tutor" autocomplete="off" />
+            </div>
+          </div>
+          <div class="memb-form-grupo" style="margin-top:6px">
+            <label style="font-size:11px">Teléfono <span id="memb-ce1-tel-req"></span></label>
+            <input type="tel" id="memb-ce1-telefono" placeholder="9XXXXXXXX" maxlength="15" autocomplete="off" />
+          </div>
+        </div>
+
+        <!-- Contacto 2 -->
+        <div style="background:#f7f8fc;border:1.5px solid #fce4ec;border-radius:10px;padding:12px">
+          <div style="font-size:11px;font-weight:700;color:#c62828;margin-bottom:8px">
+            <i class="bi bi-2-circle-fill me-1"></i> Contacto 2
+            <span style="font-size:10px;font-weight:400;color:#9199ab">(opcional)</span>
+          </div>
+          <div class="memb-form-grid">
+            <div class="memb-form-grupo">
+              <label style="font-size:11px">Nombre</label>
+              <input type="text" id="memb-ce2-nombre" placeholder="Nombre completo" autocomplete="off" />
+            </div>
+            <div class="memb-form-grupo">
+              <label style="font-size:11px">Parentesco <span class="memb-req">*</span></label>
+              <input type="text" id="memb-ce2-parentesco" placeholder="Ej: Esposo/a, Tío/a" autocomplete="off" />
+            </div>
+          </div>
+          <div class="memb-form-grupo" style="margin-top:6px">
+            <label style="font-size:11px">Teléfono</label>
+            <input type="tel" id="memb-ce2-telefono" placeholder="9XXXXXXXX" maxlength="15" autocomplete="off" />
+          </div>
+        </div>
+
+        <div id="memb-paso2-error" class="memb-error-campo" style="display:none;margin-top:8px" role="alert"></div>
+        <div class="memb-paso-acciones">
+          <button class="memb-btn-secundario" id="btn-volver-1">← Volver</button>
+          <button class="memb-btn-primario" id="btn-paso-3">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- Paso 3: Plan -->
+      <div id="memb-paso-3" class="memb-paso-contenido">
+        <div class="memb-paso-titulo-sec">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          Seleccionar plan de membresía
+        </div>
+        <p class="memb-paso-desc">Elige el plan que el cliente ha escogido.</p>
+        <div id="memb-planes-grid" class="memb-planes-grid">
+          <div class="memb-planes-cargando">Cargando planes…</div>
+        </div>
+        <!-- Calendario (aparece al seleccionar un plan; muestra períodos existentes + preview del nuevo) -->
+        <div id="memb-cal-activa" style="display:none;"></div>
+        <!-- Aviso de solapamiento con opciones -->
+        <div id="memb-solapamiento-aviso" style="display:none;"></div>
+        <div style="display:none;">
+          <input type="date" id="memb-fecha-inicio" />
+        </div>
+        <div id="memb-paso3-error" class="memb-error-campo" style="display:none;" role="alert"></div>
+        <div class="memb-paso-acciones">
+          <button class="memb-btn-secundario" id="btn-volver-2">← Volver</button>
+          <button class="memb-btn-primario" id="btn-paso-4">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- Paso 4: Pago -->
+      <div id="memb-paso-4" class="memb-paso-contenido">
+        <div class="memb-paso-titulo-sec">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Registro de pago
+        </div>
+
+        <!-- Resumen cliente + plan -->
+        <div id="memb-resumen-pago" class="memb-resumen-pago"></div>
+
+        <!-- Montos -->
+        <div class="memb-form-grid" style="margin-top:12px">
+          <div class="memb-form-grupo">
+            <label for="memb-monto-total">Monto total (S/) <span class="memb-req">*</span></label>
+            <input type="number" id="memb-monto-total" min="0" step="0.01" placeholder="0.00" readonly
+              style="background:#f0f0f0;cursor:not-allowed" />
+          </div>
+          <div class="memb-form-grupo">
+            <label for="memb-pago1">Pago inicial — cuota 1 (S/) <span class="memb-req">*</span></label>
+            <input type="number" id="memb-pago1" min="0" step="0.01" placeholder="0.00"
+              oninput="wiz_autoSetNumCuotas(); wiz_validarMinimos()" />
+            <div id="memb-pago1-help" style="font-size:11.5px;color:#9199ab;margin-top:3px">Lo que paga hoy. El resto se fracciona.</div>
+          </div>
+        </div>
+
+        <!-- Fraccionamiento (se muestra solo si el plan lo permite) -->
+        <div id="memb-fraccion-wrap" style="display:none;margin-top:4px">
+          <label class="memb-label" style="font-size:12px;font-weight:600;color:#555">N° de cuotas</label>
+          <select id="memb-num-cuotas" style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;margin-top:4px"
+            onchange="wiz_onNumCuotasChange()">
+            <option value="1">1 cuota (pago único)</option>
+          </select>
+          <div id="memb-minimo-hint" style="display:none;font-size:12px;font-weight:600;color:#2e7d32;margin-top:5px">
+            <i class="bi bi-currency-dollar"></i> Monto mínimo por cuota: <span id="memb-minimo-val">S/ 0.00</span>
+          </div>
+        </div>
+
+        <!-- Resumen calendario de cuotas -->
+        <div id="memb-resumen-cuotas" style="margin-top:10px"></div>
+
+        <!-- Método de pago — componente dinámico _PM -->
+        <div id="memb-pm-container" style="margin-top:12px"></div>
+
+        <div class="memb-form-grupo" style="margin-top:10px">
+          <label for="memb-observacion">Observación</label>
+          <input type="text" id="memb-observacion" placeholder="Opcional" maxlength="255" />
+        </div>
+
+        <div id="memb-paso4-error" class="memb-error-campo" style="display:none;" role="alert"></div>
+        <div class="memb-paso-acciones">
+          <button class="memb-btn-secundario" id="btn-volver-3">← Volver</button>
+          <button class="memb-btn-confirmar" id="btn-confirmar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Confirmar y activar membresía
+          </button>
+        </div>
+      </div>
+
+      <!-- Paso 5: Éxito -->
+      <div id="memb-paso-5" class="memb-paso-contenido memb-paso-exito">
+        <div id="memb-exito-contenido" class="memb-exito-contenido"></div>
+        <button class="memb-btn-primario" id="btn-finalizar">Finalizar</button>
+      </div>
+
+    </div>
+  </div>
+
+  <style>
+  /* ── Modal overlay ──────────────────────────────────────────────────────── */
+  #memb-modal-overlay {
+    --mc-primario:       #1a56db;
+    --mc-primario-hover: #1648c0;
+    --mc-success:        #057a55;
+    --mc-danger:         #e02424;
+    --mc-borde:          #e5e7eb;
+    --mc-fondo-suave:    #f9fafb;
+    --mc-texto:          #111827;
+    --mc-texto-suave:    #6b7280;
+    --mc-radio:          8px;
+    --mc-radio-lg:       12px;
+    display: none;
+    position: fixed; inset: 0; z-index: 1100;
+    background: rgba(0,0,0,.45);
+    align-items: center; justify-content: center;
+    padding: 1rem;
+  }
+  #memb-modal-overlay.visible { display: flex; }
+
+  /* ── Cuerpo del modal ───────────────────────────────────────────────────── */
+  .memb-modal-cuerpo {
+    background: #fff; border-radius: var(--mc-radio-lg);
+    box-shadow: 0 4px 20px rgba(0,0,0,.14);
+    width: 100%; max-width: 560px;
+    max-height: 90vh; overflow-y: auto;
+    display: flex; flex-direction: column;
+  }
+  .memb-modal-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 1rem; padding: 1.25rem 1.5rem 1rem;
+    border-bottom: 1px solid var(--mc-borde);
+    position: sticky; top: 0; background: #fff; z-index: 1;
+  }
+  .memb-modal-titulo { font-size: 1.125rem; font-weight: 600; margin: 0 0 .75rem; color: var(--mc-texto); }
+  .memb-btn-cerrar { background: none; border: none; cursor: pointer; color: var(--mc-texto-suave); padding: 4px; border-radius: 6px; flex-shrink: 0; }
+  .memb-btn-cerrar:hover { background: var(--mc-fondo-suave); color: var(--mc-texto); }
+
+  /* ── Indicador de pasos ─────────────────────────────────────────────────── */
+  .memb-pasos-indicador { display: flex; align-items: center; }
+  .memb-paso-indicador  { display: flex; align-items: center; gap: 5px; }
+  .memb-paso-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--mc-borde); color: var(--mc-texto-suave);
+    font-size: .75rem; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .2s, color .2s;
+  }
+  .memb-paso-label { font-size: .75rem; color: var(--mc-texto-suave); }
+  .memb-paso-indicador.actual    .memb-paso-num { background: var(--mc-primario); color: #fff; }
+  .memb-paso-indicador.actual    .memb-paso-label { color: var(--mc-primario); font-weight: 600; }
+  .memb-paso-indicador.completado .memb-paso-num { background: var(--mc-success); color: #fff; }
+  .memb-paso-linea { width: 24px; height: 1px; background: var(--mc-borde); margin: 0 4px; }
+
+  /* ── Contenido de pasos ─────────────────────────────────────────────────── */
+  .memb-paso-contenido { display: none; padding: 1.25rem 1.5rem; }
+  .memb-paso-contenido.activo { display: block; }
+  .memb-paso-titulo-sec { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: .5rem; color: var(--mc-texto); }
+  .memb-paso-desc { font-size: .875rem; color: var(--mc-texto-suave); margin: 0 0 1.25rem; }
+  .memb-paso-acciones {
+    display: flex; gap: .75rem; justify-content: flex-end; flex-wrap: wrap;
+    position: sticky; bottom: 0;
+    background: #fff; z-index: 1;
+    padding: 12px 0 4px;
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--mc-borde);
+  }
+
+  /* ── Botones del modal ──────────────────────────────────────────────────── */
+  .memb-btn-primario {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 18px; border-radius: var(--mc-radio); border: none;
+    background: var(--mc-primario); color: #fff;
+    font-size: .875rem; font-weight: 500; cursor: pointer; transition: background .15s;
+  }
+  .memb-btn-primario:hover { background: var(--mc-primario-hover); }
+  .memb-btn-secundario {
+    padding: 8px 16px; border-radius: var(--mc-radio);
+    border: 1px solid var(--mc-borde); background: #fff;
+    color: var(--mc-texto); font-size: .875rem; cursor: pointer; transition: background .15s;
+  }
+  .memb-btn-secundario:hover { background: var(--mc-fondo-suave); }
+  .memb-btn-confirmar {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 24px; border-radius: var(--mc-radio); border: none;
+    background: var(--mc-success); color: #fff;
+    font-size: .9375rem; font-weight: 600; cursor: pointer; transition: filter .15s;
+  }
+  .memb-btn-confirmar:hover   { filter: brightness(1.1); }
+  .memb-btn-confirmar:disabled { opacity: .6; cursor: not-allowed; }
+
+  /* ── DNI ────────────────────────────────────────────────────────────────── */
+  .memb-dni-campo { display: flex; gap: 8px; margin-bottom: 1rem; }
+  .memb-input-dni {
+    flex: 1; min-width: 0; padding: 10px 14px; font-size: 1.1rem; font-weight: 600;
+    border: 2px solid var(--mc-borde); border-radius: var(--mc-radio);
+    text-align: center; letter-spacing: .1em; transition: border-color .15s;
+  }
+  .memb-input-dni:focus { outline: none; border-color: var(--mc-primario); }
+  .memb-btn-buscar-dni {
+    padding: 10px 16px; border-radius: var(--mc-radio); border: none;
+    background: var(--mc-primario); color: #fff;
+    font-size: .875rem; font-weight: 500; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; transition: background .15s;
+  }
+  .memb-btn-buscar-dni:hover:not(:disabled) { background: var(--mc-primario-hover); }
+  .memb-btn-buscar-dni:disabled { opacity: .45; cursor: not-allowed; }
+  .memb-dni-estado {
+    padding: .65rem 1rem; border-radius: var(--mc-radio);
+    font-size: .875rem; display: flex; align-items: flex-start; gap: 8px;
+    flex-wrap: wrap; line-height: 1.45;
+  }
+  .memb-dni-estado .dni-icono { flex-shrink: 0; margin-top: 1px; }
+  .memb-dni-estado span:last-child { flex: 1; min-width: 0; }
+  .memb-dni-cargando  { background: #eff6ff; color: #1e40af; }
+  .memb-dni-encontrado { background: #d1fae5; color: #065f46; }
+  .memb-dni-nuevo     { background: #fef3c7; color: #92400e; }
+  .memb-dni-error     { background: #fee2e2; color: #991b1b; }
+  .memb-btn-manual {
+    margin-left: auto; padding: 4px 12px; font-size: .8rem; font-weight: 600;
+    background: #991b1b; color: #fff; border: none; border-radius: 20px;
+    cursor: pointer; white-space: nowrap; transition: background .15s;
+  }
+  .memb-btn-manual:hover { background: #7f1d1d; }
+
+  /* ── Formulario ─────────────────────────────────────────────────────────── */
+  .memb-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .memb-form-grupo { display: flex; flex-direction: column; gap: 5px; }
+  .memb-form-grupo-full { grid-column: 1 / -1; }
+  .memb-form-grupo label { font-size: .8125rem; font-weight: 500; color: var(--mc-texto); }
+  .memb-form-grupo input, .memb-form-grupo select {
+    padding: 8px 12px; border: 1px solid var(--mc-borde);
+    border-radius: var(--mc-radio); font-size: .875rem; color: var(--mc-texto);
+    transition: border-color .15s;
+  }
+  .memb-form-grupo input:focus, .memb-form-grupo select:focus { outline: none; border-color: var(--mc-primario); }
+  .memb-req { color: var(--mc-danger); }
+  .memb-error-campo {
+    background: #fee2e2; color: var(--mc-danger);
+    border-radius: var(--mc-radio); padding: .5rem .875rem; font-size: .8125rem;
+  }
+
+  /* ── Planes ─────────────────────────────────────────────────────────────── */
+  .memb-planes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: .5rem; }
+  .memb-plan-badge { display:inline-block; font-size:.65rem; font-weight:700; color:#fff; border-radius:20px; padding:2px 8px; margin-bottom:6px; letter-spacing:.4px; }
+  .memb-plan-card {
+    position: relative;
+    border: 2px solid var(--mc-borde); border-radius: var(--mc-radio-lg);
+    padding: 14px 12px; cursor: pointer; text-align: center;
+    transition: border-color .15s, box-shadow .15s; background: #fff;
+  }
+  .memb-plan-card:not(.plan-deshabilitado):hover { border-color: var(--mc-primario); box-shadow: 0 2px 8px rgba(26,86,219,.12); }
+  .memb-plan-card.seleccionado { border-color: var(--mc-primario); background: #eff6ff; box-shadow: 0 0 0 3px rgba(26,86,219,.15); }
+  .memb-plan-card.plan-deshabilitado { opacity:.45; cursor:not-allowed; filter:grayscale(.5); pointer-events:none; }
+  .memb-plan-card-nombre { font-weight: 700; font-size: .9375rem; margin-bottom: 4px; }
+  .memb-plan-card-duracion { font-size: .8125rem; color: var(--mc-texto-suave); margin-bottom: 8px; }
+  .memb-plan-card-precio { font-size: 1.25rem; font-weight: 700; color: var(--mc-primario); }
+  .memb-plan-card-desc { font-size: .75rem; color: var(--mc-texto-suave); margin-top: 6px; }
+  .memb-planes-cargando { color: var(--mc-texto-suave); font-size: .875rem; padding: 1rem; }
+
+  /* ── Métodos de pago ────────────────────────────────────────────────────── */
+  .memb-metodos-pago { margin-bottom: 1rem; }
+  .memb-metodo-titulo { font-size: .8125rem; font-weight: 500; margin: 0 0 .625rem; }
+  .memb-metodos-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+  .memb-metodo-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border: 1.5px solid var(--mc-borde);
+    border-radius: var(--mc-radio); background: #fff; cursor: pointer;
+    font-size: .875rem; font-weight: 500; color: var(--mc-texto);
+    transition: border-color .15s, background .15s;
+  }
+  .memb-metodo-btn:hover  { border-color: var(--mc-primario); background: #eff6ff; }
+  .memb-metodo-btn.activo { border-color: var(--mc-primario); background: #eff6ff; color: var(--mc-primario); }
+
+  /* ── Componente _PM (pago mixto) ──────────────────────────────────────────── */
+  .pm-metodo-btn {
+    display:inline-flex;align-items:center;gap:5px;
+    padding:6px 11px;border:1.5px solid #dde1f0;border-radius:8px;
+    background:#fff;cursor:pointer;font-size:12px;font-weight:500;color:#555;
+    transition:border-color .15s,background .15s;
+  }
+  .pm-metodo-btn:hover  { border-color:#6366f1;background:#f0f0ff; }
+  .pm-metodo-btn.activo { border-color:#6366f1;background:#eef2ff;color:#4338ca;font-weight:700; }
+  .pm-remove-btn {
+    position:absolute;top:8px;right:8px;background:none;border:none;
+    color:#c62828;font-size:11px;cursor:pointer;padding:2px 6px;
+    border-radius:4px;transition:background .1s;
+  }
+  .pm-remove-btn:hover { background:#ffebee; }
+  .pm-add-btn:hover { background:#eef2ff!important; }
+  .pm-field-row {
+    display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;
+  }
+  .pm-lbl { font-size:11px;color:#666;white-space:nowrap;min-width:130px; }
+  .pm-digital { margin-top:10px;padding-top:10px;border-top:1px dashed #c7d2fe; }
+  .pm-foto-label { cursor:pointer; }
+  .pm-foto-btn {
+    display:inline-flex;align-items:center;gap:5px;
+    padding:5px 12px;border:1.5px solid #a5b4fc;border-radius:7px;
+    background:#f5f3ff;color:#4f46e5;font-size:11px;font-weight:600;
+    cursor:pointer;transition:background .15s;
+  }
+  .pm-foto-btn:hover { background:#ede9fe; }
+  .pm-preview { display:flex;align-items:center;gap:8px;margin-bottom:6px; }
+  .pm-foto-remove {
+    background:none;border:none;color:#ef4444;font-size:14px;cursor:pointer;
+    line-height:1;padding:2px;
+  }
+  .pm-uploading { font-size:12px;color:#6366f1;margin-bottom:4px; }
+  .pm-spin { display:inline-block;animation:pm-spin 1s linear infinite; }
+  @keyframes pm-spin { to { transform:rotate(360deg); } }
+  .pm-split-label { }
+  .pm-total-bar { }
+  .pm-label { }
+
+  /* ── Resumen ────────────────────────────────────────────────────────────── */
+  .memb-resumen-pago {
+    background: var(--mc-fondo-suave); border: 1px solid var(--mc-borde);
+    border-radius: var(--mc-radio); padding: .875rem 1rem; margin-bottom: 1rem;
+  }
+  .memb-resumen-item { display: flex; justify-content: space-between; padding: 4px 0; font-size: .875rem; }
+  .memb-resumen-item span { color: var(--mc-texto-suave); }
+  .memb-resumen-total { border-top: 1px solid var(--mc-borde); margin-top: 6px; padding-top: 8px; font-size: 1rem; }
+  .memb-resumen-total strong { color: var(--mc-primario); font-size: 1.125rem; }
+
+  /* ── Éxito ──────────────────────────────────────────────────────────────── */
+  .memb-paso-exito { text-align: center; }
+  .memb-exito-contenido { padding: 1.5rem 0; }
+  .memb-exito-icono { font-size: 3rem; margin-bottom: .75rem; }
+  .memb-exito-contenido h3 { font-size: 1.25rem; font-weight: 700; margin: 0 0 1rem; color: var(--mc-success); }
+  .memb-exito-detalles { max-width: 300px; margin: 0 auto 1.25rem; text-align: left; }
+
+  /* ── Acciones de boleta en éxito ────────────────────────────────────────── */
+  .memb-exito-acciones { border-top: 1px solid var(--mc-borde); padding-top: 1rem; text-align: left; }
+  .memb-acciones-titulo { font-size: .75rem; font-weight: 600; color: var(--mc-texto-suave); text-transform: uppercase; letter-spacing: .5px; margin-bottom: .6rem; text-align: center; }
+  .memb-acciones-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-bottom: .75rem; }
+  .memb-btn-accion {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: .55rem .75rem; border-radius: 7px; border: none; cursor: pointer;
+    font-size: .825rem; font-weight: 600; transition: opacity .15s, transform .1s;
+  }
+  .memb-btn-accion:hover  { opacity: .88; transform: translateY(-1px); }
+  .memb-btn-accion:active { transform: translateY(0); }
+  .memb-btn-imprimir  { background: #1a56db; color: #fff; }
+  .memb-btn-whatsapp  { background: #25d366; color: #fff; }
+  .memb-btn-email     { background: #374151; color: #fff; white-space: nowrap; padding: .55rem .9rem; border-radius: 7px; }
+  /* Email section */
+  .memb-email-section { border-top: 1px solid var(--mc-borde); padding-top: .75rem; }
+  .memb-email-label   { font-size: .78rem; color: var(--mc-texto-suave); margin-bottom: .4rem; }
+  .memb-email-row     { display: flex; gap: .4rem; }
+  .memb-email-input   {
+    flex: 1; padding: .5rem .7rem; border: 1px solid var(--mc-borde); border-radius: 7px;
+    font-size: .825rem; color: var(--mc-texto); outline: none;
+    transition: border-color .15s;
+  }
+  .memb-email-input:focus { border-color: var(--mc-primario); }
+  /* Feedback */
+  .memb-feedback-msg  { font-size: .78rem; margin-top: .35rem; min-height: 1.1em; }
+  .mef-ok    { color: #057a55; }
+  .mef-error { color: var(--mc-danger); }
+  .mef-info  { color: var(--mc-texto-suave); }
+  @keyframes memb-fadein { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+
+  /* ── Responsive ─────────────────────────────────────────────────────────── */
+  @media (max-width: 540px) {
+    .memb-form-grid { grid-template-columns: 1fr; }
+    .memb-modal-cuerpo { max-height: 100vh; border-radius: 0; }
+    .memb-pasos-indicador .memb-paso-label { display: none; }
+  }
+  </style>
+
+  <!-- Chart.js para gráficos de balance -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+  <!-- Librerías para generación de PDF (boleta WhatsApp) -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+
+  <script src="js/dashboard-core.js"></script>
+  <script src="js/clientes.js"></script>
+  <script src="js/membresias.js"></script>
+  <script src="js/planes.js"></script>
+  <script src="js/perfiles.js"></script>
+  <script src="js/usuarios.js"></script>
+  <script src="js/categorias.js"></script>
+  <script src="js/presentaciones.js"></script>
+  <script src="js/productos.js"></script>
+  <script src="js/fotos.js"></script>
+  <script src="js/inventario.js"></script>
+  <script src="js/asistencias.js"></script>
+  <script src="js/ventas.js"></script>
+  <script src="js/verificacion-pagos.js"></script>
+  <script src="js/auditoria.js"></script>
+</body>
+
+</html>
