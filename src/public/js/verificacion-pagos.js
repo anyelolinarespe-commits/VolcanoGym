@@ -37,8 +37,8 @@ function vpRenderResumen(rows) {
     const el = document.getElementById('vpResumen');
     if (!el) return;
 
-    const pendientes = rows.filter(r => parseFloat(r.saldo_pendiente) > 0.005);
-    const aprobados  = rows.filter(r => parseFloat(r.saldo_pendiente) <= 0.005);
+    const pendientes = rows.filter(r => r.estado_verificacion == 1);
+    const aprobados  = rows.filter(r => r.estado_verificacion == 2);
     const montoPend  = pendientes.reduce((s, r) => s + parseFloat(r.total || 0), 0);
     const montoAprov = aprobados.reduce((s, r)  => s + parseFloat(r.total || 0), 0);
 
@@ -75,7 +75,7 @@ function vpRenderTabla(rows) {
     const fmtS = n => `S/ ${parseFloat(n || 0).toFixed(2)}`;
 
     tbody.innerHTML = rows.map(r => {
-        const esPendiente = parseFloat(r.saldo_pendiente || 0) > 0.005;
+        const esPendiente = r.estado_verificacion == 1;
 
         const estadoBadge = esPendiente
             ? `<span style="background:#fff3e0;color:#e65100;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700">⏳ PENDIENTE</span>`

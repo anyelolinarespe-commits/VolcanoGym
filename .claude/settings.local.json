@@ -6,7 +6,10 @@
       "Bash(Out-Null)",
       "Bash(Set-Content -Path \"C:\\\\Wazaaa\\\\UNI\\\\Integrador\\\\proyecto\\\\VolcanoGym\\\\graphify-out\\\\.graphify_chunk_07.json\" -Value '{\"nodes\":[{\"id\":\"clientes_cliente_1779340094431_435042_clientephoto\",\"label\":\"Client Profile Photo\",\"file_type\":\"image\",\"source_file\":\"src/public/uploads/clientes/cliente-1779340094431-435042.jpg\",\"source_location\":null,\"source_url\":null,\"captured_at\":null,\"author\":null,\"contributor\":null}],\"edges\":[],\"hyperedges\":[],\"input_tokens\":285,\"output_tokens\":48}' -Encoding utf8)",
       "Bash(Get-Content \"C:\\\\Users\\\\LENOVO\\\\Desktop\\\\bdpo.sql\" -TotalCount 100)",
-      "PowerShell(Select-String -Path \"C:\\\\Users\\\\LENOVO\\\\Desktop\\\\bdpo.sql\" -Pattern \"comprobante|boleta|cuota|abono|movimiento\" -SimpleMatch | Select-Object -First 60 | ForEach-Object { $_.LineNumber.ToString\\(\\) + \": \" + $_.Line })"
+      "PowerShell(Select-String -Path \"C:\\\\Users\\\\LENOVO\\\\Desktop\\\\bdpo.sql\" -Pattern \"comprobante|boleta|cuota|abono|movimiento\" -SimpleMatch | Select-Object -First 60 | ForEach-Object { $_.LineNumber.ToString\\(\\) + \": \" + $_.Line })",
+      "Read(//c/Users/LENOVO/Desktop/**)",
+      "Bash(npx kill-port *)",
+      "Bash(node src/index.js)"
     ]
   }
 }

@@ -63,6 +63,8 @@ pool.query(`ALTER TABLE venta            ADD COLUMN IF NOT EXISTS pago_referenci
   .catch(e => console.warn('Migration venta.pago_referencia:', e.message));
 pool.query(`ALTER TABLE venta            ADD COLUMN IF NOT EXISTS pago_url_comprobante TEXT`)
   .catch(e => console.warn('Migration venta.pago_url_comprobante:', e.message));
+pool.query(`ALTER TABLE verificacion_pago ALTER COLUMN ruta_imagen TYPE TEXT`)
+  .catch(e => console.warn('Migration verificacion_pago.ruta_imagen:', e.message));
 pool.query(`ALTER TABLE venta            ADD COLUMN IF NOT EXISTS verificado_por INTEGER REFERENCES usuarios(id_usuario)`)
   .catch(e => console.warn('Migration venta.verificado_por:', e.message));
 pool.query(`ALTER TABLE venta            ADD COLUMN IF NOT EXISTS verificado_at TIMESTAMPTZ`)

@@ -297,6 +297,15 @@ export const createVenta = async (req, res) => {
 
     const id_venta = vR.rows[0].id;
 
+    // Registrar en verificacion_pago para pagos digitales
+    if (requiereVerificacion) {
+      await client.query(`
+        INSERT INTO verificacion_pago
+          (id_venta, metodo_pago, numero_operacion, nombre_referencia, monto, ruta_imagen, estado)
+        VALUES ($1, $2, $3, $4, $5, $6, 1)
+      `, [id_venta, metodo_pago, pago_codigo_operacion, pago_referencia, total, pago_url_comprobante]);
+    }
+
     for (let i = 0; i < items.length; i++) {
       const it  = items[i];
       const sub = parseFloat(((it.precio_unitario * it.cantidad) - (it.descuento||0)).toFixed(2));
@@ -348,6 +357,12 @@ export const aprobarVenta = async (req, res) => {
       SET estado_venta='registrada', saldo_pendiente=0,
           verificado_por=$1, verificado_at=now(), updated_at=now()
       WHERE id=$2
+    `, [req.usuario.id, id]);
+
+    await client.query(`
+      UPDATE verificacion_pago
+      SET estado=2, id_usuario_revisor=$1, fecha_revision=now()
+      WHERE id_venta=$2 AND estado=1
     `, [req.usuario.id, id]);
 
     await client.query('COMMIT');
@@ -482,6 +497,14 @@ export const anularVenta = async (req, res) => {
       `UPDATE venta SET estado_venta='anulada', anulado_por=$1, updated_at=now() WHERE id=$2`,
       [req.usuario.id, id]
     );
+
+    // Si tenía verificación pendiente, marcarla como rechazada
+    await client.query(`
+      UPDATE verificacion_pago
+      SET estado=0, id_usuario_revisor=$1, fecha_revision=now(), motivo_rechazo='Rechazado desde verificación de pagos'
+      WHERE id_venta=$2 AND estado=1
+    `, [req.usuario.id, id]);
+
     await client.query('COMMIT');
 
     const venta = vR.rows[0];
@@ -695,40 +718,45 @@ export const enviarEmailVenta = async (req, res) => {
 };
 
 // GET /api/ventas/verificacion/pagos
-// Resumen de ventas con saldo pendiente y cuotas para verificación de cobros
 export const getVerificacionPagos = async (req, res) => {
   try {
     const { buscar = '', estado = 'todos', page = 1, limit = 15 } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
     const params = [];
     let i = 1;
-    const filtros = ["v.estado_venta IN ('pendiente','registrada')",
-                     "v.metodo_pago IN ('yape','transferencia','plin')"];
+
+    // estado: 'pendiente'=1, 'pagado'=2, 'rechazado'=0, 'todos'=1,2
+    const filtros = ['vp.estado IN (1, 2)'];  // por defecto mostrar pendientes y aprobados
 
     if (buscar) {
       filtros.push(`(v.numero_venta ILIKE $${i} OR COALESCE(c.nombre||' '||c.apellido, v.nombre_cliente_libre) ILIKE $${i} OR COALESCE(c.dni, v.dni_cliente_libre) ILIKE $${i})`);
       params.push(`%${buscar}%`); i++;
     }
-    if (estado === 'pendiente')   filtros.push("v.estado_venta = 'pendiente'");
-    if (estado === 'pagado')      filtros.push("v.estado_venta = 'registrada'");
+    if (estado === 'pendiente') {
+      filtros[0] = 'vp.estado = 1';
+    } else if (estado === 'pagado') {
+      filtros[0] = 'vp.estado = 2';
+    }
 
     const where = 'WHERE ' + filtros.join(' AND ');
 
     const result = await pool.query(`
       SELECT
+        vp.id                  AS id_verificacion,
         v.id,
         v.numero_venta,
         v.serie_comprobante,
-        tc.nombre            AS tipo_comprobante,
-        v.metodo_pago,
-        v.pago_codigo_operacion AS operacion,
-        v.pago_referencia      AS referencia,
-        v.pago_url_comprobante AS url_comprobante,
-        v.total,
+        tc.nombre              AS tipo_comprobante,
+        vp.metodo_pago,
+        vp.numero_operacion    AS operacion,
+        vp.nombre_referencia   AS referencia,
+        vp.ruta_imagen         AS url_comprobante,
+        vp.monto               AS total,
+        vp.estado              AS estado_verificacion,
         v.saldo_pendiente,
         v.descuento_general,
-        v.created_at,
-        u.nombre || ' ' || u.apellido  AS vendedor,
+        vp.fecha_registro      AS created_at,
+        u.nombre || ' ' || u.apellido AS vendedor,
         CASE WHEN v.id_cliente IS NOT NULL
              THEN c.nombre || ' ' || c.apellido
              ELSE v.nombre_cliente_libre END AS cliente,
@@ -740,12 +768,13 @@ export const getVerificacionPagos = async (req, res) => {
             'subtotal',  d.subtotal
         ) ORDER BY d.id) FROM venta_detalle d WHERE d.id_venta = v.id) AS productos,
         COUNT(*) OVER() AS total_registros
-      FROM venta v
+      FROM verificacion_pago vp
+      JOIN venta v ON v.id = vp.id_venta
       JOIN tipo_comprobante tc ON tc.id = v.id_tipo_comprobante
       JOIN usuarios u ON u.id_usuario = v.id_usuario_reg
       LEFT JOIN cliente c ON c.id_cliente = v.id_cliente
       ${where}
-      ORDER BY v.created_at DESC
+      ORDER BY vp.fecha_registro DESC
       LIMIT $${i++} OFFSET $${i++}
     `, [...params, Number(limit), offset]);
 
