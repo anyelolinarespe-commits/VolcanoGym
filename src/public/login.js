@@ -56,6 +56,9 @@ async function doLogin() {
             localStorage.setItem('usuario',  JSON.stringify(data.usuario));
             localStorage.setItem('opciones', JSON.stringify(data.opciones || []));
             window.location.replace('/dashboard');
+        } else if (res.status === 403) {
+            showWarn(data.message || 'Acceso restringido');
+            resetBtn();
         } else {
             showError(data.message || 'Error al iniciar sesión');
             resetBtn();
@@ -66,8 +69,16 @@ async function doLogin() {
     }
 
     function showError(msg) {
+        document.getElementById('mensajeWarn').style.display = 'none';
         errorDiv.textContent = msg;
         errorDiv.style.display = 'block';
+    }
+
+    function showWarn(msg) {
+        errorDiv.style.display = 'none';
+        const w = document.getElementById('mensajeWarn');
+        w.innerHTML = `⚠️ ${msg}`;
+        w.style.display = 'block';
     }
 
     function resetBtn() {

@@ -1,4 +1,5 @@
 import { pool } from '../config/bd.js';
+import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 
 // GET /api/perfiles
 export const getPerfiles = async (req, res) => {
@@ -36,6 +37,15 @@ export const createPerfil = async (req, res) => {
              VALUES ($1, $2, $3) RETURNING *`,
             [nombre.trim(), descripcion || null, req.usuario.id]
         );
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'CREAR',
+            modulo:         'Perfiles',
+            descripcion:    `Perfil #${result.rows[0].id_perfil} creado: "${nombre.trim()}"`,
+            ip:             getIP(req)
+        });
+
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -52,6 +62,8 @@ export const updatePerfil = async (req, res) => {
             `SELECT
                 p.id_perfil      AS target_id,
                 p.nombre         AS target_nombre,
+                p.descripcion    AS target_descripcion,
+                p.estado         AS target_estado,
                 ep.id_perfil     AS ejecutor_perfil_id,
                 ep.nombre        AS ejecutor_perfil_nombre
              FROM perfiles p
@@ -63,11 +75,16 @@ export const updatePerfil = async (req, res) => {
 
         if (!info.rows.length) return res.status(404).json({ message: 'Perfil no encontrado' });
 
-        const { target_nombre, ejecutor_perfil_id, ejecutor_perfil_nombre } = info.rows[0];
+        const { target_nombre, target_descripcion, target_estado, ejecutor_perfil_id, ejecutor_perfil_nombre } = info.rows[0];
 
         const targetEsSuperAdmin   = target_nombre?.toLowerCase() === 'superadministrador';
         const ejecutorEsSuperAdmin = ejecutor_perfil_nombre?.toLowerCase() === 'superadministrador';
         const ejecutorEsAdmin      = ejecutor_perfil_nombre?.toLowerCase() === 'administrador';
+
+        // Solo admin o superAdmin pueden editar perfiles
+        if (!ejecutorEsAdmin && !ejecutorEsSuperAdmin) {
+            return res.status(403).json({ message: 'No tienes permisos para editar perfiles' });
+        }
 
         // Solo superAdmin puede editar el perfil superAdministrador
         if (targetEsSuperAdmin && !ejecutorEsSuperAdmin) {
@@ -101,6 +118,26 @@ export const updatePerfil = async (req, res) => {
             [nombre, descripcion || null, estado ?? 1, id]
         );
         if (result.rowCount === 0) return res.status(404).json({ message: 'Perfil no encontrado' });
+
+        const ESTADO_PERFIL = { 0: 'Inactivo', 1: 'Activo', 2: 'Eliminado' };
+        const cambios = [];
+        if (target_nombre !== nombre)
+            cambios.push(`nombre: "${target_nombre}" → "${nombre}"`);
+        if (String(target_estado) !== String(estado ?? 1))
+            cambios.push(`estado: ${ESTADO_PERFIL[target_estado] ?? target_estado} → ${ESTADO_PERFIL[String(estado ?? 1)] ?? estado}`);
+        if ((target_descripcion || '') !== (descripcion || ''))
+            cambios.push('descripción actualizada');
+        const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Perfiles',
+            descripcion:    `Perfil #${id} "${nombre}" — ${diffStr}`,
+            ip:             getIP(req)
+        });
+
         res.json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -127,15 +164,23 @@ export const deletePerfil = async (req, res) => {
 
         if (!info.rows.length) return res.status(404).json({ message: 'Perfil no encontrado' });
 
-        const { target_nombre, ejecutor_perfil_id } = info.rows[0];
+        const { target_nombre, ejecutor_perfil_id, ejecutor_perfil_nombre } = info.rows[0];
+
+        const ejecutorEsAdmin      = ejecutor_perfil_nombre?.toLowerCase() === 'administrador';
+        const ejecutorEsSuperAdmin = ejecutor_perfil_nombre?.toLowerCase() === 'superadministrador';
+
+        // Solo admin o superAdmin pueden eliminar perfiles
+        if (!ejecutorEsAdmin && !ejecutorEsSuperAdmin) {
+            return res.status(403).json({ message: 'No tienes permisos para eliminar perfiles' });
+        }
 
         // No se puede eliminar el perfil superAdministrador
-        if (target_nombre.toLowerCase() === 'superadministrador') {
+        if (target_nombre.trim().toLowerCase() === 'superadministrador') {
             return res.status(403).json({ message: 'El perfil SuperAdministrador no puede ser eliminado' });
         }
 
         // No se puede eliminar el perfil Administrador
-        if (target_nombre.toLowerCase() === 'administrador') {
+        if (target_nombre.trim().toLowerCase() === 'administrador') {
             return res.status(403).json({ message: 'El perfil Administrador no puede ser eliminado' });
         }
 
@@ -159,6 +204,16 @@ export const deletePerfil = async (req, res) => {
             `UPDATE perfiles SET estado=2, eliminado_por=$1 WHERE id_perfil=$2`,
             [req.usuario.id, id]
         );
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'ELIMINAR',
+            modulo:         'Perfiles',
+            descripcion:    `Perfil #${id} eliminado: "${target_nombre}"`,
+            ip:             getIP(req)
+        });
+
         res.json({ message: 'Perfil eliminado correctamente' });
     } catch (err) {
         console.error(err);
