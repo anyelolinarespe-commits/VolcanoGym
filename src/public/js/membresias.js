@@ -740,17 +740,39 @@ function _bRow(lbl, val) {
     </div>`;
 }
 
+<<<<<<< HEAD
+=======
+function memb_cerrarBoletaModal() {
+    const m = document.getElementById('memb-boleta-modal');
+    if (!m) return;
+    m.style.display = 'none';
+    if (_modalHistorySet.has('memb-boleta-modal')) {
+        _modalHistorySet.delete('memb-boleta-modal');
+        history.back();
+    }
+}
+
+>>>>>>> origin/main
 function memb_mostrarModalBoleta(datos) {
     if (!document.getElementById('memb-boleta-modal')) {
         document.body.insertAdjacentHTML('beforeend', `
         <div id="memb-boleta-modal" style="display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:1rem">
+<<<<<<< HEAD
           <div style="background:#fff;border-radius:12px;width:100%;max-width:500px;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.25)">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#fff;z-index:1">
+=======
+          <div id="memb-boleta-shell" style="background:#fff;border-radius:12px;width:100%;max-width:500px;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.25)">
+            <div class="memb-boleta-header" style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#fff;z-index:1">
+>>>>>>> origin/main
               <div>
                 <div style="font-size:11px;font-weight:600;color:#7c3aed;text-transform:uppercase;letter-spacing:1px">Comprobante de Servicio</div>
                 <div style="font-size:15px;font-weight:700;margin-top:1px" id="memb-boleta-modal-num">—</div>
               </div>
+<<<<<<< HEAD
               <button onclick="document.getElementById('memb-boleta-modal').style.display='none'"
+=======
+              <button onclick="memb_cerrarBoletaModal()"
+>>>>>>> origin/main
                 style="background:none;border:none;cursor:pointer;font-size:22px;color:#666;line-height:1">✕</button>
             </div>
             <div id="memb-boleta-modal-body" style="padding:20px"></div>
@@ -759,7 +781,11 @@ function memb_mostrarModalBoleta(datos) {
 
         // Cerrar al clicar fuera
         document.getElementById('memb-boleta-modal').addEventListener('click', function(e) {
+<<<<<<< HEAD
             if (e.target === this) this.style.display = 'none';
+=======
+            if (e.target === this) memb_cerrarBoletaModal();
+>>>>>>> origin/main
         });
     }
 
@@ -841,7 +867,14 @@ function memb_mostrarModalBoleta(datos) {
         <div id="memb-boleta-email-fb" style="font-size:12px;margin-top:5px;min-height:18px"></div>
       </div>`;
 
+<<<<<<< HEAD
     document.getElementById('memb-boleta-modal').style.display = 'flex';
+=======
+    const bm = document.getElementById('memb-boleta-modal');
+    bm.style.display = 'flex';
+    _modalHistorySet.add('memb-boleta-modal');
+    history.pushState({ modal: 'memb-boleta-modal' }, '');
+>>>>>>> origin/main
 }
 
 async function memb_boletaEnviarWA() {
@@ -2191,6 +2224,10 @@ async function saveMembresia() {
   function cerrarModal() {
     document.getElementById('memb-modal-overlay').classList.remove('visible');
     cargarMembresias();
+<<<<<<< HEAD
+=======
+    if (_modalHistorySet.has('memb-modal-overlay')) { _modalHistorySet.delete('memb-modal-overlay'); history.back(); }
+>>>>>>> origin/main
   }
 
   function resetearModal() {
@@ -2998,7 +3035,11 @@ async function saveMembresia() {
   function wiz_calcFechaFin(fi, valor, unidad) {
     if (!fi || valor == null) return '—';
     const d = new Date(fi + 'T12:00:00');
+<<<<<<< HEAD
     if (unidad === 'dias')      d.setDate(d.getDate() + valor);
+=======
+    if (unidad === 'dias')      d.setDate(d.getDate() + valor - 1);
+>>>>>>> origin/main
     else if (unidad === 'anos') d.setFullYear(d.getFullYear() + valor);
     else                        d.setMonth(d.getMonth() + valor);
     return d.toISOString().split('T')[0];

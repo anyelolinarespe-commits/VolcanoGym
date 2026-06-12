@@ -9,6 +9,7 @@ let _carritoItems       = [];
 let _clienteSeleccionado = null;
 let _numeroSiguiente    = null;
 let _debounceTimeout    = null;
+<<<<<<< HEAD
 let _pagoMixtoActivo    = false;
 let _metodosMixtos      = [];   // [{ metodo, monto, operacion, referencia, url, fileInput }]
 
@@ -205,6 +206,8 @@ async function handleComprobanteFileMixto(idx, file) {
     if (fnameEl) fnameEl.textContent = 'Sin imagen';
   }
 }
+=======
+>>>>>>> origin/main
 
 // ── CARGAR LISTADO ────────────────────────────────────────────────────────────
 async function loadVentas(page = 1) {
@@ -258,11 +261,15 @@ function renderTablaVentas(ventas) {
 
     const estadoVentaBadge = v.estado_venta === 'anulada'
       ? '<span class="badge-estado anulada-v">ANULADA</span>'
+<<<<<<< HEAD
       : v.estado_venta === 'pendiente'
         ? '<span class="badge-estado rechazada">PENDIENTE</span>'
         : v.estado_venta === 'registrada'
           ? '<span class="badge-estado registrada">REGISTRADA</span>'
           : '<span class="badge-estado registrada">REGISTRADA</span>';
+=======
+      : '<span class="badge-estado registrada">REGISTRADA</span>';
+>>>>>>> origin/main
 
     const numDoc = v.numero_venta;
     const esAnulada = v.estado_venta === 'anulada';
@@ -325,6 +332,7 @@ async function abrirNuevaVenta() {
   document.getElementById('nv-vuelto-valor').textContent = 'S/ 0.00';
   document.getElementById('nv-vuelto-alerta').style.display = 'none';
   document.getElementById('nv-efectivo-section').style.display = 'block';
+<<<<<<< HEAD
   document.getElementById('nv-grid-pago-oculto').style.display = 'none';
   document.getElementById('nv-pago-operacion').value = '';
   document.getElementById('nv-pago-referencia').value = '';
@@ -353,6 +361,8 @@ async function abrirNuevaVenta() {
   }
   document.getElementById('label-mixto').textContent = 'Activar Pago Mixto';
   document.getElementById('icon-mixto').className    = 'bi bi-layers';
+=======
+>>>>>>> origin/main
   document.getElementById('nv-label-metodo').textContent = 'Efectivo';
 
   renderCarritoModal();
@@ -429,6 +439,7 @@ function usarSinCliente() {
      </div>`;
 }
 
+<<<<<<< HEAD
 async function handleComprobanteFile(file) {
   if (!file) return;
   const tiposPermitidos = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -468,6 +479,8 @@ async function handleComprobanteFile(file) {
   }
 }
 
+=======
+>>>>>>> origin/main
 // Sincronizar label metodo pago
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('nv-metodo-pago')?.addEventListener('change', function () {
@@ -475,10 +488,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById('nv-label-metodo');
     if (el) el.textContent = labels[this.value] || this.value;
     const secEfectivo = document.getElementById('nv-efectivo-section');
+<<<<<<< HEAD
     const secDigital  = document.getElementById('nv-grid-pago-oculto');
     const requierePagoDigital = ['yape', 'transferencia', 'plin'].includes(this.value);
     if (secEfectivo) secEfectivo.style.display = this.value === 'efectivo' ? 'block' : 'none';
     if (secDigital)  secDigital.style.display = requierePagoDigital ? 'block' : 'none';
+=======
+    if (secEfectivo) {
+      secEfectivo.style.display = this.value === 'efectivo' ? 'block' : 'none';
+    }
+>>>>>>> origin/main
     calcularVuelto();
   });
 
@@ -642,10 +661,16 @@ function recalcularTotales() {
   const descGen  = Math.abs(parseFloat(document.getElementById('nv-descuento-general')?.value) || 0);
   let   bruto    = 0;
   for (const it of _carritoItems) bruto += it.precio_unitario * it.cantidad - (it.descuento || 0);
+<<<<<<< HEAD
   const total    = Math.max(0, bruto - descGen);
   document.getElementById('nv-total-pagar').textContent = `S/ ${total.toFixed(2)}`;
   calcularVuelto();
   if (_pagoMixtoActivo) actualizarResumenMixto();
+=======
+  const total    = Math.max(0, bruto - descGen); // precio con IGV incluido
+  document.getElementById('nv-total-pagar').textContent = `S/ ${total.toFixed(2)}`;
+  calcularVuelto();
+>>>>>>> origin/main
 }
 
 function calcularVuelto() {
@@ -672,13 +697,18 @@ function vtAlertVenta(msg, tipo) {
 }
 
 async function guardarVenta() {
+<<<<<<< HEAD
   vtAlertVenta('');
+=======
+  vtAlertVenta(''); // limpiar alerta anterior
+>>>>>>> origin/main
 
   if (!_carritoItems.length) {
     vtAlertVenta('Agrega al menos un producto al carrito', 'error');
     return;
   }
 
+<<<<<<< HEAD
   const descGenRaw = parseFloat(document.getElementById('nv-descuento-general')?.value) || 0;
   if (descGenRaw < 0) { vtAlertVenta('El descuento no puede ser negativo', 'error'); return; }
 
@@ -787,12 +817,64 @@ async function guardarVenta() {
     };
   }
 
+=======
+  const metodo_pago = document.getElementById('nv-metodo-pago')?.value;
+  if (!metodo_pago) {
+    vtAlertVenta('Selecciona una forma de pago', 'error');
+    return;
+  }
+
+  const descGenRaw = parseFloat(document.getElementById('nv-descuento-general')?.value) || 0;
+  if (descGenRaw < 0) {
+    vtAlertVenta('El descuento no puede ser negativo', 'error');
+    return;
+  }
+  const descGen      = descGenRaw;
+  const montoRec     = metodo_pago === 'efectivo'
+    ? (parseFloat(document.getElementById('nv-monto-recibido')?.value) || 0)
+    : null;
+
+  if (metodo_pago === 'efectivo') {
+    const totalTexto = document.getElementById('nv-total-pagar')?.textContent || 'S/ 0.00';
+    const total      = parseFloat(totalTexto.replace('S/ ', '')) || 0;
+    if (!montoRec || montoRec <= 0) {
+      vtAlertVenta('Debes ingresar el monto recibido del cliente', 'error');
+      return;
+    }
+    if (montoRec < total) {
+      vtAlertVenta(`El monto recibido (S/ ${montoRec.toFixed(2)}) es menor al total a pagar (S/ ${total.toFixed(2)})`, 'error');
+      return;
+    }
+  }
+
+  const payload = {
+    id_cliente:           _clienteSeleccionado?.id_cliente || null,
+    nombre_cliente_libre: _clienteSeleccionado?._libre
+                          ? `${_clienteSeleccionado.nombre} ${_clienteSeleccionado.apellido}` : null,
+    dni_cliente_libre:    _clienteSeleccionado?._libre ? _clienteSeleccionado.dni : null,
+    metodo_pago,
+    descuento_general:    descGen,
+    observacion:          document.getElementById('nv-observacion')?.value?.trim() || null,
+    monto_recibido:       montoRec,
+    items: _carritoItems.map(it => ({
+      id_pp:           it.id_pp,
+      precio_unitario: it.precio_unitario,
+      cantidad:        it.cantidad,
+      descuento:       it.descuento || 0
+    }))
+  };
+
+>>>>>>> origin/main
   const btn = document.getElementById('btnGuardarVenta');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Procesando...'; }
 
   try {
     const venta = await api('POST', '/api/ventas', payload);
     if (!venta || !venta.id) throw new Error('Respuesta inválida del servidor');
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main
     closeModal('modalNuevaVenta');
     loadVentas();
   } catch (e) {

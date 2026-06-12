@@ -200,12 +200,17 @@ export const createVenta = async (req, res) => {
     await client.query('BEGIN');
     const { id_cliente, nombre_cliente_libre, dni_cliente_libre,
             metodo_pago, descuento_general = 0, observacion, items,
+<<<<<<< HEAD
             monto_recibido, pago_codigo_operacion, pago_referencia, pago_url_comprobante,
             pagos_mixtos } = req.body;
+=======
+            monto_recibido } = req.body;
+>>>>>>> origin/main
 
     if (!items?.length)
       return res.status(400).json({ message: 'Debe agregar al menos un producto' });
 
+<<<<<<< HEAD
     const METODOS_VALIDOS = ['efectivo', 'yape', 'plin', 'transferencia', 'tarjeta'];
     const pagosDigitales  = ['yape', 'transferencia', 'plin'];
     const esMixto         = Array.isArray(pagos_mixtos) && pagos_mixtos.length >= 2;
@@ -227,6 +232,8 @@ export const createVenta = async (req, res) => {
       }
     }
 
+=======
+>>>>>>> origin/main
     // Obtener tipo Nota de Venta por codigo interno 'NV'
     const tcR = await client.query(
       `SELECT id, serie_defecto FROM tipo_comprobante WHERE codigo = 'NV'`
@@ -242,7 +249,11 @@ export const createVenta = async (req, res) => {
     `, [tcNV.serie_defecto]);
     const numeroVenta = `${tcNV.serie_defecto}-${String(numR.rows[0].sig).padStart(6,'0')}`;
 
+<<<<<<< HEAD
     // Verificar stock, reservar productos y capturar snapshots
+=======
+    // Verificar stock y snapshots
+>>>>>>> origin/main
     let subtotalBruto = 0;
     const snapshots = [];
     for (const it of items) {
@@ -253,10 +264,13 @@ export const createVenta = async (req, res) => {
         await client.query('ROLLBACK');
         return res.status(400).json({ message: `Stock insuficiente para presentación ID ${it.id_pp}` });
       }
+<<<<<<< HEAD
       await client.query(
         'UPDATE producto_presentacion SET stock_actual = stock_actual - $1, updated_at = now() WHERE id = $2',
         [it.cantidad, it.id_pp]
       );
+=======
+>>>>>>> origin/main
       const snap = await client.query(`
         SELECT p.nombre||' ('||pr.nombre||')' AS snap
         FROM producto_presentacion pp
@@ -276,6 +290,7 @@ export const createVenta = async (req, res) => {
     const subtotal     = parseFloat((total / 1.18).toFixed(2));
     const igv          = parseFloat((total - subtotal).toFixed(2));
 
+<<<<<<< HEAD
     // Validar suma de pago mixto contra total calculado
     if (esMixto) {
       const sumaMixto = pagos_mixtos.reduce((s, p) => s + parseFloat(p.monto), 0);
@@ -311,18 +326,29 @@ export const createVenta = async (req, res) => {
 
     const metodoPagoVenta = esMixto ? 'mixto' : metodo_pago;
 
+=======
+    const montoRec = (metodo_pago === 'efectivo' && monto_recibido)
+      ? parseFloat(monto_recibido) : null;
+
+>>>>>>> origin/main
     const vR = await client.query(`
       INSERT INTO venta(
         id_tipo_comprobante, serie_comprobante, numero_venta,
         id_usuario_reg, id_cliente, nombre_cliente_libre, dni_cliente_libre,
         metodo_pago, subtotal, igv, descuento_general, total, saldo_pendiente,
+<<<<<<< HEAD
         observacion, monto_recibido, estado_venta,
         pago_codigo_operacion, pago_referencia, pago_url_comprobante
       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+=======
+        observacion, monto_recibido
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13,$14)
+>>>>>>> origin/main
       RETURNING id
     `, [tcNV.id, tcNV.serie_defecto, numeroVenta,
         req.usuario.id,
         id_cliente||null, nombre_cliente_libre||null, dni_cliente_libre||null,
+<<<<<<< HEAD
         metodoPagoVenta, subtotal, igv, descuento_general, total, saldoPendiente,
         observacion||null, montoRec,
         estadoVenta,
@@ -369,6 +395,13 @@ export const createVenta = async (req, res) => {
       `, [id_venta, metodo_pago, pago_codigo_operacion, pago_referencia, total, pago_url_comprobante]);
     }
 
+=======
+        metodo_pago, subtotal, igv, descuento_general, total,
+        observacion||null, montoRec]);
+
+    const id_venta = vR.rows[0].id;
+
+>>>>>>> origin/main
     for (let i = 0; i < items.length; i++) {
       const it  = items[i];
       const sub = parseFloat(((it.precio_unitario * it.cantidad) - (it.descuento||0)).toFixed(2));
@@ -399,6 +432,7 @@ export const createVenta = async (req, res) => {
   }
 };
 
+<<<<<<< HEAD
 // POST /api/ventas/:id/aprobar  (pago digital simple — mantiene compatibilidad)
 export const aprobarVenta = async (req, res) => {
   const client = await pool.connect();
@@ -520,6 +554,8 @@ export const aprobarVerificacion = async (req, res) => {
   }
 };
 
+=======
+>>>>>>> origin/main
 // POST /api/ventas/:id/emitir
 export const emitirComprobante = async (req, res) => {
   try {
@@ -631,6 +667,7 @@ export const anularVenta = async (req, res) => {
       `UPDATE venta SET estado_venta='anulada', anulado_por=$1, updated_at=now() WHERE id=$2`,
       [req.usuario.id, id]
     );
+<<<<<<< HEAD
 
     // Si tenía verificación pendiente, marcarla como rechazada
     await client.query(`
@@ -639,6 +676,8 @@ export const anularVenta = async (req, res) => {
       WHERE id_venta=$2 AND estado=1
     `, [req.usuario.id, id]);
 
+=======
+>>>>>>> origin/main
     await client.query('COMMIT');
 
     const venta = vR.rows[0];
@@ -852,30 +891,44 @@ export const enviarEmailVenta = async (req, res) => {
 };
 
 // GET /api/ventas/verificacion/pagos
+<<<<<<< HEAD
+=======
+// Resumen de ventas con saldo pendiente y cuotas para verificación de cobros
+>>>>>>> origin/main
 export const getVerificacionPagos = async (req, res) => {
   try {
     const { buscar = '', estado = 'todos', page = 1, limit = 15 } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
     const params = [];
     let i = 1;
+<<<<<<< HEAD
 
     // estado: 'pendiente'=1, 'pagado'=2, 'rechazado'=0, 'todos'=1,2
     const filtros = ['vp.estado IN (1, 2)'];  // por defecto mostrar pendientes y aprobados
+=======
+    const filtros = ["v.estado_venta = 'registrada'"];
+>>>>>>> origin/main
 
     if (buscar) {
       filtros.push(`(v.numero_venta ILIKE $${i} OR COALESCE(c.nombre||' '||c.apellido, v.nombre_cliente_libre) ILIKE $${i} OR COALESCE(c.dni, v.dni_cliente_libre) ILIKE $${i})`);
       params.push(`%${buscar}%`); i++;
     }
+<<<<<<< HEAD
     if (estado === 'pendiente') {
       filtros[0] = 'vp.estado = 1';
     } else if (estado === 'pagado') {
       filtros[0] = 'vp.estado = 2';
     }
+=======
+    if (estado === 'pendiente')  filtros.push('v.saldo_pendiente > 0');
+    if (estado === 'pagado')     filtros.push('v.saldo_pendiente = 0');
+>>>>>>> origin/main
 
     const where = 'WHERE ' + filtros.join(' AND ');
 
     const result = await pool.query(`
       SELECT
+<<<<<<< HEAD
         vp.id                  AS id_verificacion,
         v.id,
         v.numero_venta,
@@ -893,6 +946,18 @@ export const getVerificacionPagos = async (req, res) => {
         v.descuento_general,
         vp.fecha_registro      AS created_at,
         u.nombre || ' ' || u.apellido AS vendedor,
+=======
+        v.id,
+        v.numero_venta,
+        v.serie_comprobante,
+        tc.nombre            AS tipo_comprobante,
+        v.metodo_pago,
+        v.total,
+        v.saldo_pendiente,
+        v.descuento_general,
+        v.created_at,
+        u.nombre || ' ' || u.apellido  AS vendedor,
+>>>>>>> origin/main
         CASE WHEN v.id_cliente IS NOT NULL
              THEN c.nombre || ' ' || c.apellido
              ELSE v.nombre_cliente_libre END AS cliente,
@@ -903,14 +968,34 @@ export const getVerificacionPagos = async (req, res) => {
             'precio',    d.precio_unitario,
             'subtotal',  d.subtotal
         ) ORDER BY d.id) FROM venta_detalle d WHERE d.id_venta = v.id) AS productos,
+<<<<<<< HEAD
         COUNT(*) OVER() AS total_registros
       FROM verificacion_pago vp
       JOIN venta v ON v.id = vp.id_venta
+=======
+        (SELECT json_agg(json_build_object(
+            'id_cuota',         cv.id_cuota_venta,
+            'num_cuota',        cv.num_cuota,
+            'monto',            cv.monto,
+            'fecha_programada', cv.fecha_programada,
+            'fecha_limite',     cv.fecha_limite,
+            'fecha_pago',       cv.fecha_pago,
+            'metodo_pago',      cv.metodo_pago,
+            'num_comprobante',  cv.num_comprobante,
+            'estado_cuota',     cv.estado_cuota
+        ) ORDER BY cv.num_cuota) FROM cuota_venta cv WHERE cv.id_venta = v.id) AS cuotas,
+        COUNT(*) OVER() AS total_registros
+      FROM venta v
+>>>>>>> origin/main
       JOIN tipo_comprobante tc ON tc.id = v.id_tipo_comprobante
       JOIN usuarios u ON u.id_usuario = v.id_usuario_reg
       LEFT JOIN cliente c ON c.id_cliente = v.id_cliente
       ${where}
+<<<<<<< HEAD
       ORDER BY vp.fecha_registro DESC
+=======
+      ORDER BY v.saldo_pendiente DESC, v.id DESC
+>>>>>>> origin/main
       LIMIT $${i++} OFFSET $${i++}
     `, [...params, Number(limit), offset]);
 

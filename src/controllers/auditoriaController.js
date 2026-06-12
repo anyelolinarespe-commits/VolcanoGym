@@ -10,6 +10,17 @@ export const getAuditoria = async (req, res) => {
         const conds  = [];
         let   i      = 1;
 
+<<<<<<< HEAD
+=======
+const esSuperAdmin = req.usuario?.perfil?.toLowerCase() === 'superadministrador';
+        if (!esSuperAdmin) {
+            conds.push(`a.id_usuario NOT IN (
+                SELECT u2.id_usuario FROM usuarios u2
+                JOIN perfiles p2 ON u2.id_perfil = p2.id_perfil
+                WHERE LOWER(p2.nombre) = 'superadministrador'
+            )`);
+        }
+>>>>>>> origin/main
         if (id_usuario)   { conds.push(`a.id_usuario = $${i++}`);        params.push(Number(id_usuario)); }
         if (accion)        { conds.push(`a.accion = $${i++}`);            params.push(accion.toUpperCase()); }
         if (modulo)        { conds.push(`a.modulo = $${i++}`);            params.push(modulo); }
@@ -22,7 +33,11 @@ export const getAuditoria = async (req, res) => {
                 params.push(idNum);
             }
         } else if (q) {
+<<<<<<< HEAD
             conds.push(`(LOWER(a.descripcion) LIKE $${i} OR LOWER(a.modulo) LIKE $${i} OR LOWER(a.nombre_usuario) LIKE $${i})`);
+=======
+            conds.push(`(LOWER(a.descripcion) LIKE $${i} OR LOWER(a.modulo) LIKE $${i} OR LOWER(COALESCE(u.username, a.nombre_usuario)) LIKE $${i})`);
+>>>>>>> origin/main
             params.push(`%${q.toLowerCase()}%`);
             i++;
         }
@@ -33,7 +48,11 @@ export const getAuditoria = async (req, res) => {
             `SELECT
                 a.id,
                 a.id_usuario,
+<<<<<<< HEAD
                 a.nombre_usuario,
+=======
+                COALESCE(u.username, a.nombre_usuario) AS nombre_usuario,
+>>>>>>> origin/main
                 a.accion,
                 a.modulo,
                 a.descripcion,
@@ -41,6 +60,10 @@ export const getAuditoria = async (req, res) => {
                 a.created_at,
                 COUNT(*) OVER() AS total_registros
              FROM auditoria a
+<<<<<<< HEAD
+=======
+             LEFT JOIN usuarios u ON u.id_usuario = a.id_usuario
+>>>>>>> origin/main
              ${where}
              ORDER BY a.created_at DESC
              LIMIT $${i++} OFFSET $${i++}`,
@@ -76,11 +99,27 @@ export const getModulosAuditoria = async (req, res) => {
 // GET /api/auditoria/usuarios-lista  →  para el select de filtro en frontend
 export const getUsuariosAuditoria = async (req, res) => {
     try {
+<<<<<<< HEAD
         const result = await pool.query(
             `SELECT DISTINCT a.id_usuario, a.nombre_usuario
              FROM auditoria a
              WHERE a.id_usuario IS NOT NULL
              ORDER BY a.nombre_usuario`
+=======
+        const esSuperAdmin = req.usuario?.perfil?.toLowerCase() === 'superadministrador';
+        const superAdminCond = esSuperAdmin ? '' : `AND a.id_usuario NOT IN (
+            SELECT u2.id_usuario FROM usuarios u2
+            JOIN perfiles p2 ON u2.id_perfil = p2.id_perfil
+            WHERE LOWER(p2.nombre) = 'superadministrador'
+        )`;
+        const result = await pool.query(
+            `SELECT DISTINCT a.id_usuario, COALESCE(u.username, a.nombre_usuario) AS nombre_usuario
+             FROM auditoria a
+             LEFT JOIN usuarios u ON u.id_usuario = a.id_usuario
+             WHERE a.id_usuario IS NOT NULL
+             ${superAdminCond}
+             ORDER BY nombre_usuario`
+>>>>>>> origin/main
         );
         res.json(result.rows);
     } catch (err) {

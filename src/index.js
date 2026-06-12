@@ -28,10 +28,21 @@ import auditoriaRoutes from './routes/auditoriaRoutes.js';
 dotenv.config();
 
 // ── Migraciones automáticas al iniciar ──────────────────────────────────────
+<<<<<<< HEAD
 
 pool.query(`ALTER TABLE membresia ADD COLUMN IF NOT EXISTS fecha_congelamiento DATE`)
   .catch(e => console.warn('Migration fecha_congelamiento:', e.message));
 
+=======
+pool.query(`ALTER TABLE membresia ADD COLUMN IF NOT EXISTS fecha_congelamiento DATE`)
+  .catch(e => console.warn('Migration fecha_congelamiento:', e.message));
+
+// Permitir fecha_fin = fecha_inicio (planes de 1 día)
+pool.query(`ALTER TABLE membresia DROP CONSTRAINT IF EXISTS chk_memb_fechas`)
+  .then(() => pool.query(`ALTER TABLE membresia ADD CONSTRAINT chk_memb_fechas CHECK (fecha_fin >= fecha_inicio)`))
+  .catch(e => console.warn('Migration chk_memb_fechas:', e.message));
+
+>>>>>>> origin/main
 // Tabla central de auditoría
 pool.query(`
   CREATE TABLE IF NOT EXISTS auditoria (
@@ -57,6 +68,7 @@ pool.query(`CREATE INDEX IF NOT EXISTS idx_auditoria_accion   ON auditoria(accio
 // Campos de auditoría faltantes en tablas existentes
 pool.query(`ALTER TABLE venta            ADD COLUMN IF NOT EXISTS anulado_por    INTEGER REFERENCES usuarios(id_usuario)`)
   .catch(e => console.warn('Migration venta.anulado_por:', e.message));
+<<<<<<< HEAD
 pool.query(`ALTER TABLE venta            ADD COLUMN IF NOT EXISTS pago_codigo_operacion VARCHAR(60)`)
   .catch(e => console.warn('Migration venta.pago_codigo_operacion:', e.message));
 pool.query(`ALTER TABLE venta            ADD COLUMN IF NOT EXISTS pago_referencia VARCHAR(150)`)
@@ -69,6 +81,8 @@ pool.query(`ALTER TABLE venta            ADD COLUMN IF NOT EXISTS verificado_por
   .catch(e => console.warn('Migration venta.verificado_por:', e.message));
 pool.query(`ALTER TABLE venta            ADD COLUMN IF NOT EXISTS verificado_at TIMESTAMPTZ`)
   .catch(e => console.warn('Migration venta.verificado_at:', e.message));
+=======
+>>>>>>> origin/main
 pool.query(`ALTER TABLE membresia        ADD COLUMN IF NOT EXISTS eliminado_por  INTEGER REFERENCES usuarios(id_usuario)`)
   .catch(e => console.warn('Migration membresia.eliminado_por:', e.message));
 pool.query(`ALTER TABLE plan_membresia   ADD COLUMN IF NOT EXISTS creado_por     INTEGER REFERENCES usuarios(id_usuario)`)

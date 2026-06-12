@@ -19,7 +19,11 @@ function addMeses(fechaStr, meses) {
 /** Calcula fecha fin según la unidad del plan (dias / meses / anos) */
 function calcFechaFin(fechaStr, valor, unidad) {
     const d = new Date(fechaStr + 'T12:00:00');
+<<<<<<< HEAD
     if (unidad === 'dias')      d.setDate(d.getDate() + valor);
+=======
+    if (unidad === 'dias')      d.setDate(d.getDate() + valor - 1); // N días inclusivos (fecha_fin < HOY expira al día siguiente)
+>>>>>>> origin/main
     else if (unidad === 'anos') d.setFullYear(d.getFullYear() + valor);
     else                        d.setMonth(d.getMonth() + valor);
     return d.toISOString().split('T')[0];

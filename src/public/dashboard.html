@@ -42,6 +42,13 @@
           <i class="bi bi-moon-stars" id="themeIcon"></i>
           <span id="themeLabel">Oscuro</span>
         </button>
+<<<<<<< HEAD
+=======
+        <button class="fullscreen-btn" id="fullscreenBtn" title="Pantalla completa">
+          <i class="bi bi-fullscreen" id="fullscreenIcon"></i>
+          <span id="fullscreenLabel">Pantalla completa</span>
+        </button>
+>>>>>>> origin/main
         <span style="font-size:13px;color:#666">Bienvenido,</span>
         <span class="user-badge" id="topbarUser">—</span>
         <button class="btn-logout-mobile" id="btnLogoutMobile" title="Cerrar sesión">
@@ -618,9 +625,15 @@
           <input type="text" id="vpBuscar" class="form-control" placeholder="Buscar por N° venta, cliente o DNI..."
             style="max-width:280px" oninput="vpBuscarTimer()">
           <select id="vpEstado" class="form-control" style="max-width:160px" onchange="vpCargar(1)">
+<<<<<<< HEAD
             <option value="pendiente" selected>Pendientes</option>
             <option value="todos">Todos</option>
             <option value="pagado">Aprobados</option>
+=======
+            <option value="todos">Todos</option>
+            <option value="pendiente">Con saldo pendiente</option>
+            <option value="pagado">Pagados</option>
+>>>>>>> origin/main
           </select>
           <button class="btn-save" onclick="vpCargar(1)" style="background:#1565c0">
             <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
@@ -637,6 +650,7 @@
               <tr>
                 <th>N° Venta</th>
                 <th>Cliente</th>
+<<<<<<< HEAD
                 <th>Productos</th>
                 <th style="text-align:right">Total</th>
                 <th>N° Operación</th>
@@ -649,6 +663,22 @@
             </thead>
             <tbody id="vpTbody">
               <tr><td colspan="10" class="cargando">Cargando...</td></tr>
+=======
+                <th>DNI</th>
+                <th>Productos</th>
+                <th style="text-align:right">Total</th>
+                <th style="text-align:right">Pagado</th>
+                <th style="text-align:right">Saldo</th>
+                <th>Método</th>
+                <th>Vendedor</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th>Cuotas</th>
+              </tr>
+            </thead>
+            <tbody id="vpTbody">
+              <tr><td colspan="12" class="cargando">Cargando...</td></tr>
+>>>>>>> origin/main
             </tbody>
           </table>
         </div>
@@ -813,7 +843,11 @@
           <label class="form-label">Número de Venta</label>
           <input type="text" id="nv-numero" class="form-control" readonly>
         </div>
+<<<<<<< HEAD
         <div id="nv-forma-pago-container">
+=======
+        <div>
+>>>>>>> origin/main
           <label class="form-label">Forma de Pago</label>
           <select id="nv-metodo-pago" class="form-control">
             <option value="efectivo">Efectivo</option>
@@ -842,6 +876,7 @@
           ⚠ El monto recibido es menor al total
         </div>
       </div>
+<<<<<<< HEAD
       <div style="display:none" id="nv-grid-pago-oculto">
         <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:16px 18px;margin-top:8px">
           <div style="font-size:11px;font-weight:700;color:#e65100;text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px">
@@ -900,6 +935,9 @@
         <div id="nv-mixto-resumen" style="margin-top:12px;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;background:#fff3cd;color:#856404;border:1px solid #ffe082;display:flex;align-items:center;gap:8px">
           <i class="bi bi-calculator"></i> Completa los montos para continuar
         </div>
+=======
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;display:none" id="nv-grid-pago-oculto">
+>>>>>>> origin/main
       </div>
 
       <!-- PRODUCTOS -->
@@ -1432,6 +1470,51 @@
     padding:10px; font-family:Arial,sans-serif;
   }
 }
+<<<<<<< HEAD
+=======
+
+/* ── DARK MODE: modales ventas ── */
+body[data-theme="dark"] .vt-modal-shell,
+body[data-theme="dark"] .vt-detalle-shell { background: #1a1a1a; }
+body[data-theme="dark"] .vt-modal-body,
+body[data-theme="dark"] .vt-detalle-body { color: #f0f0f0; }
+body[data-theme="dark"] .vt-modal-footer { background: #1a1a1a; border-top-color: #2e2e2e; }
+body[data-theme="dark"] .vt-detalle-footer { background: #222; border-top-color: #2e2e2e; }
+body[data-theme="dark"] .vt-section-label { color: #64b5f6; border-bottom-color: #1e3a5f; }
+body[data-theme="dark"] .vt-dv-card { background: #1e1e2e; border-color: #2e2e3e; }
+body[data-theme="dark"] .vt-dv-label { color: #64b5f6; }
+body[data-theme="dark"] .vt-dv-tabla tbody td { border-bottom-color: #2e2e3e; color: #ddd; }
+body[data-theme="dark"] .vt-dv-tabla tbody tr:hover td { background: #1e2a3a; }
+body[data-theme="dark"] .vt-dv-totales { background: #1e1e2e; border-color: #2e2e3e; }
+body[data-theme="dark"] .vt-dv-total-row { color: #bbb; }
+body[data-theme="dark"] .vt-dv-total-final { color: #f0f0f0; }
+body[data-theme="dark"] .vt-dv-total-final span:last-child { color: #64b5f6; }
+body[data-theme="dark"] .vt-dv-vendedor { background: #1e2a3a; color: #aaa; border-left-color: #64b5f6; }
+body[data-theme="dark"] .vt-total-box { background: linear-gradient(135deg,#1a2a3a,#1e2a44); border-color: #1e3a5f; }
+body[data-theme="dark"] .vt-totales-grid { background: #1e1e2e; }
+body[data-theme="dark"] .vt-total-row { color: #bbb; }
+body[data-theme="dark"] .vt-total-final { color: #f0f0f0; }
+body[data-theme="dark"] .vt-tabla-carrito tbody td { border-bottom-color: #2e2e3e; color: #ddd; }
+body[data-theme="dark"] .vt-tabla-carrito tbody tr:hover td { background: #1e2a3a; }
+body[data-theme="dark"] .nv-cliente-found.found { background: #0d2318; border-color: #2a5a3a; color: #4ade80; }
+body[data-theme="dark"] .nv-cliente-found.api { background: #1a2e3a; border-color: #1e3a5f; color: #90caf9; }
+body[data-theme="dark"] .nv-cliente-found small { color: #9ca3af; }
+body[data-theme="dark"] .nv-cliente-not-found { background: #2a2000; border-color: #5a4a20; color: #fcd34d; }
+body[data-theme="dark"] #nv-efectivo-section { background: #0d2318 !important; border-color: #2a5a3a !important; color: #ddd; }
+body[data-theme="dark"] #nv-vuelto-box { background: #1e1e1e !important; border-color: #2a5a3a !important; }
+body[data-theme="dark"] .vt-btn-sin-cliente { background: #1e1e1e; border-color: #333; color: #ccc; }
+body[data-theme="dark"] .vt-tipo-comp-card { background: #1e1e1e; border-color: #333; color: #ddd; }
+body[data-theme="dark"] .vt-tipo-comp-card.selected { background: #0d2318; border-color: #2e7d32; }
+body[data-theme="dark"] .prod-card-venta { border-color: #2e2e3e; }
+body[data-theme="dark"] .prod-header-venta { background: #1e1e2e; }
+body[data-theme="dark"] .prod-header-venta strong { color: #f0f0f0; }
+body[data-theme="dark"] .pp-item:hover { background: #1e2a3a; }
+body[data-theme="dark"] .pp-nombre { color: #ddd; }
+body[data-theme="dark"] .precio-final { color: #f0f0f0; }
+body[data-theme="dark"] .qty-control button { background: #2e2e2e; color: #ccc; }
+body[data-theme="dark"] .qty-control button:hover { background: #3a3a3a; }
+body[data-theme="dark"] .qty-input { background: #1e1e1e; border-color: #333; color: #f0f0f0; }
+>>>>>>> origin/main
 </style>
 
 <style>
@@ -3251,7 +3334,11 @@
         </div>
 
         <!-- Contacto 2 -->
+<<<<<<< HEAD
         <div style="background:#f7f8fc;border:1.5px solid #fce4ec;border-radius:10px;padding:12px">
+=======
+        <div id="memb-contacto2-card" style="background:#f7f8fc;border:1.5px solid #fce4ec;border-radius:10px;padding:12px">
+>>>>>>> origin/main
           <div style="font-size:11px;font-weight:700;color:#c62828;margin-bottom:8px">
             <i class="bi bi-2-circle-fill me-1"></i> Contacto 2
             <span style="font-size:10px;font-weight:400;color:#9199ab">(opcional)</span>
@@ -3640,6 +3727,56 @@
     .memb-modal-cuerpo { max-height: 100vh; border-radius: 0; }
     .memb-pasos-indicador .memb-paso-label { display: none; }
   }
+<<<<<<< HEAD
+=======
+
+  /* ── DARK MODE: modal nueva membresía ── */
+  body[data-theme="dark"] #memb-modal-overlay {
+    --mc-borde:       #2e2e3e;
+    --mc-fondo-suave: #222;
+    --mc-texto:       #f0f0f0;
+    --mc-texto-suave: #9aa3af;
+  }
+  body[data-theme="dark"] .memb-modal-cuerpo { background: #1a1a1a; }
+  body[data-theme="dark"] .memb-modal-header,
+  body[data-theme="dark"] .memb-paso-acciones { background: #1a1a1a; }
+  body[data-theme="dark"] .memb-btn-secundario { background: #222; color: #ccc; }
+  body[data-theme="dark"] .memb-btn-secundario:hover { background: #2a2a2a; }
+  body[data-theme="dark"] .memb-plan-card { background: #1e1e2e; border-color: #2e2e3e; }
+  body[data-theme="dark"] .memb-plan-card.seleccionado { background: #1a2e4a; }
+  body[data-theme="dark"] .memb-plan-card-precio { color: #fff; }
+  body[data-theme="dark"] .memb-form-grupo input,
+  body[data-theme="dark"] .memb-form-grupo select {
+    background: #222; border-color: #333; color: #f0f0f0;
+  }
+  body[data-theme="dark"] .memb-form-grupo label { color: #aaa; }
+  body[data-theme="dark"] .memb-metodo-btn {
+    background: #1e1e2e; border-color: #2e2e3e; color: #ddd;
+  }
+  body[data-theme="dark"] .memb-metodo-btn.activo { background: #1a2e4a; border-color: #1a56db; }
+  body[data-theme="dark"] .memb-input-dni { background: #222; border-color: #333; color: #f0f0f0; }
+  body[data-theme="dark"] #memb-tipo-doc { background: #222 !important; border-color: #333 !important; color: #f0f0f0 !important; }
+  body[data-theme="dark"] .memb-resumen-pago { background: #1e1e2e; }
+  body[data-theme="dark"] .pm-metodo-btn { background: #1e1e2e; border-color: #2e2e3e; color: #ccc; }
+  body[data-theme="dark"] .pm-metodo-btn.activo { background: #1e2040; border-color: #6366f1; color: #a5b4fc; }
+  body[data-theme="dark"] .memb-dni-encontrado { background: #0d2318; color: #4ade80; }
+  body[data-theme="dark"] .memb-dni-nuevo { background: #2a2000; color: #fcd34d; }
+  body[data-theme="dark"] .memb-dni-error { background: #2a0a0a; color: #f87171; }
+  /* ── Contacto 1 y 2 ── */
+  body[data-theme="dark"] #memb-contacto1-card,
+  body[data-theme="dark"] #memb-contacto2-card {
+    background: #1e1e2e !important;
+    border-color: #2e2e3e !important;
+  }
+  body[data-theme="dark"] #memb-contacto1-badge { color: #64b5f6 !important; }
+  body[data-theme="dark"] #memb-contacto2-card > div:first-child { color: #f48fb1 !important; }
+  body[data-theme="dark"] #memb-contacto2-card > div:first-child span { color: #9aa3af !important; }
+  /* ── Input monto total (readonly con inline style) ── */
+  body[data-theme="dark"] #memb-monto-total { background: #2a2a2a !important; color: #aaa !important; }
+  /* ── Resumen pago: texto y fuertes ── */
+  body[data-theme="dark"] .memb-resumen-item strong { color: #f0f0f0; }
+  body[data-theme="dark"] .memb-resumen-total strong { color: #64b5f6; }
+>>>>>>> origin/main
   </style>
 
   <!-- Chart.js para gráficos de balance -->

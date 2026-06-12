@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ===================================================
 # GITIGNORE EXCLUSIVO PARA VOLCANO GYM (Angular + Node)
 # ===================================================
@@ -34,3 +35,12 @@ desktop.ini
 .vscode/.suo
 .idea/
 *.sln
+=======
+.env
+.claude/
+.vscode/
+node_modules/
+*.log
+graphify-out/
+
+>>>>>>> origin/main
