@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Volcano Gym — Acceso</title>
+  <link rel="icon" type="image/png" href="/icono.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Volcano Gym">
+  <meta name="theme-color" content="#e94560">
+  <link rel="apple-touch-icon" href="/icono.png">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0d0d0d;
+      visibility: hidden;
+    }
+
+    /* ─── Left branding panel ─── */
+    .panel-brand {
+      flex: 1;
+      background: linear-gradient(150deg, #1a0505 0%, #2d0a0a 45%, #160303 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 60px 40px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Large circle accents */
+    .panel-brand::before {
+      content: '';
+      position: absolute;
+      width: 700px; height: 700px;
+      border-radius: 50%;
+      border: 1px solid rgba(220,38,38,.12);
+      top: -280px; left: -260px;
+      pointer-events: none;
+    }
+    .panel-brand::after {
+      content: '';
+      position: absolute;
+      width: 500px; height: 500px;
+      border-radius: 50%;
+      border: 1px solid rgba(220,38,38,.08);
+      bottom: -160px; right: -160px;
+      pointer-events: none;
+    }
+
+    /* Radial glow behind logo */
+    .brand-glow {
+      position: absolute;
+      width: 380px; height: 380px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(220,38,38,.18) 0%, transparent 70%);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    /* Floating geometric shapes */
+    .shape {
+      position: absolute;
+      opacity: .07;
+      animation: floatShape linear infinite;
+      pointer-events: none;
+    }
+    .s1 { width:90px;  height:90px;  border:2px solid #dc2626; top:12%;  left:9%;   animation-duration:22s; }
+    .s2 { width:55px;  height:55px;  border:2px solid #dc2626; top:68%;  left:18%;  animation-duration:17s; animation-delay:-6s;  transform:rotate(45deg); }
+    .s3 { width:130px; height:130px; border:2px solid #dc2626; top:25%;  right:7%;  animation-duration:28s; animation-delay:-10s; }
+    .s4 { width:35px;  height:35px;  background:#dc2626;       top:78%;  right:14%; animation-duration:19s; animation-delay:-3s;  border-radius:50%; }
+    .s5 { width:18px;  height:18px;  background:#dc2626;       top:40%;  left:6%;   animation-duration:14s; animation-delay:-8s;  border-radius:50%; }
+
+    @keyframes floatShape {
+      0%   { transform: translateY(0)    rotate(0deg); }
+      50%  { transform: translateY(-28px) rotate(180deg); }
+      100% { transform: translateY(0)    rotate(360deg); }
+    }
+
+    /* Brand content */
+    .brand-logo {
+      font-size: 80px;
+      position: relative; z-index: 1;
+      animation: logoPulse 3.5s ease-in-out infinite;
+      line-height: 1;
+      margin-bottom: 22px;
+    }
+    @keyframes logoPulse {
+      0%, 100% { filter: drop-shadow(0 0 18px rgba(220,38,38,.5)); }
+      50%       { filter: drop-shadow(0 0 38px rgba(220,38,38,.85)); }
+    }
+
+    .brand-name {
+      font-size: 46px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -1.5px;
+      position: relative; z-index: 1;
+      line-height: 1;
+    }
+    .brand-name em {
+      font-style: normal;
+      color: #dc2626;
+    }
+
+    .brand-tag {
+      margin-top: 10px;
+      font-size: 11px;
+      color: rgba(255,255,255,.35);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      position: relative; z-index: 1;
+    }
+
+    .brand-rule {
+      width: 56px; height: 3px;
+      background: linear-gradient(90deg, #dc2626, #7c2020);
+      border-radius: 2px;
+      margin: 32px 0;
+      position: relative; z-index: 1;
+    }
+
+    .brand-pills {
+      display: flex;
+      gap: 12px;
+      position: relative; z-index: 1;
+    }
+    .brand-pill {
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.07);
+      border-radius: 50px;
+      padding: 10px 20px;
+      text-align: center;
+      backdrop-filter: blur(4px);
+    }
+    .brand-pill-val {
+      font-size: 17px;
+      font-weight: 700;
+      color: #dc2626;
+    }
+    .brand-pill-lbl {
+      font-size: 10px;
+      color: rgba(255,255,255,.35);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 2px;
+    }
+
+    .brand-quote {
+      margin-top: 42px;
+      font-size: 13px;
+      color: rgba(255,255,255,.2);
+      text-align: center;
+      font-style: italic;
+      max-width: 280px;
+      line-height: 1.6;
+      position: relative; z-index: 1;
+    }
+
+    /* ─── Right form panel ─── */
+    .panel-form {
+      width: 430px;
+      min-height: 100vh;
+      background: #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 44px;
+      position: relative;
+    }
+
+    /* Subtle top accent line */
+    .panel-form::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, #dc2626, transparent);
+    }
+
+    .form-card { width: 100%; }
+
+    .form-header { margin-bottom: 38px; }
+    .form-header h2 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #f0f0f0;
+      letter-spacing: -.5px;
+    }
+    .form-header p {
+      margin-top: 6px;
+      font-size: 14px;
+      color: #7a7a7a;
+    }
+
+    /* Error alert */
+    .error-box {
+      display: none;
+      background: rgba(220,38,38,.08);
+      border: 1px solid rgba(220,38,38,.25);
+      border-left: 3px solid #dc2626;
+      color: #f87171;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 13px;
+      margin-bottom: 22px;
+    }
+
+    /* Warning alert (perfil inactivo) */
+    .warning-box {
+      display: none;
+      background: rgba(234,179,8,.08);
+      border: 1px solid rgba(234,179,8,.30);
+      border-left: 3px solid #eab308;
+      color: #fde047;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 13px;
+      margin-bottom: 22px;
+      line-height: 1.5;
+    }
+
+    /* Form fields */
+    .fg { margin-bottom: 20px; }
+
+    .fg label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 8px;
+    }
+
+    .input-wrap { position: relative; }
+
+    .fg input {
+      width: 100%;
+      background: #222;
+      border: 1px solid #2e2e2e;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 14px;
+      color: #e0e0e0;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s, background .2s;
+    }
+    .fg input::placeholder { color: #909090; }
+    .fg input:focus {
+      border-color: #dc2626;
+      background: #1e1414;
+      box-shadow: 0 0 0 3px rgba(220,38,38,.1);
+    }
+    .fg input.has-icon { padding-right: 46px; }
+
+    .eye-toggle {
+      position: absolute;
+      right: 14px; top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      color: #909090;
+      line-height: 1;
+      padding: 0;
+      transition: color .2s;
+    }
+    .eye-toggle:hover { color: #c0c0c0; }
+
+    /* Submit button */
+    .btn-submit {
+      width: 100%;
+      margin-top: 10px;
+      padding: 15px;
+      background: #dc2626;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      letter-spacing: .3px;
+      position: relative;
+      overflow: hidden;
+      transition: background .2s, transform .1s, box-shadow .2s;
+    }
+    .btn-submit::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,.08) 0%, transparent 55%);
+      pointer-events: none;
+    }
+    .btn-submit:hover:not(:disabled) {
+      background: #b91c1c;
+      box-shadow: 0 6px 24px rgba(220,38,38,.4);
+      transform: translateY(-1px);
+    }
+    .btn-submit:active:not(:disabled) { transform: translateY(0); }
+    .btn-submit:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+
+    /* Spinner */
+    .spin {
+      display: inline-block;
+      width: 15px; height: 15px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: rotate .65s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    @keyframes rotate { to { transform: rotate(360deg); } }
+
+    /* Footer */
+    .form-foot {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 11px;
+      color: #4a4a4a;
+      letter-spacing: .3px;
+    }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 780px) {
+      .panel-brand { display: none; }
+      .panel-form  { width: 100%; padding: 40px 28px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Left branding panel -->
+<div class="panel-brand">
+  <div class="brand-glow"></div>
+  <div class="shape s1"></div>
+  <div class="shape s2"></div>
+  <div class="shape s3"></div>
+  <div class="shape s4"></div>
+  <div class="shape s5"></div>
+
+  <div class="brand-logo">🌋</div>
+  <div class="brand-name">Volcano<em>Gym</em></div>
+  <div class="brand-tag">Sistema de Gestión</div>
+  <div class="brand-rule"></div>
+
+  <div class="brand-pills">
+    <div class="brand-pill">
+      <div class="brand-pill-val">100+</div>
+      <div class="brand-pill-lbl">Miembros</div>
+    </div>
+    <div class="brand-pill">
+      <div class="brand-pill-val">24/7</div>
+      <div class="brand-pill-lbl">Acceso</div>
+    </div>
+    <div class="brand-pill">
+      <div class="brand-pill-val">5★</div>
+      <div class="brand-pill-lbl">Servicio</div>
+    </div>
+  </div>
+
+  <div class="brand-quote">
+    "El esfuerzo de hoy es el resultado de mañana."
+  </div>
+</div>
+
+<!-- Right form panel -->
+<div class="panel-form">
+  <div class="form-card">
+
+    <div class="form-header">
+      <h2>Bienvenido</h2>
+      <p>Ingresa tus credenciales para continuar</p>
+    </div>
+
+    <div id="mensajeError"   class="error-box"></div>
+    <div id="mensajeWarn"   class="warning-box"></div>
+
+    <div class="fg">
+      <label for="username">Usuario</label>
+      <div class="input-wrap">
+        <input type="text" id="username" placeholder="Usuario" autocomplete="username">
+      </div>
+    </div>
+
+    <div class="fg">
+      <label for="password">Contraseña</label>
+      <div class="input-wrap">
+        <input type="password" id="password" placeholder="Contraseña" autocomplete="off" class="has-icon">
+        <button class="eye-toggle" id="togglePwd" type="button" tabindex="-1" title="Mostrar / ocultar">👁</button>
+      </div>
+    </div>
+
+    <button class="btn-submit" id="btnLogin">Ingresar</button>
+
+    <div class="form-foot">Volcano Gym &copy; 2025 &mdash; Todos los derechos reservados</div>
+  </div>
+</div>
+
+<script src="login.js"></script>
+</body>
+</html>
