@@ -21,6 +21,14 @@ function fmtTel(raw) {
   return (digits.match(/.{1,3}/g) || [digits]).join(sep);
 }
 
+// Primer nombre + 2 apellidos en formato Título (1ª letra mayúscula, resto minúsculas)
+function fmtNombreCard(nombre, apellido) {
+  const toTitle = s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  const n = (nombre  || '').trim().split(/\s+/).filter(Boolean);
+  const a = (apellido || '').trim().split(/\s+/).filter(Boolean);
+  return [...n.slice(0, 1), ...a.slice(0, 2)].map(toTitle).join(' ');
+}
+
 // ── CARGAR CLIENTES ───────────────────────────────────────────────────────────
 async function loadClientes(page = 1) {
   document.getElementById('tbodyClientes').innerHTML =
@@ -144,6 +152,9 @@ function renderClientes(data, pag = null) {
     })();
     const tienePrevias = parseInt(c.total_membresias || 0) > 0;
     const tieneDeuda   = c.memb_saldo > 0 && estadoEfectivo !== 'anulada' && c.id_membresia;
+
+    const _membAccent = { activa:'#4caf50', vencida:'#f44336', congelada:'#2196f3', anulada:'#78909c' };
+    const accentColor  = tieneDeuda ? '#ff9800' : (_membAccent[estadoEfectivo] || '#78909c');
     let btnMemb = '';
 
     if (tieneDeuda) {
@@ -174,26 +185,55 @@ function renderClientes(data, pag = null) {
         </button>`;
     }
 
+    // Versión icon-only del botón membresía (para la card móvil)
+    let btnMembIcon = '';
+    if (tieneDeuda) {
+      btnMembIcon = `<button class="btn-icon btn-cuotas-pagar" title="Pagar deuda"
+        onclick="openModalCuotas(${c.id_membresia}, '${_nom}')">
+        <i class="bi bi-cash-coin"></i>
+      </button>`;
+    } else if (estadoEfectivo === 'activa') {
+      btnMembIcon = `<button class="btn-icon" title="Renovar"
+        style="background:#e8f5e9;color:#2e7d32;border-color:#a7f3d0"
+        onclick="abrirModalAccionMemb(${c.id_cliente},${c.id_membresia||'null'},'${_nom}','${estadoEfectivo}')">
+        <i class="bi bi-arrow-repeat"></i>
+      </button>`;
+    } else if (estadoEfectivo === 'congelada') {
+      btnMembIcon = `<button class="btn-icon" title="Congelada"
+        style="background:#e3f2fd;color:#1565c0;border-color:#90caf9"
+        onclick="abrirModalAccionMemb(${c.id_cliente},${c.id_membresia||'null'},'${_nom}','${estadoEfectivo}')">
+        <i class="bi bi-snow"></i>
+      </button>`;
+    } else {
+      btnMembIcon = `<button class="btn-icon" title="Matricular"
+        onclick="matricularCliente(${c.id_cliente})">
+        <i class="bi bi-person-plus"></i>
+      </button>`;
+    }
+    const saldoHtml = tieneDeuda
+      ? `<div class="cl-saldo">S/ ${parseFloat(c.memb_saldo).toFixed(2)}</div>`
+      : '';
+
     return `<tr style="cursor:pointer" ondblclick="editCliente(${c.id_cliente})">
-      <td>
+      <td class="cl-dt">
         <button class="btn-cl-ver" title="Ver historial del cliente"
           onclick="verHistorialCliente(${c.id_cliente})">
           <i class="bi bi-eye"></i>
         </button>
       </td>
-      <td style="max-width:160px">
+      <td class="cl-dt" style="max-width:160px">
         <strong style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
           title="${c.nombre} ${c.apellido}">${_nomCorto}</strong>
       </td>
-      <td><code>${c.dni}</code></td>
-      <td style="white-space:nowrap">${fmtTel(c.celular || c.telefono)}</td>
-      <td style="font-size:12px;color:#666">${formatFechaCorta(c.fecha_registro)}</td>
-      <td>${planTag}</td>
-      <td style="font-size:12px">${vence}</td>
-      <td>${estadoBadge}</td>
-      <td>${tipoTag}</td>
-      <td><span class="asesor-tag">${asesor}</span></td>
-      <td ondblclick="event.stopPropagation()">
+      <td class="cl-dt"><code>${c.dni}</code></td>
+      <td class="cl-dt" style="white-space:nowrap">${fmtTel(c.celular || c.telefono)}</td>
+      <td class="cl-dt" style="font-size:12px;color:#666">${formatFechaCorta(c.fecha_registro)}</td>
+      <td class="cl-dt">${planTag}</td>
+      <td class="cl-dt" style="font-size:12px">${vence}</td>
+      <td class="cl-dt">${estadoBadge}</td>
+      <td class="cl-dt">${tipoTag}</td>
+      <td class="cl-dt"><span class="asesor-tag">${asesor}</span></td>
+      <td class="cl-dt" ondblclick="event.stopPropagation()">
         <div style="display:flex;gap:5px;align-items:center">
         ${btnMemb}
         <button class="btn-icon" title="Editar cliente" onclick="editCliente(${c.id_cliente})">
@@ -203,6 +243,58 @@ function renderClientes(data, pag = null) {
           onclick="confirmarEliminarCliente(${c.id_cliente},'${(c.nombre+' '+c.apellido).replace(/'/g,"\\'")}')">
           <i class="bi bi-trash"></i>
         </button>
+        </div>
+      </td>
+      <td class="cl-mb" colspan="11">
+        <div class="cl-card" style="border-left:4px solid ${accentColor}">
+          <div class="cl-top-row">
+            <div class="cl-hdr">
+              <div class="cl-nombre">${fmtNombreCard(c.nombre, c.apellido)}</div>
+              ${c.plan_nombre && estadoEfectivo !== 'anulada' ? `<div class="cl-plan">${planTag}</div>` : ''}
+            </div>
+            <div class="cl-aside">
+              ${saldoHtml}
+              ${estadoBadge}
+            </div>
+          </div>
+          <div class="cl-body">
+            <div class="cl-kv-pair">
+              <span class="memb-lbl">DNI</span>
+              <span class="memb-val memb-val-dni">${c.dni || '—'}</span>
+              <span class="memb-lbl">CEL</span>
+              <span class="memb-val">${fmtTel(c.celular || c.telefono)}</span>
+            </div>
+            <div class="cl-kv-pair">
+              <span class="memb-lbl">REG.</span>
+              <span class="memb-val">${formatFechaCorta(c.fecha_registro)}</span>
+              <span class="memb-lbl">VENCE</span>
+              <span class="memb-val">${vence}</span>
+            </div>
+            <div class="cl-kv-pair">
+              <span class="memb-lbl">TIPO</span>
+              <span class="memb-val">${tipoTag}</span>
+              <span class="memb-lbl">ASESOR</span>
+              <span class="memb-val"><span class="asesor-tag">${asesor}</span></span>
+            </div>
+          </div>
+          <div class="cl-actions">
+            <button class="btn-icon" title="Ver historial"
+              style="color:#1e88e5;border-color:#90caf9"
+              onclick="verHistorialCliente(${c.id_cliente})">
+              <i class="bi bi-eye"></i>
+            </button>
+            ${btnMembIcon}
+            <button class="btn-icon" title="Editar cliente"
+              style="border:1.5px solid #f59e0b;color:#f59e0b"
+              onclick="editCliente(${c.id_cliente})">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn-icon" title="Eliminar cliente"
+              style="color:#e53935;border-color:#ef9a9a"
+              onclick="confirmarEliminarCliente(${c.id_cliente},'${(c.nombre+' '+c.apellido).replace(/'/g,"\\'")}')">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
         </div>
       </td>
     </tr>`;
@@ -830,12 +922,13 @@ function renovarCliente(idCliente) {
 async function verHistorialCliente(idCliente) {
   if (!document.getElementById('modalHistorialCliente')) {
     document.body.insertAdjacentHTML('beforeend', _buildModalHistorial());
-    if (!document.getElementById('estilosHistorial')) {
-      const style = document.createElement('style');
-      style.id = 'estilosHistorial';
-      style.textContent = _estilosHistorial();
-      document.head.appendChild(style);
+    let _styleEl = document.getElementById('estilosHistorial');
+    if (!_styleEl) {
+      _styleEl = document.createElement('style');
+      _styleEl.id = 'estilosHistorial';
+      document.head.appendChild(_styleEl);
     }
+    _styleEl.textContent = _estilosHistorial();
   }
 
   const modal = document.getElementById('modalHistorialCliente');
@@ -908,6 +1001,14 @@ function _renderHistorial(data) {
   document.getElementById('hcTelefono').innerHTML = _tel ? `📞 ${fmtTel(_tel)}` : '';
   document.getElementById('hcRegistro').textContent = `Registrado: ${formatFechaLargaHist(cliente.fecha_registro)}`;
   document.getElementById('hcTotalPagado').textContent = `S/ ${parseFloat(total_pagado || 0).toFixed(2)}`;
+
+  // Actualizar subtítulos del menú móvil
+  const _mbSub = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+  _mbSub('hcMbSubMemb',   membresias.length + ' matrícula' + (membresias.length !== 1 ? 's' : ''));
+  _mbSub('hcMbSubVentas', ventas?.length ? ventas.length + ' venta' + (ventas.length !== 1 ? 's' : '') : 'Sin ventas');
+  _mbSub('hcMbSubAsist',  asistencias?.length ? asistencias.length + ' día' + (asistencias.length !== 1 ? 's' : '') + ' asistido' + (asistencias.length !== 1 ? 's' : '') : 'Sin registros');
+  _mbSub('hcMbSubCaja',   'S/ ' + parseFloat(total_pagado||0).toFixed(2) + ' pagado');
+  _mbSub('hcMbTotalRow',  'S/ ' + parseFloat(total_pagado||0).toFixed(2));
 
   // ── Membresías ──
   // Actualizar contador en el título de la sección
@@ -1161,11 +1262,14 @@ function _renderHistorial(data) {
   _renderCalendarioAsist();
 
   // ── Flujo de caja ──
-  const contCaja = document.getElementById('hcBodyCaja');
+  const contCaja      = document.getElementById('hcBodyCaja');
+  const contCajaTotal = document.getElementById('hcCajaTotalRow');
   if (!flujo_caja.length) {
     contCaja.innerHTML = '<div class="hc-empty">Sin pagos registrados</div>';
+    if (contCajaTotal) contCajaTotal.style.display = 'none';
   } else {
     contCaja.innerHTML = `
+      <div style="overflow-x:auto">
       <table class="hc-table">
         <thead><tr>
           <th>Fecha y Hora</th><th>Concepto / Referencia</th><th>Método de Pago</th><th>Monto Pagado</th>
@@ -1195,10 +1299,12 @@ function _renderHistorial(data) {
           }).join('')}
         </tbody>
       </table>
-      <div class="hc-total-row">
-        TOTAL PAGADO POR EL CLIENTE (EN ESTE PERIODO):
-        <strong style="color:#c62828;margin-left:8px">S/ ${parseFloat(total_pagado||0).toFixed(2)}</strong>
       </div>`;
+    if (contCajaTotal) {
+      contCajaTotal.innerHTML = `TOTAL PAGADO POR EL CLIENTE (EN ESTE PERIODO):
+        <strong style="color:#c62828;margin-left:8px">S/ ${parseFloat(total_pagado||0).toFixed(2)}</strong>`;
+      contCajaTotal.style.display = '';
+    }
   }
 
   setTimeout(() => {
@@ -1293,10 +1399,242 @@ function verBoletaVenta(idVenta) {
   }
 }
 
+// ── NAVEGACIÓN MÓVIL DEL HISTORIAL ───────────────────────────────────────────
+
+function hcNavToSection(key) {
+  if (!_historialActual) return;
+  const { membresias, ventas, asistencias, flujo_caja, total_pagado } = _historialActual;
+
+  const meta = {
+    memb:   { title: 'Matrículas',   icon: 'bi-person-badge',   color: '#7c4dff' },
+    ventas: { title: 'Ventas',        icon: 'bi-cart3',           color: '#e65100' },
+    asist:  { title: 'Asistencias',   icon: 'bi-calendar-check', color: '#26a69a' },
+    caja:   { title: 'Flujo de Caja', icon: 'bi-cash-stack',     color: '#c62828' },
+  };
+  const s = meta[key];
+  if (!s) return;
+
+  const titleEl = document.getElementById('hcMbSectionTitle');
+  if (titleEl) titleEl.innerHTML = '<i class="bi ' + s.icon + ' me-2" style="color:' + s.color + '"></i>' + s.title;
+
+  const searchEl = document.getElementById('hcMbSearch');
+  if (searchEl) searchEl.value = '';
+
+  const slot = document.getElementById('hcMobileContentSlot');
+  if (!slot) return;
+
+  if (key === 'memb')        slot.innerHTML = _hcMbRenderMemb(membresias);
+  else if (key === 'ventas') slot.innerHTML = _hcMbRenderVentas(ventas);
+  else if (key === 'asist')  slot.innerHTML = _hcMbRenderAsist(asistencias);
+  else if (key === 'caja')   slot.innerHTML = _hcMbRenderCaja(flujo_caja, total_pagado);
+
+  const mainBox    = document.getElementById('hcMainBox');
+  const sectionBox = document.getElementById('hcSectionBox');
+  if (mainBox)    mainBox.style.display = 'none';
+  if (sectionBox) { sectionBox.style.display = 'flex'; sectionBox.dataset.section = key; }
+  slot.scrollTop = 0;
+
+  // La sección necesita su propio slot en el historial (separado del modal padre)
+  // para que back cierre solo la sección y no todo el historial.
+  if (typeof _navOpen === 'function') {
+    history.pushState({ modal: true }, '', '/dashboard');
+    _navOpen('hcSectionBox', _hcSectionClose);
+  }
+}
+
+// Cierre visual del sub-view (sin tocar el stack — lo hace hcNavBack o el popstate)
+function _hcSectionClose() {
+  const sectionBox = document.getElementById('hcSectionBox');
+  const mainBox    = document.getElementById('hcMainBox');
+  if (sectionBox) sectionBox.style.display = 'none';
+  if (mainBox)    mainBox.style.display = '';
+}
+
+function hcNavBack() {
+  _hcSectionClose();
+  // Sincronizar el stack cuando el usuario cierra manualmente (flecha ←)
+  if (typeof _navClose === 'function') _navClose('hcSectionBox');
+}
+
+function hcMbFilter() {
+  const q = (document.getElementById('hcMbSearch')?.value || '').toLowerCase().trim();
+  document.querySelectorAll('#hcMobileContentSlot .hcmb-card').forEach(card => {
+    card.style.display = (!q || card.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
+}
+
+function hcMbToggleCuotas(idx) {
+  const row  = document.getElementById('hcMbCuotas_' + idx);
+  const icon = document.getElementById('hcMbCuotasIcon_' + idx);
+  if (!row) return;
+  const open = row.style.display !== 'none';
+  row.style.display = open ? 'none' : '';
+  if (icon) icon.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+function _hcMbRenderMemb(membresias) {
+  if (!membresias || !membresias.length)
+    return '<div class="hcmb-empty">Sin matrículas registradas</div>';
+
+  const estadoAccent = { activa:'#4caf50', vencida:'#f44336', congelada:'#2196f3', anulada:'#78909c' };
+  const estadoMap = {
+    activa:    { cls:'hc-badge-activa',    label:'ACTIVA'    },
+    vencida:   { cls:'hc-badge-vencida',   label:'VENCIDA'   },
+    congelada: { cls:'hc-badge-congelada', label:'CONGELADA' },
+    anulada:   { cls:'hc-badge-anulada',   label:'ANULADA'   },
+  };
+  const tipoLabel = { nuevo:'Nuevo ingreso', renovacion:'Renovación', interdiario:'Interdiario' };
+
+  return [...membresias].sort((a,b) => {
+    const fa = a.fecha_inicio ? new Date(a.fecha_inicio) : new Date(0);
+    const fb = b.fecha_inicio ? new Date(b.fecha_inicio) : new Date(0);
+    return fb - fa;
+  }).map((m, idx) => {
+    const hoyH = new Date(); hoyH.setHours(0,0,0,0);
+    const fechaFinM = m.fecha_fin ? new Date(m.fecha_fin.split('T')[0] + 'T12:00:00') : null;
+    const ef = (m.estado === 'activa' && fechaFinM && fechaFinM < hoyH) ? 'vencida' : m.estado;
+    const badgeInfo = estadoMap[ef] || { cls:'hc-badge-otro', label:(ef||'').toUpperCase() };
+    const accent    = estadoAccent[ef] || '#78909c';
+    const saldoPend = parseFloat(m.saldo_pendiente || 0);
+    const cuotas    = Array.isArray(m.cuotas) ? m.cuotas : [];
+    const montoStr  = m.monto_total ? 'S/ ' + parseFloat(m.monto_total).toFixed(2) : '—';
+
+    const cuotasHtml = cuotas.map(q => {
+      const fPago   = q.fecha_pago ? formatFechaLargaHist(q.fecha_pago) : '—';
+      const metodo  = q.metodo_pago ? q.metodo_pago.charAt(0).toUpperCase() + q.metodo_pago.slice(1) : '—';
+      const eCls    = ({pagado:'hc-badge-activa',pendiente:'hc-badge-otro',vencido:'hc-badge-vencida'})[q.estado_cuota] || 'hc-badge-otro';
+      return '<div class="hcmb-cuota-row">'
+        + '<span class="hcmb-cuota-num">Cuota ' + q.num_cuota + '</span>'
+        + '<span class="hc-badge ' + eCls + '" style="font-size:10px">' + (q.estado_cuota||'—') + '</span>'
+        + '<span class="hcmb-cuota-info">S/ ' + parseFloat(q.monto||0).toFixed(2) + ' · ' + metodo + ' · ' + fPago + '</span>'
+        + '</div>';
+    }).join('');
+
+    return '<div class="hcmb-card" style="border-left:4px solid ' + accent + '">'
+      + '<div class="hcmb-card-top">'
+        + '<div class="hcmb-card-title">' + (m.plan_nombre||'—') + '</div>'
+        + '<span class="hc-badge ' + badgeInfo.cls + '">' + badgeInfo.label + '</span>'
+      + '</div>'
+      + '<div class="hcmb-card-sub">#' + (idx+1) + ' · ' + (tipoLabel[m.tipo_ingreso] || m.tipo_ingreso || '—') + '</div>'
+      + '<div class="hcmb-kv-list">'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">PERÍODO</span><span class="hcmb-val">' + formatFechaLargaHist(m.fecha_inicio) + ' → ' + formatFechaLargaHist(m.fecha_fin) + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">MONTO</span><span class="hcmb-val">' + montoStr + (saldoPend > 0 ? ' <span style="color:#e53935;font-size:12px"> · Debe S/' + saldoPend.toFixed(2) + '</span>' : ' <span style="color:#4caf50;font-size:12px"> · Al día ✓</span>') + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">ASESOR</span><span class="hcmb-val">' + (m.asesor||'—') + '</span></div>'
+      + '</div>'
+      + '<div class="hcmb-card-foot">'
+        + (cuotas.length
+            ? '<button class="hcmb-cuotas-btn" onclick="hcMbToggleCuotas(' + idx + ')"><i class="bi bi-chevron-down" id="hcMbCuotasIcon_' + idx + '" style="transition:transform .2s"></i> ' + cuotas.length + ' cuota(s)</button>'
+            : '<span style="color:#bbb;font-size:13px">Sin cuotas</span>')
+        + '<button class="hc-btn-boleta" onclick="verBoletaMembresia(' + m.id_membresia + ')" title="Ver boleta"><i class="bi bi-printer"></i></button>'
+      + '</div>'
+      + (cuotas.length ? '<div id="hcMbCuotas_' + idx + '" style="display:none" class="hcmb-cuotas-list">' + cuotasHtml + '</div>' : '')
+      + '</div>';
+  }).join('');
+}
+
+function _hcMbRenderVentas(ventas) {
+  if (!ventas || !ventas.length)
+    return '<div class="hcmb-empty">Sin ventas registradas</div>';
+
+  const sunatAccent = { sin_emitir:'#e65100', enviado:'#1565c0', aceptado:'#2e7d32', rechazado:'#c62828', anulado:'#6a1b9a' };
+  const sunatLabel  = { sin_emitir:'Nota de Venta', enviado:'Enviado', aceptado:'Aceptado', rechazado:'Rechazado', anulado:'Anulado' };
+  const sunatBg     = { sin_emitir:'#fff3e0', enviado:'#e3f2fd', aceptado:'#e8f5e9', rechazado:'#fce4ec', anulado:'#f3e5f5' };
+
+  return ventas.map(v => {
+    const fv = v.fecha ? new Date(v.fecha).toLocaleString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+    const metodo = v.metodo_pago ? v.metodo_pago.charAt(0).toUpperCase() + v.metodo_pago.slice(1) : '—';
+    const numDoc = v.serie_electronica && v.numero_electronico
+      ? v.serie_electronica + '-' + String(v.numero_electronico).padStart(6,'0')
+      : (v.numero_venta || '—');
+    const deuda  = parseFloat(v.saldo_pendiente || 0);
+    const accent = sunatAccent[v.estado_sunat] || '#78909c';
+    const lbl    = sunatLabel[v.estado_sunat] || v.estado_sunat || '—';
+    const bg     = sunatBg[v.estado_sunat] || '#f5f5f5';
+
+    return '<div class="hcmb-card" style="border-left:4px solid ' + accent + '">'
+      + '<div class="hcmb-card-top">'
+        + '<div class="hcmb-card-title">' + numDoc + '</div>'
+        + '<span style="background:' + bg + ';color:' + accent + ';font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px;white-space:nowrap">' + lbl + '</span>'
+      + '</div>'
+      + '<div class="hcmb-kv-list">'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">FECHA</span><span class="hcmb-val">' + fv + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">MÉTODO</span><span class="hcmb-val">' + metodo + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">PRODUCTOS</span><span class="hcmb-val">' + (v.productos||'—') + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">TOTAL</span><span class="hcmb-val"><strong>S/ ' + parseFloat(v.monto||0).toFixed(2) + '</strong>' + (deuda > 0 ? ' <span style="color:#e53935;font-size:12px"> · Debe S/' + deuda.toFixed(2) + '</span>' : '') + '</span></div>'
+      + '</div>'
+      + '<div class="hcmb-card-foot">'
+        + '<button class="hcmb-btn-ver" onclick="verBoletaVenta(' + v.id_venta + ')"><i class="bi bi-eye me-1"></i>Ver detalle</button>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function _hcMbRenderAsist(asistencias) {
+  if (!asistencias || !asistencias.length)
+    return '<div class="hcmb-empty">Sin asistencias registradas</div>';
+
+  const grupos = {};
+  asistencias.forEach(a => {
+    const d  = _parseFechaAsist(a);
+    const yr = d.getFullYear(), mo = d.getMonth();
+    const key = yr + '-' + String(mo+1).padStart(2,'0');
+    if (!grupos[key]) {
+      const lbl = new Date(yr,mo,1).toLocaleDateString('es-PE',{month:'long',year:'numeric'});
+      grupos[key] = { label: lbl.charAt(0).toUpperCase() + lbl.slice(1), dias: [] };
+    }
+    grupos[key].dias.push(d);
+  });
+
+  return Object.keys(grupos).sort().reverse().map(key => {
+    const g = grupos[key];
+    const chips = g.dias.sort((a,b)=>b-a).map(d =>
+      '<span class="hcmb-asist-chip">' + d.toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit'}) + '</span>'
+    ).join('');
+    return '<div class="hcmb-card" style="border-left:4px solid #26a69a">'
+      + '<div class="hcmb-card-top">'
+        + '<div class="hcmb-card-title">' + g.label + '</div>'
+        + '<span style="background:#e0f7f4;color:#26a69a;font-size:12px;font-weight:700;padding:2px 10px;border-radius:12px">' + g.dias.length + ' día(s)</span>'
+      + '</div>'
+      + '<div class="hcmb-asist-chips">' + chips + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function _hcMbRenderCaja(flujo_caja, total_pagado) {
+  if (!flujo_caja || !flujo_caja.length)
+    return '<div class="hcmb-empty">Sin pagos registrados</div>';
+
+  const tipoAccent = { MATRICULA:'#7c4dff', VENTA:'#1565c0' };
+  const tipoBg     = { MATRICULA:'#ede7f6', VENTA:'#e3f2fd'  };
+
+  const cards = flujo_caja.map(f => {
+    const fechaHora = f.fecha_hora
+      ? new Date(f.fecha_hora).toLocaleString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})
+      : f.fecha || '—';
+    const metodo = f.metodo_pago ? f.metodo_pago.charAt(0).toUpperCase() + f.metodo_pago.slice(1) : '—';
+    const accent = tipoAccent[f.tipo] || '#78909c';
+    const bg     = tipoBg[f.tipo]     || '#f5f5f5';
+
+    return '<div class="hcmb-card" style="border-left:4px solid ' + accent + '">'
+      + '<div class="hcmb-card-top">'
+        + '<div class="hcmb-card-title">' + (f.concepto||'—') + '</div>'
+        + '<span style="background:' + bg + ';color:' + accent + ';font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px">' + (f.tipo||'—') + '</span>'
+      + '</div>'
+      + '<div class="hcmb-kv-list">'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">FECHA</span><span class="hcmb-val">' + fechaHora + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">MÉTODO</span><span class="hcmb-val">' + metodo + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">MONTO</span><span class="hcmb-val"><strong style="color:#0f3460">S/ ' + parseFloat(f.monto_pagado||0).toFixed(2) + '</strong></span></div>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+
+  return cards + '<div class="hcmb-total-footer">Total pagado: <strong>S/ ' + parseFloat(total_pagado||0).toFixed(2) + '</strong></div>';
+}
+
 function _buildModalHistorial() {
   return `
   <div class="modal-overlay" id="modalHistorialCliente" style="z-index:1100">
-    <div class="modal-box" style="width:960px;max-width:98vw;max-height:94vh;overflow-y:auto;padding:0;overflow-anchor:none">
+    <div class="modal-box" id="hcMainBox" style="width:960px;max-width:98vw;max-height:94vh;overflow-y:auto;padding:0;overflow-anchor:none">
 
       <!-- HEADER con datos del cliente -->
       <div style="background:linear-gradient(135deg,#0f3460 0%,#16213e 100%);padding:20px 24px 16px;color:#fff;position:relative;border-radius:12px 12px 0 0">
@@ -1329,29 +1667,64 @@ function _buildModalHistorial() {
         </div>
       </div>
 
+      <!-- MOBILE MENU (mobile only) -->
+      <div id="hcMobileMenu">
+        <div class="hcmb-tile" onclick="hcNavToSection('memb')">
+          <div class="hcmb-tile-icon" style="background:#ede7f6;color:#7c4dff"><i class="bi bi-person-badge"></i></div>
+          <div class="hcmb-tile-body">
+            <div class="hcmb-tile-name">Matrículas</div>
+            <div class="hcmb-tile-sub" id="hcMbSubMemb">Cargando...</div>
+          </div>
+          <i class="bi bi-chevron-right hcmb-tile-arrow"></i>
+        </div>
+        <div class="hcmb-tile" onclick="hcNavToSection('ventas')">
+          <div class="hcmb-tile-icon" style="background:#fff3e0;color:#e65100"><i class="bi bi-cart3"></i></div>
+          <div class="hcmb-tile-body">
+            <div class="hcmb-tile-name">Ventas</div>
+            <div class="hcmb-tile-sub" id="hcMbSubVentas">Cargando...</div>
+          </div>
+          <i class="bi bi-chevron-right hcmb-tile-arrow"></i>
+        </div>
+        <div class="hcmb-tile" onclick="hcNavToSection('asist')">
+          <div class="hcmb-tile-icon" style="background:#e0f7f4;color:#26a69a"><i class="bi bi-calendar-check"></i></div>
+          <div class="hcmb-tile-body">
+            <div class="hcmb-tile-name">Asistencias</div>
+            <div class="hcmb-tile-sub" id="hcMbSubAsist">Cargando...</div>
+          </div>
+          <i class="bi bi-chevron-right hcmb-tile-arrow"></i>
+        </div>
+        <div class="hcmb-tile" onclick="hcNavToSection('caja')">
+          <div class="hcmb-tile-icon" style="background:#ffebee;color:#c62828"><i class="bi bi-cash-stack"></i></div>
+          <div class="hcmb-tile-body">
+            <div class="hcmb-tile-name">Flujo de Caja</div>
+            <div class="hcmb-tile-sub" id="hcMbSubCaja">Cargando...</div>
+          </div>
+          <i class="bi bi-chevron-right hcmb-tile-arrow"></i>
+        </div>
+        <div class="hcmb-total-row">
+          Total pagado (período): <strong id="hcMbTotalRow">—</strong>
+        </div>
+      </div>
+
       <!-- BODY con secciones -->
-      <div style="padding:20px 24px">
+      <div id="hcDesktopBody" style="padding:20px 24px">
 
         <!-- FILA 1: Matrículas (fila completa) -->
         <div class="hc-section">
-          <div class="hc-section-title">
+          <div class="hc-section-title hc-collapsible" onclick="hcToggleSection('hcBodyMemb','hcChevronMemb')">
             <i class="bi bi-person-badge me-2" style="color:#7c4dff"></i>Historial de Matrículas
-            <button class="hc-section-toggle" style="float:right" onclick="hcToggle('hcBodyMemb')" title="Comprimir/Expandir">
-              <i id="hcToggleIconMemb" class="bi bi-dash-lg"></i>
-            </button>
+            <i id="hcChevronMemb" class="bi bi-chevron-down" style="margin-left:auto;font-size:13px;transition:transform .25s"></i>
           </div>
-          <div id="hcBodyMemb" class="hc-loading">Cargando...</div>
+          <div id="hcBodyMemb" class="hc-loading hc-body-scroll">Cargando...</div>
         </div>
 
         <!-- FILA 2: Ventas -->
         <div class="hc-section" style="margin-top:16px">
-          <div class="hc-section-title">
+          <div class="hc-section-title hc-collapsible" onclick="hcToggleSection('hcBodyVentas','hcChevronVentas')">
             <i class="bi bi-cart3 me-2" style="color:#e65100"></i>Historial de Ventas
-            <button class="hc-section-toggle" style="float:right" onclick="hcToggle('hcBodyVentas')" title="Comprimir/Expandir">
-              <i id="hcToggleIconVentas" class="bi bi-dash-lg"></i>
-            </button>
+            <i id="hcChevronVentas" class="bi bi-chevron-down" style="margin-left:auto;font-size:13px;transition:transform .25s"></i>
           </div>
-          <div id="hcBodyVentas" class="hc-loading">Cargando...</div>
+          <div id="hcBodyVentas" class="hc-loading hc-body-scroll">Cargando...</div>
         </div>
 
         <!-- FILA 2: Asistencias -->
@@ -1370,19 +1743,20 @@ function _buildModalHistorial() {
 
         <!-- FILA 3: Flujo de caja -->
         <div class="hc-section" style="margin-top:16px">
-          <div class="hc-section-title">
+          <div class="hc-section-title hc-collapsible" onclick="hcToggleSection('hcSectionCajaBody','hcChevronCaja')">
             <i class="bi bi-cash-stack me-2" style="color:#c62828"></i>Historial General de Pagos (Flujo de Caja)
-            <button class="hc-section-toggle" style="float:right" onclick="hcToggle('hcBodyCaja')" title="Comprimir/Expandir">
-              <i id="hcToggleIconCaja" class="bi bi-dash-lg"></i>
-            </button>
+            <i id="hcChevronCaja" class="bi bi-chevron-down" style="margin-left:auto;font-size:13px;transition:transform .25s"></i>
           </div>
-          <div id="hcBodyCaja" class="hc-loading">Cargando...</div>
+          <div id="hcSectionCajaBody">
+            <div id="hcBodyCaja" class="hc-loading hc-body-scroll">Cargando...</div>
+            <div id="hcCajaTotalRow" class="hc-total-row" style="display:none"></div>
+          </div>
         </div>
 
       </div>
 
       <!-- FOOTER -->
-      <div class="hc-footer" style="padding:14px 24px;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center;background:#fafafa;border-radius:0 0 12px 12px">
+      <div id="hcMainFooter" class="hc-footer" style="padding:14px 24px;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center;background:#fafafa;border-radius:0 0 12px 12px">
         <div style="font-size:13px;color:#555">
           Total pagado (periodo):
           <strong id="hcTotalPagado" style="color:#c62828;font-size:15px;margin-left:6px">S/ 0.00</strong>
@@ -1393,6 +1767,21 @@ function _buildModalHistorial() {
         </button>
       </div>
     </div>
+
+  <div id="hcSectionBox" style="display:none">
+    <div class="hcmb-section-hdr">
+      <button class="hcmb-back-btn" onclick="hcNavBack()">
+        <i class="bi bi-arrow-left"></i>
+      </button>
+      <span id="hcMbSectionTitle" class="hcmb-section-title-txt"></span>
+    </div>
+    <div class="hcmb-search-bar">
+      <i class="bi bi-search" style="font-size:14px;flex-shrink:0"></i>
+      <input type="search" id="hcMbSearch" class="hcmb-search-input" placeholder="Buscar..." oninput="hcMbFilter()">
+    </div>
+    <div id="hcMobileContentSlot" class="hcmb-content"></div>
+  </div>
+
   </div>`;
 }
 
@@ -1416,19 +1805,22 @@ function hcToggleCuotas(idx) {
 }
 
 function hcToggle(sectionId) {
+  // Usado solo para Asistencias
   const el = document.getElementById(sectionId);
   if (!el) return;
   const collapse = el.style.display !== 'none';
   el.style.display = collapse ? 'none' : '';
-
-  const iconMap = {
-    hcBodyMemb:   'hcToggleIconMemb',
-    hcBodyVentas: 'hcToggleIconVentas',
-    hcBodyAsist:  'hcToggleIconAsist',
-    hcBodyCaja:   'hcToggleIconCaja'
-  };
-  const icon = document.getElementById(iconMap[sectionId]);
+  const icon = document.getElementById('hcToggleIconAsist');
   if (icon) icon.className = collapse ? 'bi bi-plus-lg' : 'bi bi-dash-lg';
+}
+
+function hcToggleSection(bodyId, chevronId) {
+  const el      = document.getElementById(bodyId);
+  const chevron = document.getElementById(chevronId);
+  if (!el) return;
+  const isHidden = el.style.display === 'none';
+  el.style.display = isHidden ? '' : 'none';
+  if (chevron) chevron.style.transform = isHidden ? '' : 'rotate(-90deg)';
 }
 
 // ── LIGHTBOX — ampliar foto de perfil ────────────────────────────────────────
@@ -1598,8 +1990,29 @@ function _estilosHistorial() {
   }
   .hc-section-toggle {
     background:none;border:none;cursor:pointer;color:#aaa;font-size:14px;
-    margin-left:auto;padding:0 4px;
+    padding:0 4px;transition:color .15s;
   }
+  .hc-section-toggle:hover { color:#555; }
+  .hc-collapsible {
+    cursor:pointer;user-select:none;
+  }
+  .hc-collapsible:hover {
+    filter:brightness(.96);
+  }
+  .hc-body-scroll {
+    max-height:300px;overflow-y:auto;
+  }
+  .hc-body-scroll.hc-body-expanded {
+    max-height:none;overflow-y:visible;
+  }
+  .hc-body-scroll::-webkit-scrollbar { width:5px; }
+  .hc-body-scroll::-webkit-scrollbar-track { background:transparent; }
+  .hc-body-scroll::-webkit-scrollbar-thumb { background:#ddd;border-radius:3px; }
+  .hc-body-scroll::-webkit-scrollbar-thumb:hover { background:#bbb; }
+  body[data-theme="dark"] .hc-body-scroll::-webkit-scrollbar-thumb { background:#30363d; }
+  body[data-theme="dark"] .hc-body-scroll::-webkit-scrollbar-thumb:hover { background:#484f58; }
+  body[data-theme="dark"] .hc-section-toggle:hover { color:#c9d1d9; }
+  body[data-theme="dark"] .hc-collapsible:hover { filter:brightness(1.12); }
   .hc-table {
     width:100%;border-collapse:collapse;font-size:13px;
   }
@@ -1734,5 +2147,147 @@ function _estilosHistorial() {
   body[data-theme="dark"] .cal-footer { border-top-color:#30363d; }
   body[data-theme="dark"] .cal-btn-export { border-color:#4db6ac;color:#4db6ac; }
   body[data-theme="dark"] .cal-btn-export:hover { background:#0d2a26; }
+
+  /* ── Menú móvil historial ── */
+  #hcMobileMenu { display:none; flex-direction:column; }
+  #hcSectionBox {
+    background:#fff; border-radius:16px;
+    width:960px; max-width:98vw;
+    height:94vh; max-height:94vh;
+    flex-direction:column; overflow:hidden;
+    box-shadow:0 4px 32px rgba(0,0,0,.25);
+  }
+  body[data-theme="dark"] #hcSectionBox { background:#1a1a1a; }
+
+  .hcmb-tile {
+    display:flex; align-items:center; gap:14px;
+    padding:16px 20px; cursor:pointer;
+    border-bottom:1px solid #f0f0f0;
+    transition:background .15s; user-select:none;
+  }
+  .hcmb-tile:active { background:#f5f5f5; }
+  .hcmb-tile-icon {
+    width:46px; height:46px; border-radius:12px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:21px; flex-shrink:0;
+  }
+  .hcmb-tile-body { flex:1; min-width:0; }
+  .hcmb-tile-name { font-weight:700; font-size:16px; color:#1a1a2e; }
+  .hcmb-tile-sub  { font-size:14px; color:#666; margin-top:2px; }
+  .hcmb-tile-arrow { color:#bbb; font-size:16px; flex-shrink:0; }
+  .hcmb-total-row {
+    padding:16px 20px; text-align:center;
+    font-size:14px; color:#666; border-top:2px solid #f0f0f0;
+  }
+  .hcmb-total-row strong { color:#c62828; font-size:16px; margin-left:6px; }
+
+  .hcmb-section-hdr {
+    display:flex; align-items:center; gap:10px; flex-shrink:0;
+    padding:14px 16px;
+    background:linear-gradient(135deg,#0f3460 0%,#16213e 100%);
+    border-radius:16px 16px 0 0;
+  }
+  .hcmb-back-btn {
+    background:rgba(255,255,255,.15); border:none; color:#fff;
+    width:36px; height:36px; border-radius:50%; cursor:pointer;
+    font-size:16px; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; transition:background .15s;
+  }
+  .hcmb-back-btn:active { background:rgba(255,255,255,.3); }
+  .hcmb-section-title-txt { font-size:17px; font-weight:700; color:#fff; }
+  .hcmb-search-bar {
+    display:flex; align-items:center; gap:10px; flex-shrink:0;
+    padding:10px 16px; background:#f5f6fa;
+    border-bottom:1px solid #ebebeb; color:#aaa;
+  }
+  .hcmb-search-input {
+    flex:1; border:none; background:transparent;
+    font-size:15px; color:#1a1a2e; outline:none;
+  }
+  .hcmb-search-input::placeholder { color:#bbb; }
+  .hcmb-content {
+    flex:1; min-height:0; overflow-y:auto; padding:12px 14px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+
+  /* ── Tarjetas móvil historial ── */
+  .hcmb-card {
+    background:#fff; border-radius:12px;
+    box-shadow:0 1px 5px rgba(0,0,0,.08); overflow:hidden;
+    flex-shrink:0;
+  }
+  .hcmb-card-top {
+    display:flex; align-items:flex-start; justify-content:space-between;
+    gap:8px; padding:14px 16px 10px;
+  }
+  .hcmb-card-title { font-weight:700; font-size:17px; color:#1a1a2e; flex:1; min-width:0; }
+  .hcmb-card-sub   { padding:0 16px 10px; font-size:15px; color:#666; }
+  .hcmb-kv-list    { padding:10px 16px 14px; display:flex; flex-direction:column; gap:8px; }
+  .hcmb-kv         { display:flex; gap:8px; align-items:baseline; }
+  .hcmb-lbl        { font-size:12px; font-weight:700; color:#aaa; letter-spacing:.5px; flex-shrink:0; width:72px; }
+  .hcmb-val        { font-size:15px; color:#1a1a2e; flex:1; min-width:0; word-break:break-word; }
+  .hcmb-card-foot  {
+    display:flex; align-items:center; gap:8px;
+    padding:10px 16px; border-top:1px solid #f0f0f0;
+  }
+  .hcmb-cuotas-btn {
+    flex:1; background:#ede7f6; color:#7c4dff; border:none;
+    padding:8px 12px; border-radius:8px; cursor:pointer;
+    font-size:13px; font-weight:600;
+    display:flex; align-items:center; gap:6px; transition:background .15s;
+  }
+  .hcmb-cuotas-btn:active { background:#d1c4e9; }
+  .hcmb-btn-ver {
+    flex:1; background:#e3f2fd; color:#1565c0; border:none;
+    padding:8px 12px; border-radius:8px; cursor:pointer;
+    font-size:13px; font-weight:600;
+    display:flex; align-items:center; justify-content:center; gap:6px; transition:background .15s;
+  }
+  .hcmb-btn-ver:active { background:#bbdefb; }
+  .hcmb-cuotas-list { padding:0 12px 12px; display:flex; flex-direction:column; gap:6px; }
+  .hcmb-cuota-row   {
+    display:flex; align-items:center; flex-wrap:wrap; gap:6px;
+    background:#f9f6ff; border-radius:8px; padding:8px 10px;
+  }
+  .hcmb-cuota-num  { font-size:12px; font-weight:700; color:#7c4dff; flex-shrink:0; }
+  .hcmb-cuota-info { font-size:12px; color:#555; flex:1; min-width:0; }
+  .hcmb-asist-chips { display:flex; flex-wrap:wrap; gap:6px; padding:8px 16px 14px; }
+  .hcmb-asist-chip {
+    background:#e0f7f4; color:#26a69a; border-radius:8px;
+    padding:5px 10px; font-size:13px; font-weight:600;
+  }
+  .hcmb-total-footer {
+    padding:14px 16px; text-align:center; font-size:14px; color:#555;
+    background:#fff8f8; border-radius:12px; border:1px solid #ffcdd2; flex-shrink:0;
+  }
+  .hcmb-total-footer strong { color:#c62828; margin-left:6px; }
+  .hcmb-empty { padding:28px; text-align:center; color:#bbb; font-size:14px; font-style:italic; }
+
+  /* Dark mode tarjetas historial */
+  body[data-theme="dark"] .hcmb-tile               { border-bottom-color:#2a2a2a; }
+  body[data-theme="dark"] .hcmb-tile:active         { background:#2a2a2a; }
+  body[data-theme="dark"] .hcmb-tile-name           { color:#f0f0f0; }
+  body[data-theme="dark"] .hcmb-tile-sub            { color:#e0e0e0; }
+  body[data-theme="dark"] .hcmb-total-row           { border-top-color:#2a2a2a; color:#e0e0e0; }
+  body[data-theme="dark"] .hcmb-total-row strong    { color:#f87171; }
+  body[data-theme="dark"] .hcmb-search-bar          { background:#1e1e1e; border-bottom-color:#2a2a2a; color:#666; }
+  body[data-theme="dark"] .hcmb-search-input        { color:#f0f0f0; }
+  body[data-theme="dark"] .hcmb-card                { background:#242424; border:1px solid #333; }
+  body[data-theme="dark"] .hcmb-card-title          { color:#f0f0f0; }
+  body[data-theme="dark"] .hcmb-card-sub            { color:#e0e0e0; }
+  body[data-theme="dark"] .hcmb-lbl                 { color:#aaa; }
+  body[data-theme="dark"] .hcmb-val                 { color:#f0f0f0; }
+  body[data-theme="dark"] .hcmb-card-foot           { border-top-color:#333; }
+  body[data-theme="dark"] .hcmb-cuota-row           { background:#2d2040; }
+  body[data-theme="dark"] .hcmb-cuota-info          { color:#e0e0e0; }
+  body[data-theme="dark"] .hcmb-asist-chip          { background:#0d2a26; color:#4db6ac; }
+  body[data-theme="dark"] .hcmb-total-footer        { background:rgba(198,40,40,.1); border-color:rgba(198,40,40,.3); color:#e0e0e0; }
+  body[data-theme="dark"] .hcmb-total-footer strong { color:#f87171; }
+
+  @media (max-width: 768px) {
+    #hcMobileMenu  { display:flex; }
+    #hcDesktopBody { display:none !important; }
+    #hcMainFooter  { display:none !important; }
+  }
   `;
 }

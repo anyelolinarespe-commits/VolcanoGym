@@ -117,6 +117,27 @@ function _initThemeToggle() {
   });
 }
 
+// ── PANTALLA COMPLETA ─────────────────────────────────────────────────────────
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+document.addEventListener('fullscreenchange', () => {
+  const icon = document.getElementById('fullscreenIcon');
+  if (!icon) return;
+  if (document.fullscreenElement) {
+    icon.className = 'bi bi-fullscreen-exit';
+    document.getElementById('fullscreenToggle').title = 'Salir de pantalla completa';
+  } else {
+    icon.className = 'bi bi-fullscreen';
+    document.getElementById('fullscreenToggle').title = 'Pantalla completa';
+  }
+});
+
 // API HELPER (fetch con JWT)
 let _refrescandoPermisos = false;
 
@@ -183,9 +204,103 @@ function filtrarTabla(mod) {
   });
 }
 
-// ── MODALES 
+// ═══════════════════════════════════════════════════════════════════
+//  SISTEMA DE NAVEGACIÓN "RETROCEDER"
+//
+//  Principios:
+//  · Máximo UN slot {modal:true} activo en history del browser.
+//  · _navOpen  → push al stack interno; pushState solo si no hay slot.
+//  · _navClose → saca del stack sin tocar history (el slot se reutiliza).
+//  · closeModal → cierra el elemento + _navClose.
+//  · popstate  → saca el tope del stack, llama closeFn;
+//                si quedan ítems re-empuja el slot;
+//                si el stack queda vacío limpia el slot con replaceState.
+//  Resultado: abrir/cerrar N veces nunca acumula entradas huérfanas.
+// ═══════════════════════════════════════════════════════════════════
+
+const _navStack = []; // [{ id, closeFn }]
+let _currentVista = 'home';
+
+function _navOpen(id, closeFn) {
+  if (!id || _navStack.some(x => x.id === id)) return;
+  _navStack.push({ id, closeFn });
+  if (!history.state?.modal) {
+    history.pushState({ modal: true }, '', '/dashboard');
+  }
+}
+
+function _navClose(id) {
+  const idx = _navStack.findIndex(x => x.id === id);
+  if (idx !== -1) _navStack.splice(idx, 1);
+  // No replaceState aquí: el slot {modal:true} queda disponible para el próximo _navOpen,
+  // evitando acumulación de entradas en historial.
+}
+
 function closeModal(id) {
-  document.getElementById(id).classList.remove('open');
+  document.getElementById(id)?.classList.remove('open');
+  _navClose(id);
+}
+
+// Usado por tecla Escape u otros cierres programáticos
+function closeTopModal() {
+  if (_navStack.length > 0) {
+    const { id, closeFn } = _navStack.pop();
+    if (typeof closeFn === 'function') closeFn();
+    if (_navStack.length === 0 && history.state?.modal) {
+      history.replaceState({ vista: _currentVista }, '', '/dashboard');
+    }
+    return true;
+  }
+  return false;
+}
+
+function _initModalBackSupport() {
+  const classObs = new MutationObserver(mutations => {
+    for (const { target, oldValue } of mutations) {
+      const classes = oldValue?.split(' ') ?? [];
+      const wasOpen = classes.includes('open') || classes.includes('visible');
+      const isNowOpen = target.classList.contains('open') || target.classList.contains('visible');
+      if (isNowOpen && !wasOpen) {
+        _navOpen(target.id, () => target.classList.remove('open', 'visible'));
+      } else if (!isNowOpen && wasOpen) {
+        _navClose(target.id);
+      }
+    }
+  });
+
+  // Modales estáticos (presentes en DOMContentLoaded)
+  document.querySelectorAll('.modal-overlay, #memb-modal-overlay').forEach(el => {
+    classObs.observe(el, { attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+  });
+
+  // Modales creados dinámicamente (ej. #modalHistorialCliente se inserta al primer uso)
+  new MutationObserver(mutations => {
+    for (const { addedNodes } of mutations) {
+      for (const node of addedNodes) {
+        if (node.nodeType !== 1 || !node.classList?.contains('modal-overlay')) continue;
+        classObs.observe(node, { attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+        // El insertAdjacentHTML y classList.add('open') son síncronos; el observer es microtask,
+        // así que cuando llega aquí el nodo ya puede tener la clase 'open'.
+        if (node.classList.contains('open') || node.classList.contains('visible')) {
+          _navOpen(node.id, () => node.classList.remove('open', 'visible'));
+        }
+      }
+    }
+  }).observe(document.body, { childList: true });
+
+  // memb-boleta-modal usa style.display, no clases
+  new MutationObserver((_, obs) => {
+    const boleta = document.getElementById('memb-boleta-modal');
+    if (!boleta) return;
+    obs.disconnect();
+    let prevOpen = false;
+    new MutationObserver(() => {
+      const open = boleta.style.display === 'flex';
+      if (open && !prevOpen)  _navOpen('memb-boleta-modal', () => { boleta.style.display = 'none'; });
+      else if (!open && prevOpen) _navClose('memb-boleta-modal');
+      prevOpen = open;
+    }).observe(boleta, { attributes: true, attributeFilter: ['style'] });
+  }).observe(document.body, { childList: true, subtree: false });
 }
 
 function showAlert(id, msg, type = 'error') {
@@ -239,13 +354,19 @@ function openModal(tipo) {
   if (tipo === 'actStock')      { /* se abre desde abrirActualizarStock() */ }
 }
 
-// Cerrar modales al hacer click fuera
+// Cerrar modales al hacer click fuera + soporte ESC + back button móvil
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', e => {
       if (e.target === overlay) overlay.classList.remove('open');
     });
   });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeTopModal();
+  });
+
+  _initModalBackSupport();
 });
 
 // ── CONFIRM / DELETE 
@@ -358,7 +479,7 @@ function buildHomeCards() {
     { ruta: 'planes',         color: '#7c4dff', icon: 'bi-grid-3x3-gap',   label: 'Planes',         countId: 'countPlanes'         },
     { ruta: 'asistencias',    color: '#26a69a', icon: 'bi-calendar-check', label: 'Asistencias',    countId: 'countAsistencias'    },
     { ruta: 'categorias',     color: '#26a69a', icon: 'bi-tag',            label: 'Categorías',     countId: 'countCategorias'     },
-    { ruta: 'inventario',     color: '#1565c0', icon: 'bi-clipboard-data', label: 'Inventario',     countId: 'countInventario'     },
+    { ruta: 'inventario',     color: '#1565c0', icon: 'bi-clipboard-data', label: 'Inv. Críticos', countId: 'countInventario'     },
     { ruta: 'presentaciones', color: '#00897b', icon: 'bi-box2',           label: 'Presentaciones', countId: 'countPresentaciones' },
     { ruta: 'productos',      color: '#ff7043', icon: 'bi-box-seam',       label: 'Productos',      countId: 'countProductos'      },
     { ruta: 'ventas',         color: '#0f9d58', icon: 'bi-receipt',         label: 'Ventas',         countId: 'countVentas'         },
@@ -414,8 +535,12 @@ function goTo(view, fromHistory = false) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(`view-${view}`)?.classList.add('active');
 
+  _currentVista = view;
+
   if (!fromHistory) {
-    history.pushState({ vista: view }, '', '/dashboard');
+    // replaceState en vez de pushState: la navegación entre secciones no apila entradas.
+    // El botón retroceder se reserva para cerrar modales, no para volver entre secciones.
+    history.replaceState({ vista: view }, '', '/dashboard');
   }
 
   if (view === 'clientes')       loadClientes();
@@ -434,8 +559,24 @@ function goTo(view, fromHistory = false) {
 }
 
 window.addEventListener('popstate', e => {
-  const view = e.state?.vista || 'home';
-  goTo(view, true);
+  if (_navStack.length > 0) {
+    // Hay ítems en el stack → cerrar el tope sin navegar
+    const { closeFn } = _navStack.pop();
+    if (typeof closeFn === 'function') closeFn();
+    if (_navStack.length > 0) {
+      // Quedan ítems — re-empujar el slot para que el siguiente retroceder también funcione
+      history.pushState({ modal: true }, '', '/dashboard');
+    } else {
+      // Stack vacío — limpiar el slot
+      history.replaceState({ vista: _currentVista }, '', '/dashboard');
+    }
+    return;
+  }
+  // Stack vacío: convertir entradas {modal:true} huérfanas a {vista} y dejar salir
+  if (e.state?.modal) {
+    history.replaceState({ vista: _currentVista }, '', '/dashboard');
+  }
+  // Entradas {vista:x}: no llamar goTo — evita cambiar sección al navegar hacia atrás
 });
 
 // ── HELPER COMPARTIDO DE PAGINACIÓN ──────────────────────────────────────────
@@ -670,9 +811,9 @@ document.addEventListener('DOMContentLoaded', () => {
     categorias:     async () => { dataCategorias    = await api('GET', '/api/categorias');          const el = document.getElementById('countCategorias');     if (el) el.textContent = dataCategorias.filter(c => c.estado === 1).length; },
     presentaciones: async () => { dataPresentaciones= await api('GET', '/api/presentaciones');     const el = document.getElementById('countPresentaciones'); if (el) el.textContent = dataPresentaciones.filter(p => p.estado === 1).length; }, // ← NUEVO
     productos:      async () => { const s           = await api('GET', '/api/productos/stats');    const el = document.getElementById('countProductos');      if (el) el.textContent = s.activos; },
-    inventario:     async () => { const d           = await api('GET', '/api/inventario');         const el = document.getElementById('countInventario');     if (el) el.textContent = d.kpis.stock_critico + ' críticos'; },
+    inventario:     async () => { const d           = await api('GET', '/api/inventario');         const el = document.getElementById('countInventario');     if (el) el.textContent = d.kpis.stock_critico; },
     asistencias:    async () => { const s           = await api('GET', '/api/asistencias/stats'); const el = document.getElementById('countAsistencias');    if (el) el.textContent = s.hoy; },
-    ventas:         async () => { const v           = await api('GET', '/api/ventas?limit=1');    const el = document.getElementById('countVentas');         if (el) el.textContent = v.total + ' ventas'; },
+    ventas:         async () => { const v           = await api('GET', '/api/ventas?limit=1');    const el = document.getElementById('countVentas');         if (el) el.textContent = v.total; },
   };
 
   for (const [ruta, fn] of Object.entries(accesos)) {
