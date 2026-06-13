@@ -222,18 +222,22 @@ const _navStack = []; // [{ id, closeFn }]
 let _currentVista = 'home';
 
 function _navOpen(id, closeFn) {
+  // console.log('[NAV] _navOpen', id, '| stack:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length, '| state:', JSON.stringify(history.state));
   if (!id || _navStack.some(x => x.id === id)) return;
   _navStack.push({ id, closeFn });
   if (!history.state?.modal) {
     history.pushState({ modal: true }, '', '/dashboard');
   }
+  // console.log('[NAV] _navOpen POST', id, '| stack:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
 }
 
 function _navClose(id) {
+  // console.log('[NAV] _navClose', id, '| stack antes:', JSON.stringify(_navStack.map(x=>x.id)));
   const idx = _navStack.findIndex(x => x.id === id);
   if (idx !== -1) _navStack.splice(idx, 1);
   // No replaceState aquí: el slot {modal:true} queda disponible para el próximo _navOpen,
   // evitando acumulación de entradas en historial.
+  // console.log('[NAV] _navClose POST', id, '| stack:', JSON.stringify(_navStack.map(x=>x.id)));
 }
 
 function closeModal(id) {
@@ -535,12 +539,11 @@ function goTo(view, fromHistory = false) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(`view-${view}`)?.classList.add('active');
 
+  const prevVista = _currentVista;
   _currentVista = view;
 
-  if (!fromHistory) {
-    // replaceState en vez de pushState: la navegación entre secciones no apila entradas.
-    // El botón retroceder se reserva para cerrar modales, no para volver entre secciones.
-    history.replaceState({ vista: view }, '', '/dashboard');
+  if (!fromHistory && view !== prevVista) {
+    history.pushState({ vista: view }, '', '/dashboard');
   }
 
   if (view === 'clientes')       loadClientes();
@@ -559,9 +562,10 @@ function goTo(view, fromHistory = false) {
 }
 
 window.addEventListener('popstate', e => {
+  // console.log('[NAV] popstate | stack:', JSON.stringify(_navStack.map(x=>x.id)), '| state:', JSON.stringify(e.state), '| history.length:', history.length);
   if (_navStack.length > 0) {
     // Hay ítems en el stack → cerrar el tope sin navegar
-    const { closeFn } = _navStack.pop();
+    const { id, closeFn } = _navStack.pop();
     if (typeof closeFn === 'function') closeFn();
     if (_navStack.length > 0) {
       // Quedan ítems — re-empujar el slot para que el siguiente retroceder también funcione
@@ -570,13 +574,18 @@ window.addEventListener('popstate', e => {
       // Stack vacío — limpiar el slot
       history.replaceState({ vista: _currentVista }, '', '/dashboard');
     }
+    // console.log('[NAV] popstate POST cerrar', id, '| stack:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
     return;
   }
   // Stack vacío: convertir entradas {modal:true} huérfanas a {vista} y dejar salir
   if (e.state?.modal) {
     history.replaceState({ vista: _currentVista }, '', '/dashboard');
+    return;
   }
-  // Entradas {vista:x}: no llamar goTo — evita cambiar sección al navegar hacia atrás
+  // Entradas {vista:x}: navegar de vuelta a la sección anterior
+  if (e.state?.vista) {
+    goTo(e.state.vista, true);
+  }
 });
 
 // ── HELPER COMPARTIDO DE PAGINACIÓN ──────────────────────────────────────────
