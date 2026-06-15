@@ -260,7 +260,8 @@ export const createCliente = async (req, res) => {
             accion:         'CREAR',
             modulo:         'Clientes',
             descripcion:    `DNI: ${c.dni} | Cliente #${c.id_cliente} creado: ${c.nombre} ${c.apellido}`,
-            ip:             getIP(req)
+            ip:             getIP(req),
+            datos_nuevos:   { id_cliente: c.id_cliente, dni: c.dni, nombre: c.nombre, apellido: c.apellido, celular: c.celular || null },
         });
 
         res.status(201).json(result.rows[0]);
@@ -296,12 +297,14 @@ export const reactivarCliente = async (req, res) => {
         );
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'EDITAR',
-            modulo:         'Clientes',
-            descripcion:    `DNI: ${cliente.dni} | Cliente #${id} reactivado: ${cliente.nombre} ${cliente.apellido}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Clientes',
+            descripcion:      `DNI: ${cliente.dni} | Cliente #${id} reactivado: ${cliente.nombre} ${cliente.apellido}`,
+            ip:               getIP(req),
+            datos_anteriores: { id_cliente: Number(id), activo: false },
+            datos_nuevos:     { activo: true },
         });
 
         res.json({
@@ -424,12 +427,14 @@ export const updateCliente = async (req, res) => {
         const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'EDITAR',
-            modulo:         'Clientes',
-            descripcion:    `DNI: ${updated.dni} | Cliente #${updated.id_cliente} "${nombre} ${apellido}" — ${diffStr}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Clientes',
+            descripcion:      `DNI: ${updated.dni} | Cliente #${updated.id_cliente} "${nombre} ${apellido}" — ${diffStr}`,
+            ip:               getIP(req),
+            datos_anteriores: { nombre: old.nombre, apellido: old.apellido, activo: old.activo, celular: old.celular || null, telefono: old.telefono || null },
+            datos_nuevos:     { nombre, apellido, activo: activo ?? true, celular: celular || null, telefono: telefono || null },
         });
 
         res.json(result.rows[0]);
@@ -468,12 +473,14 @@ export const deleteCliente = async (req, res) => {
 
         const deleted = result.rows[0];
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'ELIMINAR',
-            modulo:         'Clientes',
-            descripcion:    `DNI: ${deleted.dni} | Cliente #${deleted.id_cliente} eliminado — Motivo: ${motivo.trim()}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'ELIMINAR',
+            modulo:           'Clientes',
+            descripcion:      `DNI: ${deleted.dni} | Cliente #${deleted.id_cliente} eliminado — Motivo: ${motivo.trim()}`,
+            ip:               getIP(req),
+            datos_anteriores: { id_cliente: Number(id), dni: deleted.dni, activo: true },
+            datos_nuevos:     { activo: false, motivo: motivo.trim() },
         });
 
         res.json({ message: `Cliente eliminado. Motivo: ${motivo.trim()}` });
@@ -516,12 +523,14 @@ export const cambiarEstadoCliente = async (req, res) => {
             );
             if (result.rowCount === 0) return res.status(404).json({ message: 'Cliente no encontrado' });
             registrarAuditoria({
-                id_usuario:     req.usuario.id,
-                nombre_usuario: req.usuario.nombre || req.usuario.username,
-                accion:         'ELIMINAR',
-                modulo:         'Clientes',
-                descripcion:    `DNI: ${ci?.dni} | Cliente #${id} desactivado — Motivo: ${motivo.trim()}`,
-                ip:             getIP(req)
+                id_usuario:       req.usuario.id,
+                nombre_usuario:   req.usuario.nombre || req.usuario.username,
+                accion:           'ELIMINAR',
+                modulo:           'Clientes',
+                descripcion:      `DNI: ${ci?.dni} | Cliente #${id} desactivado — Motivo: ${motivo.trim()}`,
+                ip:               getIP(req),
+                datos_anteriores: { id_cliente: Number(id), activo: true },
+                datos_nuevos:     { activo: false, motivo: motivo.trim() },
             });
             return res.json({ message: `Cliente desactivado. Motivo: ${motivo.trim()}` });
         } else {
@@ -534,12 +543,14 @@ export const cambiarEstadoCliente = async (req, res) => {
             );
             if (result.rowCount === 0) return res.status(404).json({ message: 'Cliente no encontrado' });
             registrarAuditoria({
-                id_usuario:     req.usuario.id,
-                nombre_usuario: req.usuario.nombre || req.usuario.username,
-                accion:         'EDITAR',
-                modulo:         'Clientes',
-                descripcion:    `DNI: ${ci?.dni} | Cliente #${id} reactivado: ${ci?.nombre} ${ci?.apellido}`,
-                ip:             getIP(req)
+                id_usuario:       req.usuario.id,
+                nombre_usuario:   req.usuario.nombre || req.usuario.username,
+                accion:           'EDITAR',
+                modulo:           'Clientes',
+                descripcion:      `DNI: ${ci?.dni} | Cliente #${id} reactivado: ${ci?.nombre} ${ci?.apellido}`,
+                ip:               getIP(req),
+                datos_anteriores: { id_cliente: Number(id), activo: false },
+                datos_nuevos:     { activo: true },
             });
             return res.json({ message: 'Cliente reactivado exitosamente' });
         }

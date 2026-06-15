@@ -186,7 +186,8 @@ export const createUsuario = async (req, res) => {
             accion:         'CREAR',
             modulo:         'Usuarios',
             descripcion:    `Usuario creado: ${username} (${nombre} ${apellido})`,
-            ip:             getIP(req)
+            ip:             getIP(req),
+            datos_nuevos:   { nombre: nombre.trim(), apellido: apellido.trim(), username: username.trim(), email: email.trim(), id_perfil },
         });
 
         res.status(201).json(result.rows[0]);
@@ -413,12 +414,14 @@ export const updateUsuario = async (req, res) => {
         const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'EDITAR',
-            modulo:         'Usuarios',
-            descripcion:    `Usuario #${id} "${target_username}" (${nombre} ${apellido}) — ${diffStr}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Usuarios',
+            descripcion:      `Usuario #${id} "${target_username}" (${nombre} ${apellido}) — ${diffStr}`,
+            ip:               getIP(req),
+            datos_anteriores: { nombre: target_nombre, apellido: target_apellido, estado: target_estado, id_perfil: target_perfil_id, username: target_username, email: target_email, celular: target_celular || null },
+            datos_nuevos:     { nombre, apellido, estado: estado ?? 1, id_perfil: id_perfil ? Number(id_perfil) : target_perfil_id, username: username?.trim(), email, celular: celular || null },
         });
 
         res.json({ message: 'Usuario actualizado' });
@@ -496,12 +499,14 @@ export const reactivarUsuario = async (req, res) => {
         );
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'EDITAR',
-            modulo:         'Usuarios',
-            descripcion:    `Usuario #${id} reactivado: ${nombre} ${apellido} (Perfil: ${perfil_nombre})`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Usuarios',
+            descripcion:      `Usuario #${id} reactivado: ${nombre} ${apellido} (Perfil: ${perfil_nombre})`,
+            ip:               getIP(req),
+            datos_anteriores: { id_usuario: Number(id), estado: 2 },
+            datos_nuevos:     { estado: 1 },
         });
 
         res.json({
@@ -581,12 +586,14 @@ export const deleteUsuario = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: 'Usuario no encontrado' });
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'ELIMINAR',
-            modulo:         'Usuarios',
-            descripcion:    `Usuario #${id} eliminado (soft-delete)`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'ELIMINAR',
+            modulo:           'Usuarios',
+            descripcion:      `Usuario #${id} eliminado (soft-delete)`,
+            ip:               getIP(req),
+            datos_anteriores: { id_usuario: Number(id), estado: 1 },
+            datos_nuevos:     { estado: 2 },
         });
 
         res.json({ message: 'Usuario eliminado' });

@@ -590,37 +590,84 @@ function renderMembresias(data, pag = null) {
 
         return `
         <div class="memb-card ${m.estado}" data-search="${m.nombre_cliente} ${m.dni}">
-            <div class="memb-avatar">${iniciales}</div>
-            <div class="memb-info" style="flex:1;min-width:0">
-                <div class="memb-nombre">${m.nombre_cliente}</div>
-                <div class="memb-plan"><span class="tag-plan">${m.nombre_plan}</span></div>
-                <div class="memb-fechas">
-                    <i class="bi bi-calendar3 me-1"></i>${formatFechaCorta(m.fecha_inicio)} → ${formatFechaCorta(m.fecha_fin)}
-                    &nbsp;·&nbsp;
-                    <span style="color:${tipoColor};font-weight:700;font-size:11px">${tipoLabel}</span>
-                    &nbsp;·&nbsp;
-                    <span class="asesor-tag">${m.asesor}</span>
+            <!-- Vista desktop: HTML original (display:contents → hijos son flex-items del card) -->
+            <div class="memb-desktop-view">
+                <div class="memb-avatar">${iniciales}</div>
+                <div class="memb-info">
+                    <div class="memb-nombre">${m.nombre_cliente}</div>
+                    <div class="memb-plan"><span class="tag-plan">${m.nombre_plan}</span></div>
+                    <div class="memb-fechas">
+                        <i class="bi bi-calendar3 me-1"></i>${formatFechaCorta(m.fecha_inicio)} → ${formatFechaCorta(m.fecha_fin)}
+                        &nbsp;·&nbsp;
+                        <span style="color:${tipoColor};font-weight:700;font-size:11px">${tipoLabel}</span>
+                        &nbsp;·&nbsp;
+                        <span class="asesor-tag">${m.asesor}</span>
+                    </div>
+                    ${progresoHtml}
                 </div>
-                ${progresoHtml}
+                <div class="memb-monto">
+                    <div class="memb-precio">S/ ${parseFloat(m.monto_total).toFixed(2)}</div>
+                    ${saldoHtml}
+                    <div style="margin-top:4px">${estadoBadgeMini(m.estado, m.saldo_pendiente, vencC)}</div>
+                    ${proximaChip}
+                </div>
             </div>
-            <div class="memb-monto">
-                <div class="memb-precio">S/ ${parseFloat(m.monto_total).toFixed(2)}</div>
-                ${saldoHtml}
-                <div style="margin-top:4px">${estadoBadgeMini(m.estado, m.saldo_pendiente, vencC)}</div>
-                ${proximaChip}
+            <!-- Vista móvil: diseño etiqueta-valor (oculto en desktop) -->
+            <div class="memb-mobile-view">
+                <div class="memb-top-row">
+                    <div class="memb-card-hdr">
+                        <div class="memb-hdr-main">
+                            <div class="memb-nombre">${m.nombre_cliente}</div>
+                            <span class="tag-plan">${m.nombre_plan}</span>
+                        </div>
+                    </div>
+                    <div class="memb-card-aside">
+                        <div class="memb-precio">S/ ${parseFloat(m.monto_total).toFixed(2)}</div>
+                        ${saldoHtml}
+                        ${proximaChip}
+                    </div>
+                </div>
+                <div class="memb-card-body">
+                    <div class="memb-kv-pair">
+                        <span class="memb-lbl">DNI</span>
+                        <span class="memb-val memb-val-dni">${m.dni || '—'}</span>
+                        <span class="memb-lbl">INICIO</span>
+                        <span class="memb-val">${formatFechaCorta(m.fecha_inicio)}</span>
+                    </div>
+                    <div class="memb-kv-pair">
+                        <span class="memb-lbl">REG.</span>
+                        <span class="memb-val">${formatFechaCorta(m.created_at)}</span>
+                        <span class="memb-lbl">VENCE</span>
+                        <span class="memb-val">${formatFechaCorta(m.fecha_fin)}</span>
+                    </div>
+                    <div class="memb-kv memb-kv-duo">
+                        <span class="memb-lbl">ESTADO</span>
+                        <span class="memb-val">${estadoBadgeMini(m.estado, m.saldo_pendiente, vencC)}</span>
+                        <span class="memb-lbl">TIPO</span>
+                        <span class="memb-val"><span class="memb-tipo-tag memb-tipo-${m.tipo_ingreso}">${tipoLabel}</span></span>
+                    </div>
+                    <div class="memb-kv">
+                        <span class="memb-lbl">ASESOR</span>
+                        <span class="memb-val"><span class="asesor-tag">${m.asesor}</span></span>
+                    </div>
+                    ${progresoHtml}
+                </div>
             </div>
+            <!-- Botones compartidos -->
             <div class="memb-actions">
                 ${m.saldo_pendiente > 0 || pendC > 0 || vencC > 0 ? `
-                <button class="btn-icon perm" title="Ver cuotas y registrar pago"
-                    style="background:#e8f5e9;color:#2e7d32"
+                <button class="btn-icon perm btn-cuotas-pagar" title="Ver cuotas y registrar pago"
+                    style="background:#e8f5e9;color:#2e7d32;border-color:#a7f3d0"
                     onclick="openModalCuotas(${m.id_membresia},'${(m.nombre_cliente || '').replace(/'/g,"\'")}')" >
                     <i class="bi bi-cash-stack"></i>
                 </button>` : `
-                <button class="btn-icon" title="Ver cuotas"
+                <button class="btn-icon btn-cuotas-ver" title="Ver cuotas"
+                    style="color:#555;border-color:#ccc"
                     onclick="openModalCuotas(${m.id_membresia},'${(m.nombre_cliente || '').replace(/'/g,"\'")}')" >
                     <i class="bi bi-list-check"></i>
                 </button>`}
                 <button class="btn-icon perm" title="Actualizar estado"
+                    style="border: 1.5px solid #f59e0b;color:#f59e0b"
                     onclick="openMembEstado(${m.id_membresia},'${m.estado}',${m.saldo_pendiente},'${(m.observaciones || '').replace(/'/g,"\'")}')">
                     <i class="bi bi-pencil-square"></i>
                 </button>
@@ -629,12 +676,17 @@ function renderMembresias(data, pag = null) {
                     style="background:#e3f2fd;color:#1565c0;border-color:#90caf9"
                     onclick="congelarMembresia(${m.id_membresia},'descongelar','${(m.nombre_cliente||'').replace(/'/g,"\'")}')">
                     <i class="bi bi-play-circle"></i>
-                </button>` : m.estado === 'activa' ? `
+                </button>` : m.estado === 'anulada' ? '' : m.estado === 'vencida' ? `
+                <button class="btn-icon" title="Membresía vencida — no se puede congelar"
+                    style="background:#eceff1;color:#90a4ae;border-color:#cfd8dc;opacity:.5;cursor:not-allowed"
+                    disabled>
+                    <i class="bi bi-snow"></i>
+                </button>` : `
                 <button class="btn-icon" title="Congelar membresía"
                     style="background:#e3f2fd;color:#1565c0;border-color:#90caf9"
                     onclick="congelarMembresia(${m.id_membresia},'congelar','${(m.nombre_cliente||'').replace(/'/g,"\'")}')">
                     <i class="bi bi-snow"></i>
-                </button>` : ''}
+                </button>`}
                 <button class="btn-icon" title="Ver / imprimir comprobante"
                     style="background:#f3e8ff;color:#7c3aed;border-color:#ddd6fe"
                     onclick="memb_abrirBoletaExistente(${m.id_membresia})">
@@ -642,7 +694,7 @@ function renderMembresias(data, pag = null) {
                 </button>
                 <button class="btn-anular-memb" title="Anular membresía"
                     onclick="confirmarEliminarMembresia(${m.id_membresia},'${(m.nombre_cliente||'').replace(/'/g,"\'")}')">
-                    <i class="bi bi-slash-circle"></i> Anular
+                    <i class="bi bi-slash-circle"></i>
                 </button>
             </div>
         </div>`;
@@ -1863,9 +1915,9 @@ function calcularFechaFin() {
     const d      = new Date(fi + 'T12:00:00');
     const val    = parseInt(opt.dataset.meses);
     const unidad = opt.dataset.unidad || 'meses';
-    if (unidad === 'dias')       d.setDate(d.getDate() + val);
-    else if (unidad === 'anos')  d.setFullYear(d.getFullYear() + val);
-    else                         d.setMonth(d.getMonth() + val);
+    if (unidad === 'dias')       d.setDate(d.getDate() + val - 1);
+    else if (unidad === 'anos')  { d.setFullYear(d.getFullYear() + val); d.setDate(d.getDate() - 1); }
+    else                         { d.setMonth(d.getMonth() + val);       d.setDate(d.getDate() - 1); }
     document.getElementById('mbFin').textContent = formatFechaCorta(d.toISOString().split('T')[0]);
     actualizarResumenCuotas();
 }
@@ -2998,9 +3050,15 @@ async function saveMembresia() {
   function wiz_calcFechaFin(fi, valor, unidad) {
     if (!fi || valor == null) return '—';
     const d = new Date(fi + 'T12:00:00');
-    if (unidad === 'dias')      d.setDate(d.getDate() + valor);
-    else if (unidad === 'anos') d.setFullYear(d.getFullYear() + valor);
-    else                        d.setMonth(d.getMonth() + valor);
+    if (unidad === 'dias') {
+      d.setDate(d.getDate() + valor - 1);
+    } else if (unidad === 'anos') {
+      d.setFullYear(d.getFullYear() + valor);
+      d.setDate(d.getDate() - 1);
+    } else {
+      d.setMonth(d.getMonth() + valor);
+      d.setDate(d.getDate() - 1);
+    }
     return d.toISOString().split('T')[0];
   }
 

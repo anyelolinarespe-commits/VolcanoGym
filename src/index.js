@@ -53,6 +53,10 @@ pool.query(`CREATE INDEX IF NOT EXISTS idx_auditoria_usuario  ON auditoria(id_us
   .catch(e => console.warn('Migration idx auditoria usuario:', e.message));
 pool.query(`CREATE INDEX IF NOT EXISTS idx_auditoria_accion   ON auditoria(accion)`)
   .catch(e => console.warn('Migration idx auditoria accion:', e.message));
+pool.query(`ALTER TABLE auditoria ADD COLUMN IF NOT EXISTS datos_anteriores JSONB`)
+  .catch(e => console.warn('Migration auditoria.datos_anteriores:', e.message));
+pool.query(`ALTER TABLE auditoria ADD COLUMN IF NOT EXISTS datos_nuevos JSONB`)
+  .catch(e => console.warn('Migration auditoria.datos_nuevos:', e.message));
 
 // Campos de auditoría faltantes en tablas existentes
 pool.query(`ALTER TABLE venta            ADD COLUMN IF NOT EXISTS anulado_por    INTEGER REFERENCES usuarios(id_usuario)`)

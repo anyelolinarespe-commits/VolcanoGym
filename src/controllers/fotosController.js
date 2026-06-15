@@ -1,4 +1,5 @@
 import { pool } from '../config/bd.js';
+import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 
 // GET /api/productos/:id/fotos
 export const getFotosByProducto = async (req, res) => {
@@ -69,6 +70,17 @@ export const uploadFoto = async (req, res) => {
         );
 
         await client.query('COMMIT');
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'CREAR',
+            modulo:         'Fotos',
+            descripcion:    `Foto subida para producto #${id} (es_principal: ${es_primera})`,
+            ip:             getIP(req),
+            datos_nuevos:   { id_producto: Number(id), id_foto: result.rows[0].id_foto, es_principal: es_primera, orden },
+        });
+
         res.status(201).json(result.rows[0]);
     } catch (err) {
         await client.query('ROLLBACK');
@@ -83,9 +95,22 @@ export const uploadFoto = async (req, res) => {
 export const setFotoPrincipal = async (req, res) => {
     const { id, id_foto } = req.params;
     try {
+        const prevPrincipal = await pool.query(
+            `SELECT id_foto FROM producto_foto WHERE id_producto=$1 AND es_principal=true LIMIT 1`, [id]
+        );
         await pool.query(
             `SELECT fn_set_foto_principal($1, $2)`, [id_foto, id]
         );
+        registrarAuditoria({
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Fotos',
+            descripcion:      `Foto principal de producto #${id} cambiada a foto #${id_foto}`,
+            ip:               getIP(req),
+            datos_anteriores: { foto_principal_id_anterior: prevPrincipal.rows[0]?.id_foto ?? null },
+            datos_nuevos:     { foto_principal_id_nueva: Number(id_foto) },
+        });
         res.json({ message: 'Foto principal actualizada' });
     } catch (err) {
         console.error(err);
@@ -112,6 +137,17 @@ export const reordenarFotos = async (req, res) => {
             );
         }
         await client.query('COMMIT');
+
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'EDITAR',
+            modulo:         'Fotos',
+            descripcion:    `Fotos de producto #${id} reordenadas (${fotos.length} fotos)`,
+            ip:             getIP(req),
+            datos_nuevos:   { nuevo_orden: fotos.map(f => f.id_foto) },
+        });
+
         res.json({ message: 'Orden actualizado' });
     } catch (err) {
         await client.query('ROLLBACK');
@@ -161,6 +197,17 @@ export const deleteFoto = async (req, res) => {
         }
 
         await client.query('COMMIT');
+
+        registrarAuditoria({
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'ELIMINAR',
+            modulo:           'Fotos',
+            descripcion:      `Foto #${id_foto} eliminada de producto #${id}`,
+            ip:               getIP(req),
+            datos_anteriores: { id_foto: Number(id_foto), id_producto: Number(id), es_principal },
+        });
+
         res.json({ message: 'Foto eliminada' });
     } catch (err) {
         await client.query('ROLLBACK');

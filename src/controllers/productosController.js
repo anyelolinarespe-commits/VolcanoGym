@@ -288,12 +288,13 @@ export const createProducto = async (req, res) => {
         await client.query('COMMIT');
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
+            id_usuario:   req.usuario.id,
             nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'CREAR',
-            modulo:         'Productos',
-            descripcion:    `Producto creado: "${req.body.nombre}"`,
-            ip:             getIP(req)
+            accion:       'CREAR',
+            modulo:       'Productos',
+            descripcion:  `Producto creado: "${req.body.nombre}"`,
+            ip:           getIP(req),
+            datos_nuevos: { nombre: nombre.trim(), id_categoria, marca: marca || null, porcentaje_oferta: Number(porcentaje_oferta ?? 0) },
         });
 
         res.status(201).json(producto);
@@ -384,12 +385,14 @@ export const updateProducto = async (req, res) => {
         const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'EDITAR',
-            modulo:         'Productos',
-            descripcion:    `Producto #${id} "${nombre.trim()}" — ${diffStr}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Productos',
+            descripcion:      `Producto #${id} "${nombre.trim()}" — ${diffStr}`,
+            ip:               getIP(req),
+            datos_anteriores: { nombre: old.nombre, estado: old.estado, id_categoria: old.id_categoria, marca: old.marca || null, porcentaje_oferta: Number(old.porcentaje_oferta), stock_minimo: Number(old.stock_minimo) },
+            datos_nuevos:     { nombre: nombre.trim(), estado: estado ?? 1, id_categoria: Number(id_categoria), marca: marca || null, porcentaje_oferta: Number(porcentaje_oferta ?? 0), stock_minimo: Number(stock_minimo ?? 3) },
         });
 
         res.json(result.rows[0]);
@@ -412,12 +415,14 @@ export const deleteProducto = async (req, res) => {
             return res.status(404).json({ message: 'Producto no encontrado' });
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'ELIMINAR',
-            modulo:         'Productos',
-            descripcion:    `Producto #${id} eliminado (soft-delete)`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'ELIMINAR',
+            modulo:           'Productos',
+            descripcion:      `Producto #${id} eliminado (soft-delete)`,
+            ip:               getIP(req),
+            datos_anteriores: { id_producto: Number(id), estado: 'activo' },
+            datos_nuevos:     { estado: 'eliminado' },
         });
 
         res.json({ message: 'Producto eliminado' });

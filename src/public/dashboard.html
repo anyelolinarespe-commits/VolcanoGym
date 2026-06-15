@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Dashboard - Volcano Gym</title>
   <link rel="icon" type="image/png" href="/icono.png">
   <link rel="manifest" href="/manifest.json">
@@ -38,6 +38,9 @@
     <div id="topbar">
       <button class="toggle-btn" id="toggleSidebar"><i class="bi bi-list"></i></button>
       <div class="topbar-right">
+        <button class="theme-toggle" id="fullscreenToggle" title="Pantalla completa" onclick="toggleFullscreen()">
+          <i class="bi bi-fullscreen" id="fullscreenIcon"></i>
+        </button>
         <button class="theme-toggle" id="themeToggle" title="Cambiar tema">
           <i class="bi bi-moon-stars" id="themeIcon"></i>
           <span id="themeLabel">Oscuro</span>
@@ -556,14 +559,18 @@
         <!-- FILTROS -->
         <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
           <input type="date" id="asistFechaInicio" class="form-control" style="width:165px"
-            onchange="loadAsistencias()">
+            onchange="filtroAsistFechaManual()">
           <input type="date" id="asistFechaFin" class="form-control" style="width:165px"
-            onchange="loadAsistencias()">
+            onchange="filtroAsistFechaManual()">
           <input type="text" id="searchAsistencias" class="form-control" style="width:220px"
-            placeholder="🔍 Buscar cliente..." oninput="loadAsistencias()">
-          <button class="btn-cancel" style="padding:8px 14px;font-size:13px"
-            onclick="resetFiltrosAsist()">
-            <i class="bi bi-x-circle me-1"></i>Limpiar
+            placeholder="🔍 Buscar cliente..." oninput="filtroAsistBuscarTimer()">
+          <button onclick="limpiarFiltrosAsist()" title="Limpiar filtros"
+            style="display:flex;align-items:center;gap:6px;padding:8px 16px;border:1.5px solid #e0e0e0;
+                   border-radius:8px;background:#fff;color:#555;font-size:13px;font-weight:600;
+                   cursor:pointer;transition:background .15s,border-color .15s,color .15s"
+            onmouseover="this.style.background='#ffebee';this.style.borderColor='#ef9a9a';this.style.color='#c62828'"
+            onmouseout="this.style.background='#fff';this.style.borderColor='#e0e0e0';this.style.color='#555'">
+            <i class="bi bi-x-circle"></i> Limpiar
           </button>
         </div>
 
@@ -639,6 +646,7 @@
                 <th>Cliente</th>
                 <th>Productos</th>
                 <th style="text-align:right">Total</th>
+                <th style="text-align:center">Método de Pago</th>
                 <th>N° Operación</th>
                 <th>Referencia</th>
                 <th style="text-align:center">Comprobante</th>
@@ -1432,6 +1440,32 @@
     padding:10px; font-family:Arial,sans-serif;
   }
 }
+
+/* ── DARK MODE — MODAL DETALLE VENTA ── */
+body[data-theme="dark"] .vt-detalle-shell            { background:#1e1e1e; }
+body[data-theme="dark"] .vt-detalle-body             { background:#1e1e1e; }
+body[data-theme="dark"] .vt-detalle-footer           { background:#242424; border-top-color:#333; }
+body[data-theme="dark"] .vt-dv-card                  { background:#242424; border-color:#383838; }
+body[data-theme="dark"] .vt-dv-tabla tbody td        { border-bottom-color:#333; color:#e0e0e0; }
+body[data-theme="dark"] .vt-dv-tabla tbody tr:hover td { background:#2a2a2a; }
+body[data-theme="dark"] .vt-dv-total-col             { color:#66bb6a; }
+body[data-theme="dark"] .vt-dv-totales               { background:#242424; border-color:#383838; }
+body[data-theme="dark"] .vt-dv-total-row             { color:#cccccc; }
+body[data-theme="dark"] .vt-dv-total-final           { color:#f0f0f0; border-top-color:#444; }
+body[data-theme="dark"] .vt-dv-total-final span:last-child { color:#64b5f6; }
+body[data-theme="dark"] .vt-dv-vendedor              { color:#c0c0c0; background:#242424; border-left-color:#64b5f6; }
+/* Inline-styled elements override */
+body[data-theme="dark"] #dventa-cliente-nombre       { color:#f0f0f0 !important; }
+body[data-theme="dark"] #dventa-fecha                { color:#f0f0f0 !important; }
+body[data-theme="dark"] #dventa-metodo               { color:#90caf9 !important; }
+body[data-theme="dark"] #dventa-cliente-celular      { color:#d0d0d0 !important; }
+body[data-theme="dark"] #dventa-cliente-telefono     { color:#d0d0d0 !important; }
+/* Forma de pago card (inline bg overrides) */
+body[data-theme="dark"] #modalDetalleVenta .vt-dv-card[style*="background:#f0f7ff"],
+body[data-theme="dark"] #modalDetalleVenta .vt-dv-card[style*="f0f7ff"] { background:#1a2a3a !important; border-color:#1e4a7a !important; }
+/* Observación card */
+body[data-theme="dark"] #dventa-observacion-row .vt-dv-card { background:#2a2210 !important; border-left-color:#f59e0b !important; }
+body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
 </style>
 
 <style>
@@ -3148,7 +3182,7 @@
         </div>
         <p class="memb-paso-desc">Ingresa el documento para verificar si el cliente ya está registrado o consultar sus datos en RENIEC / Migraciones.</p>
         <div class="memb-dni-campo" style="gap:8px;align-items:center">
-          <select id="memb-tipo-doc" class="memb-select-tipo-doc" style="flex:0 0 auto;height:44px;border:1.5px solid #cbd5e1;border-radius:10px;padding:0 10px;font-size:14px;background:#fff;color:#1e293b;cursor:pointer" onchange="onMembTipoDocChange()">
+          <select id="memb-tipo-doc" class="memb-select-tipo-doc" style="flex:0 0 auto;height:50px;border:1.5px solid #cbd5e1;border-radius:10px;padding:0 12px;font-size:1rem;background:#fff;color:#1e293b;cursor:pointer;font-weight:600" onchange="onMembTipoDocChange()">
             <option value="DNI">DNI</option>
             <option value="CE">Carnet Ext.</option>
           </select>
@@ -3396,16 +3430,16 @@
     background: #fff; border-radius: var(--mc-radio-lg);
     box-shadow: 0 4px 20px rgba(0,0,0,.14);
     width: 100%; max-width: 560px;
-    max-height: 90vh; overflow-y: auto;
+    max-height: 90vh; overflow: hidden;
     display: flex; flex-direction: column;
   }
   .memb-modal-header {
     display: flex; align-items: flex-start; justify-content: space-between;
     gap: 1rem; padding: 1.25rem 1.5rem 1rem;
     border-bottom: 1px solid var(--mc-borde);
-    position: sticky; top: 0; background: #fff; z-index: 1;
+    background: #fff; z-index: 1; flex-shrink: 0;
   }
-  .memb-modal-titulo { font-size: 1.125rem; font-weight: 600; margin: 0 0 .75rem; color: var(--mc-texto); }
+  .memb-modal-titulo { font-size: 1.35rem; font-weight: 700; margin: 0 0 .75rem; color: var(--mc-texto); }
   .memb-btn-cerrar { background: none; border: none; cursor: pointer; color: var(--mc-texto-suave); padding: 4px; border-radius: 6px; flex-shrink: 0; }
   .memb-btn-cerrar:hover { background: var(--mc-fondo-suave); color: var(--mc-texto); }
 
@@ -3413,44 +3447,50 @@
   .memb-pasos-indicador { display: flex; align-items: center; }
   .memb-paso-indicador  { display: flex; align-items: center; gap: 5px; }
   .memb-paso-num {
-    width: 24px; height: 24px; border-radius: 50%;
+    width: 30px; height: 30px; border-radius: 50%;
     background: var(--mc-borde); color: var(--mc-texto-suave);
-    font-size: .75rem; font-weight: 600;
+    font-size: .875rem; font-weight: 700;
     display: flex; align-items: center; justify-content: center;
     transition: background .2s, color .2s;
   }
-  .memb-paso-label { font-size: .75rem; color: var(--mc-texto-suave); }
+  .memb-paso-label { font-size: .875rem; color: var(--mc-texto-suave); }
   .memb-paso-indicador.actual    .memb-paso-num { background: var(--mc-primario); color: #fff; }
   .memb-paso-indicador.actual    .memb-paso-label { color: var(--mc-primario); font-weight: 600; }
   .memb-paso-indicador.completado .memb-paso-num { background: var(--mc-success); color: #fff; }
   .memb-paso-linea { width: 24px; height: 1px; background: var(--mc-borde); margin: 0 4px; }
 
   /* ── Contenido de pasos ─────────────────────────────────────────────────── */
-  .memb-paso-contenido { display: none; padding: 1.25rem 1.5rem; }
-  .memb-paso-contenido.activo { display: block; }
-  .memb-paso-titulo-sec { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: .5rem; color: var(--mc-texto); }
-  .memb-paso-desc { font-size: .875rem; color: var(--mc-texto-suave); margin: 0 0 1.25rem; }
-  .memb-paso-acciones {
-    display: flex; gap: .75rem; justify-content: flex-end; flex-wrap: wrap;
-    position: sticky; bottom: 0;
-    background: #fff; z-index: 1;
-    padding: 12px 0 4px;
-    margin-top: 1.5rem;
-    border-top: 1px solid var(--mc-borde);
+  .memb-paso-contenido { display: none; }
+  .memb-paso-contenido.activo {
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 0; overflow-y: auto;
+    padding: 1.25rem 1.5rem 0;
   }
+  .memb-paso-titulo-sec { display: flex; align-items: center; gap: 8px; font-size: 1.1rem; font-weight: 700; margin-bottom: .5rem; color: var(--mc-texto); }
+  .memb-paso-desc { font-size: 1rem; color: var(--mc-texto-suave); margin: 0 0 1.25rem; line-height: 1.55; }
+  .memb-paso-acciones {
+    display: flex; gap: .75rem; justify-content: flex-end; flex-wrap: nowrap;
+    flex-shrink: 0;
+    background: #fff; z-index: 1;
+    padding: 12px 1.5rem 16px;
+    margin: auto 0 0;
+    border-top: 1px solid var(--mc-borde);
+    position: sticky; bottom: 0;
+  }
+  .memb-paso-acciones > * { flex-shrink: 0; }
 
   /* ── Botones del modal ──────────────────────────────────────────────────── */
   .memb-btn-primario {
     display: inline-flex; align-items: center; gap: 6px;
-    padding: 8px 18px; border-radius: var(--mc-radio); border: none;
+    padding: 11px 22px; border-radius: var(--mc-radio); border: none;
     background: var(--mc-primario); color: #fff;
-    font-size: .875rem; font-weight: 500; cursor: pointer; transition: background .15s;
+    font-size: 1rem; font-weight: 600; cursor: pointer; transition: background .15s;
   }
   .memb-btn-primario:hover { background: var(--mc-primario-hover); }
   .memb-btn-secundario {
-    padding: 8px 16px; border-radius: var(--mc-radio);
+    padding: 11px 18px; border-radius: var(--mc-radio);
     border: 1px solid var(--mc-borde); background: #fff;
-    color: var(--mc-texto); font-size: .875rem; cursor: pointer; transition: background .15s;
+    color: var(--mc-texto); font-size: 1rem; cursor: pointer; transition: background .15s;
   }
   .memb-btn-secundario:hover { background: var(--mc-fondo-suave); }
   .memb-btn-confirmar {
@@ -3465,23 +3505,23 @@
   /* ── DNI ────────────────────────────────────────────────────────────────── */
   .memb-dni-campo { display: flex; gap: 8px; margin-bottom: 1rem; }
   .memb-input-dni {
-    flex: 1; min-width: 0; padding: 10px 14px; font-size: 1.1rem; font-weight: 600;
+    flex: 1; min-width: 0; padding: 12px 14px; font-size: 1.25rem; font-weight: 700;
     border: 2px solid var(--mc-borde); border-radius: var(--mc-radio);
-    text-align: center; letter-spacing: .1em; transition: border-color .15s;
+    text-align: center; letter-spacing: .12em; transition: border-color .15s;
   }
   .memb-input-dni:focus { outline: none; border-color: var(--mc-primario); }
   .memb-btn-buscar-dni {
-    padding: 10px 16px; border-radius: var(--mc-radio); border: none;
+    padding: 12px 18px; border-radius: var(--mc-radio); border: none;
     background: var(--mc-primario); color: #fff;
-    font-size: .875rem; font-weight: 500; cursor: pointer;
+    font-size: 1rem; font-weight: 600; cursor: pointer;
     display: flex; align-items: center; gap: 6px; transition: background .15s;
   }
   .memb-btn-buscar-dni:hover:not(:disabled) { background: var(--mc-primario-hover); }
   .memb-btn-buscar-dni:disabled { opacity: .45; cursor: not-allowed; }
   .memb-dni-estado {
-    padding: .65rem 1rem; border-radius: var(--mc-radio);
-    font-size: .875rem; display: flex; align-items: flex-start; gap: 8px;
-    flex-wrap: wrap; line-height: 1.45;
+    padding: .75rem 1rem; border-radius: var(--mc-radio);
+    font-size: 1rem; display: flex; align-items: flex-start; gap: 8px;
+    flex-wrap: wrap; line-height: 1.5;
   }
   .memb-dni-estado .dni-icono { flex-shrink: 0; margin-top: 1px; }
   .memb-dni-estado span:last-child { flex: 1; min-width: 0; }
@@ -3500,17 +3540,17 @@
   .memb-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .memb-form-grupo { display: flex; flex-direction: column; gap: 5px; }
   .memb-form-grupo-full { grid-column: 1 / -1; }
-  .memb-form-grupo label { font-size: .8125rem; font-weight: 500; color: var(--mc-texto); }
+  .memb-form-grupo label { font-size: .9375rem; font-weight: 600; color: var(--mc-texto); }
   .memb-form-grupo input, .memb-form-grupo select {
-    padding: 8px 12px; border: 1px solid var(--mc-borde);
-    border-radius: var(--mc-radio); font-size: .875rem; color: var(--mc-texto);
+    padding: 10px 12px; border: 1px solid var(--mc-borde);
+    border-radius: var(--mc-radio); font-size: 1rem; color: var(--mc-texto);
     transition: border-color .15s;
   }
   .memb-form-grupo input:focus, .memb-form-grupo select:focus { outline: none; border-color: var(--mc-primario); }
   .memb-req { color: var(--mc-danger); }
   .memb-error-campo {
     background: #fee2e2; color: var(--mc-danger);
-    border-radius: var(--mc-radio); padding: .5rem .875rem; font-size: .8125rem;
+    border-radius: var(--mc-radio); padding: .65rem 1rem; font-size: .9375rem;
   }
 
   /* ── Planes ─────────────────────────────────────────────────────────────── */

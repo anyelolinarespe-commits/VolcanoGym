@@ -85,12 +85,14 @@ export const setPermisosByPerfil = async (req, res) => {
         }
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'EDITAR',
-            modulo:         'Permisos',
-            descripcion:    `Permisos del perfil "${nombrePerfil}" — ${diffPerm}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Permisos',
+            descripcion:      `Permisos del perfil "${nombrePerfil}" — ${diffPerm}`,
+            ip:               getIP(req),
+            datos_anteriores: { permisos: [...oldIds].map(id => oldNombres[id] ?? `#${id}`) },
+            datos_nuevos:     { permisos: opciones.map(id => newNombres[id] ?? `#${id}`), agregadas, eliminadas },
         });
 
         res.json({ message: 'Permisos actualizados correctamente' });

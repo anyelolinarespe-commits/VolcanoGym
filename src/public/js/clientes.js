@@ -1434,12 +1434,14 @@ function hcNavToSection(key) {
   if (sectionBox) { sectionBox.style.display = 'flex'; sectionBox.dataset.section = key; }
   slot.scrollTop = 0;
 
-  // La sección necesita su propio slot en el historial (separado del modal padre)
-  // para que back cierre solo la sección y no todo el historial.
+  // _navOpen gestiona el slot de historial: si la sección ya está en el stack
+  // (cambio de pestaña) retorna sin hacer push; si es la primera apertura, añade
+  // al stack sin push extra porque el modal padre ya tiene el slot {modal:true}.
+  // console.log('[NAV] hcNavToSection', key, '| stack antes:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
   if (typeof _navOpen === 'function') {
-    history.pushState({ modal: true }, '', '/dashboard');
     _navOpen('hcSectionBox', _hcSectionClose);
   }
+  // console.log('[NAV] hcNavToSection POST | stack:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
 }
 
 // Cierre visual del sub-view (sin tocar el stack — lo hace hcNavBack o el popstate)
@@ -1450,10 +1452,34 @@ function _hcSectionClose() {
   if (mainBox)    mainBox.style.display = '';
 }
 
+// Cierra el modal completo (X o "Volver al listado") de forma limpia:
+// saca hcSectionBox Y modalHistorialCliente del stack, limpia el slot de history.
+function hcCerrarModal() {
+  // console.log('[NAV] hcCerrarModal | stack antes:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
+  _hcSectionClose();
+  if (typeof _navClose === 'function') {
+    _navClose('hcSectionBox');
+    _navClose('modalHistorialCliente');
+  }
+  document.getElementById('modalHistorialCliente')?.classList.remove('open');
+  // Si el stack quedó vacío, limpiar el slot {modal:true} para que el siguiente
+  // "retroceder" no desperdicie un nivel ni quede huérfano.
+  if (history.state?.modal &&
+      typeof _navStack !== 'undefined' && _navStack.length === 0) {
+    history.replaceState(
+      { vista: typeof _currentVista !== 'undefined' ? _currentVista : 'clientes' },
+      '', '/dashboard'
+    );
+  }
+  // console.log('[NAV] hcCerrarModal POST | stack:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
+}
+
 function hcNavBack() {
+  // console.log('[NAV] hcNavBack (← botón) | stack antes:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
   _hcSectionClose();
   // Sincronizar el stack cuando el usuario cierra manualmente (flecha ←)
   if (typeof _navClose === 'function') _navClose('hcSectionBox');
+  // console.log('[NAV] hcNavBack POST | stack:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
 }
 
 function hcMbFilter() {
@@ -1638,7 +1664,7 @@ function _buildModalHistorial() {
 
       <!-- HEADER con datos del cliente -->
       <div style="background:linear-gradient(135deg,#0f3460 0%,#16213e 100%);padding:20px 24px 16px;color:#fff;position:relative;border-radius:12px 12px 0 0">
-        <button onclick="document.getElementById('modalHistorialCliente').classList.remove('open')"
+        <button onclick="hcCerrarModal()"
           style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,.15);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center">✕</button>
         <div style="display:flex;align-items:center;gap:14px">
           <div style="width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;flex-shrink:0;overflow:hidden;transition:opacity .15s" id="hcAvatar">?</div>
@@ -1761,7 +1787,7 @@ function _buildModalHistorial() {
           Total pagado (periodo):
           <strong id="hcTotalPagado" style="color:#c62828;font-size:15px;margin-left:6px">S/ 0.00</strong>
         </div>
-        <button onclick="document.getElementById('modalHistorialCliente').classList.remove('open')"
+        <button onclick="hcCerrarModal()"
           style="padding:8px 20px;background:#0f3460;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">
           Volver al listado de clientes
         </button>

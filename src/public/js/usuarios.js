@@ -60,20 +60,53 @@ function renderUsuarios(data) {
                      (!yoSoySuperAdmin && esAdmin && !esSelf) ||
                      (mismos && !esSelf);
 
+    const _avatarBgs = ['#e94560','#1e88e5','#2e7d32','#7c4dff','#f57c00'];
+    const avatarBg   = _avatarBgs[u.id_usuario % 5];
+    const estadoBadge = `<span class="badge-estado ${u.estado === 1 ? 'badge-activo' : 'badge-inactivo'}">${u.estado === 1 ? 'Activo' : 'Inactivo'}</span>`;
+
     return `<tr style="cursor:${bloqEdit ? 'default' : 'pointer'}" ${bloqEdit ? '' : `ondblclick="editUsuario(${u.id_usuario})"`}>
-      <td>${u.id_usuario}</td>
-      <td><strong>${u.nombre} ${u.apellido}</strong></td>
-      <td><code>${u.username}</code></td>
-      <td>${u.email}</td>
-      <td><span class="badge-perfil">${u.perfil}</span></td>
-      <td><span class="badge-estado ${u.estado === 1 ? 'badge-activo' : 'badge-inactivo'}">${u.estado === 1 ? 'Activo' : 'Inactivo'}</span></td>
-      <td style="display:flex;gap:6px" ondblclick="event.stopPropagation()">
+      <td class="u-dt">${u.id_usuario}</td>
+      <td class="u-dt"><strong>${u.nombre} ${u.apellido}</strong></td>
+      <td class="u-dt"><code>${u.username}</code></td>
+      <td class="u-dt">${u.email}</td>
+      <td class="u-dt"><span class="badge-perfil">${u.perfil}</span></td>
+      <td class="u-dt">${estadoBadge}</td>
+      <td class="u-dt" style="display:flex;gap:6px" ondblclick="event.stopPropagation()">
         ${bloqEdit
         ? `<button class="btn-icon" disabled style="opacity:.35"><i class="bi bi-pencil"></i></button>`
         : `<button class="btn-icon edit" onclick="editUsuario(${u.id_usuario})"><i class="bi bi-pencil"></i></button>`}
         ${bloqDel
         ? `<button class="btn-icon danger" disabled style="opacity:.35"><i class="bi bi-lock"></i></button>`
         : `<button class="btn-icon danger" onclick="confirmDelete('usuario',${u.id_usuario},'${u.nombre}')"><i class="bi bi-trash"></i></button>`}
+      </td>
+      <td class="u-mb" colspan="7">
+        <div class="u-card" style="border-left:4px solid ${u.estado === 1 ? '#4caf50' : '#f44336'}">
+          <div class="u-top-row">
+            <div class="u-hdr">
+              <div class="u-avatar" style="background:${avatarBg}">${u.nombre.charAt(0).toUpperCase()}</div>
+              <div class="u-hdr-main">
+                <div class="u-nombre">${u.nombre} ${u.apellido}</div>
+                <code class="u-uname">@${u.username}</code>
+              </div>
+            </div>
+            <div class="u-aside">
+              <span class="badge-perfil">${u.perfil}</span>
+              ${estadoBadge}
+            </div>
+          </div>
+          <div class="u-body">
+            <span class="memb-lbl">EMAIL</span>
+            <span class="u-email">${u.email}</span>
+          </div>
+          <div class="u-actions" ondblclick="event.stopPropagation()">
+            ${bloqEdit
+              ? `<button class="btn-icon" disabled style="opacity:.35"><i class="bi bi-pencil"></i></button>`
+              : `<button class="btn-icon" onclick="editUsuario(${u.id_usuario})" style="color:#f59e0b;border:1.5px solid #f59e0b"><i class="bi bi-pencil"></i></button>`}
+            ${bloqDel
+              ? `<button class="btn-icon" disabled style="opacity:.35"><i class="bi bi-lock"></i></button>`
+              : `<button class="btn-icon" onclick="confirmDelete('usuario',${u.id_usuario},'${u.nombre}')" style="color:#e53935;border-color:#ef9a9a"><i class="bi bi-trash"></i></button>`}
+          </div>
+        </div>
       </td>
     </tr>`;
   }).join('');

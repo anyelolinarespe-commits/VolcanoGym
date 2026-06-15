@@ -4,6 +4,7 @@
 
 let _asistClienteId      = null;
 let _asistBuscarTimeout  = null;
+let _asistFiltroTimer    = null;
 let dataAsistencias      = [];
 
 // ─── CARGAR ──────────────────────────────────────────────────────────────────
@@ -24,7 +25,6 @@ async function loadAsistencias(page = 1) {
 
         const res = await api('GET', `/api/asistencias?${params}`);
         dataAsistencias = res.data;
-        cargarAsistenciasStats();
         renderAsistencias(res.data, res);
     } catch (e) {
         tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:24px;color:#c62828">${e.message}</td></tr>`;
@@ -376,6 +376,28 @@ function _fechaLocal(date = new Date()) {
     const mm   = String(date.getMonth() + 1).padStart(2, '0');
     const dd   = String(date.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
+}
+
+// ─── DEBOUNCE FILTRO TEXTO ────────────────────────────────────────────────────
+function filtroAsistBuscarTimer() {
+    clearTimeout(_asistFiltroTimer);
+    _setAsistPillActive('asist-pill-todos');
+    _asistFiltroTimer = setTimeout(() => loadAsistencias(1), 380);
+}
+
+// ─── FILTRO FECHA MANUAL ──────────────────────────────────────────────────────
+function filtroAsistFechaManual() {
+    _setAsistPillActive('asist-pill-todos');
+    loadAsistencias(1);
+}
+
+// ─── LIMPIAR FILTROS ──────────────────────────────────────────────────────────
+function limpiarFiltrosAsist() {
+    document.getElementById('asistFechaInicio').value  = '';
+    document.getElementById('asistFechaFin').value     = '';
+    document.getElementById('searchAsistencias').value = '';
+    _setAsistPillActive('asist-pill-todos');
+    loadAsistencias(1);
 }
 
 // ─── RESET FILTROS (Todos) ────────────────────────────────────────────────────

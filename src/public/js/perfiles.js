@@ -47,13 +47,16 @@ function renderPerfiles(data) {
       ? `<span style="font-size:10px;color:#7c4dff;background:#ede7f6;padding:2px 7px;border-radius:20px">${esMio ? 'tu perfil' : 'protegido'}</span>`
       : '';
 
+    const fechaStr    = new Date(p.created_at).toLocaleDateString('es-PE');
+    const estadoBadge = `<span class="badge-estado ${p.estado === 1 ? 'badge-activo' : 'badge-inactivo'}">${p.estado === 1 ? 'Activo' : 'Inactivo'}</span>`;
+
     return `<tr style="cursor:${bloqEdit ? 'default' : 'pointer'}" ${bloqEdit ? '' : `ondblclick="editPerfil(${p.id_perfil})"`}>
-      <td>${p.id_perfil}</td>
-      <td><strong>${p.nombre}</strong> ${badge}</td>
-      <td style="color:var(--color-text-secondary)">${p.descripcion || '—'}</td>
-      <td><span class="badge-estado ${p.estado === 1 ? 'badge-activo' : 'badge-inactivo'}">${p.estado === 1 ? 'Activo' : 'Inactivo'}</span></td>
-      <td>${new Date(p.created_at).toLocaleDateString('es-PE')}</td>
-      <td style="display:flex;gap:6px" ondblclick="event.stopPropagation()">
+      <td class="pf-dt">${p.id_perfil}</td>
+      <td class="pf-dt"><strong>${p.nombre}</strong> ${badge}</td>
+      <td class="pf-dt" style="color:var(--color-text-secondary)">${p.descripcion || '—'}</td>
+      <td class="pf-dt">${estadoBadge}</td>
+      <td class="pf-dt">${fechaStr}</td>
+      <td class="pf-dt" style="display:flex;gap:6px" ondblclick="event.stopPropagation()">
         <button class="btn-icon perm" onclick="openPermisos(${p.id_perfil},'${p.nombre}')"><i class="bi bi-key"></i> Permisos</button>
         ${bloqEdit
         ? `<button class="btn-icon" disabled style="opacity:.35"><i class="bi bi-pencil"></i></button>`
@@ -61,6 +64,29 @@ function renderPerfiles(data) {
         ${bloqDel
         ? `<button class="btn-icon danger" disabled style="opacity:.35"><i class="bi bi-lock"></i></button>`
         : `<button class="btn-icon danger" onclick="confirmDelete('perfil',${p.id_perfil},'${p.nombre}')"><i class="bi bi-trash"></i></button>`}
+      </td>
+      <td class="pf-mb" colspan="6">
+        <div class="pf-card" style="border-left:4px solid ${p.estado === 1 ? '#4caf50' : '#78909c'}">
+          <div class="pf-top-row">
+            <div class="pf-hdr">
+              <div class="pf-nombre">${p.nombre}${badge ? ' ' + badge : ''}</div>
+            </div>
+            <div class="pf-aside">
+              ${estadoBadge}
+              <div class="pf-fecha">${fechaStr}</div>
+            </div>
+          </div>
+          ${p.descripcion ? `<div class="pf-body"><span class="memb-lbl">DESCRIPCIÓN</span><div class="pf-desc">${p.descripcion}</div></div>` : ''}
+          <div class="pf-actions" ondblclick="event.stopPropagation()">
+            <button class="btn-icon perm" onclick="openPermisos(${p.id_perfil},'${p.nombre}')"><i class="bi bi-key"></i> Permisos</button>
+            ${bloqEdit
+              ? `<button class="btn-icon" disabled style="opacity:.35"><i class="bi bi-pencil"></i></button>`
+              : `<button class="btn-icon" onclick="editPerfil(${p.id_perfil})" style="color:#f59e0b;border:1.5px solid #f59e0b"><i class="bi bi-pencil"></i></button>`}
+            ${bloqDel
+              ? `<button class="btn-icon" disabled style="opacity:.35"><i class="bi bi-lock"></i></button>`
+              : `<button class="btn-icon" onclick="confirmDelete('perfil',${p.id_perfil},'${p.nombre}')" style="color:#e53935;border-color:#ef9a9a"><i class="bi bi-trash"></i></button>`}
+          </div>
+        </div>
       </td>
     </tr>`;
   }).join('');

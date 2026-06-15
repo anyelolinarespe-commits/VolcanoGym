@@ -136,6 +136,7 @@
     width:52px; height:52px; border-radius:12px;
     display:flex; align-items:center; justify-content:center;
     font-size:22px; color:#fff;
+    flex-shrink:0;
   }
   .stat-value { font-size:28px; font-weight:700; color:#1a1a2e; }
   .stat-label { font-size:13px; color:var(--text-muted-custom); }
@@ -171,7 +172,7 @@
   tbody td { padding:10px 16px; font-size:13.5px; border-bottom:1px solid #ebebeb; color:#333; vertical-align:middle; }
   tbody tr:last-child td { border-bottom:none; }
   tbody tr:nth-child(even) td { background:#f5f7fc; }
-  tbody tr:hover td { background:#eaecf5 !important; }
+  @media (min-width: 769px) { tbody tr:hover td { background:#eaecf5 !important; } }
 
   .badge-estado { padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; }
   .badge-activo   { background:#e8f5e9; color:#2e7d32; }
@@ -363,6 +364,14 @@
 .memb-saldo  { font-size:11px; color:#c62828; font-weight:600; }
 .memb-actions { display:flex; gap:6px; flex-shrink:0; }
 
+/* Control de vistas dual (desktop oculta móvil, móvil oculta desktop) */
+.memb-desktop-view { display:contents; } /* transparente en flex desktop */
+.memb-mobile-view  { display:none; }     /* oculto en desktop */
+.cl-mb             { display:none; }     /* celda-card clientes: oculta en desktop */
+.u-mb              { display:none; }     /* celda-card usuarios: oculta en desktop */
+.pf-mb             { display:none; }     /* celda-card perfiles: oculta en desktop */
+.aud-mb            { display:none; }     /* celda-card auditoría: oculta en desktop */
+
 /* ── PLANES ── */
 .plan-card {
   background:#fff; border-radius:14px; padding:20px;
@@ -494,7 +503,7 @@ body[data-theme="dark"] thead th { background: #222222; color: #888888; border-b
 body[data-theme="dark"] tbody td { color: #cccccc; border-bottom-color: #222222; }
 body[data-theme="dark"] tbody td { border-bottom-color: #222222; }
 body[data-theme="dark"] tbody tr:nth-child(even) td { background: #1e2a3a; }
-body[data-theme="dark"] tbody tr:hover td { background: #262d38 !important; }
+@media (min-width: 769px) { body[data-theme="dark"] tbody tr:hover td { background: #262d38 !important; } }
 body[data-theme="dark"] .table-toolbar { border-bottom-color: #2e2e2e; }
 body[data-theme="dark"] .table-toolbar input {
   background: #222222;
@@ -999,3 +1008,318 @@ body[data-theme="dark"] .memb-solap-aviso-lista { color: #ddd; }
 body[data-theme="dark"] .memb-solap-btn-manual { background: #1a2a3a; color: #90caf9; }
 body[data-theme="dark"] .memb-solap-btn-auto   { background: #1b3a1f; color: #81c784; }
 body[data-theme="dark"] .memb-solap-btn-anyway { background: #2a1b3a; color: #ce93d8; }
+
+/* ── MODAL NUEVA MEMBRESÍA — DARK MODE ──────────────────────────────────────── */
+
+/* Redefinir variables CSS del modal para dark mode */
+body[data-theme="dark"] #memb-modal-overlay {
+    --mc-borde:       #2e2e2e;
+    --mc-fondo-suave: #222222;
+    --mc-texto:       #e8e8e8;
+    --mc-texto-suave: #888888;
+}
+
+/* Fondo del modal y cabecera */
+body[data-theme="dark"] .memb-modal-cuerpo {
+    background: #1a1a1a !important;
+    box-shadow: 0 4px 32px rgba(0,0,0,.6);
+}
+body[data-theme="dark"] .memb-modal-header {
+    background: #1a1a1a !important;
+    border-bottom-color: #2e2e2e !important;
+}
+
+/* Títulos y descripción de pasos */
+body[data-theme="dark"] .memb-paso-titulo-sec { color: #e8e8e8; }
+body[data-theme="dark"] .memb-paso-desc       { color: #e0e0e0; }
+
+/* Indicador de pasos — círculos inactivos y líneas */
+body[data-theme="dark"] .memb-paso-num   { background: #2e2e2e; color: #888888; }
+body[data-theme="dark"] .memb-paso-label { color: #888888; }
+body[data-theme="dark"] .memb-paso-linea { background: #2e2e2e; }
+
+/* Select tipo documento (tiene inline style background:#fff) */
+body[data-theme="dark"] #memb-tipo-doc,
+body[data-theme="dark"] .memb-select-tipo-doc {
+    background: #222222 !important;
+    color: #e8e8e8 !important;
+    border-color: #3e3e3e !important;
+}
+
+/* Input DNI */
+body[data-theme="dark"] .memb-input-dni {
+    background: #222222 !important;
+    color: #e8e8e8 !important;
+    border-color: #3e3e3e !important;
+}
+body[data-theme="dark"] .memb-input-dni::placeholder { color: #555555; }
+body[data-theme="dark"] .memb-input-dni:focus { border-color: #4a8aff !important; }
+
+/* Estados de respuesta DNI */
+body[data-theme="dark"] .memb-dni-cargando   { background: #1a2e4a; color: #90caf9; }
+body[data-theme="dark"] .memb-dni-encontrado { background: #0d2318; color: #4ade80; }
+body[data-theme="dark"] .memb-dni-nuevo      { background: #2a1f00; color: #ffd54f; }
+body[data-theme="dark"] .memb-dni-error      { background: #2d1515; color: #f87171; }
+
+/* Formulario pasos 2-4: inputs y selects dentro del modal */
+body[data-theme="dark"] .memb-form-grupo input,
+body[data-theme="dark"] .memb-form-grupo select {
+    background: #222222;
+    color: #e8e8e8;
+    border-color: #3e3e3e;
+}
+body[data-theme="dark"] .memb-form-grupo input::placeholder { color: #555555; }
+body[data-theme="dark"] .memb-form-grupo label { color: #aaaaaa; }
+
+/* Aviso cláusula 1a (fondo verde claro en paso 2) */
+body[data-theme="dark"] #memb-paso-2 div[style*="e8f5e9"] {
+    background: #0d2318 !important;
+    border-color: #2a5a3a !important;
+    color: #4ade80 !important;
+}
+
+/* Tarjetas de contacto de emergencia (paso 2) */
+body[data-theme="dark"] #memb-contacto1-card,
+body[data-theme="dark"] #memb-paso-2 div[style*="fce4ec"] {
+    background: #1e1e2a !important;
+    border-color: #3a3a5a !important;
+}
+/* Título "Contactos de emergencia" */
+body[data-theme="dark"] #memb-paso-2 div[style*="374151"] {
+    color: #e0e0e0 !important;
+}
+/* Descripción y subtítulo gris del paso 2 */
+body[data-theme="dark"] #memb-paso-2 p[style*="9199ab"],
+body[data-theme="dark"] #memb-contactos-subtitle {
+    color: #b0b0b0 !important;
+}
+/* Badge Contacto 2 (rojo oscuro → rosado legible) */
+body[data-theme="dark"] #memb-paso-2 div[style*="c62828"] {
+    color: #ef9a9a !important;
+}
+/* "(opcional)" dentro del badge */
+body[data-theme="dark"] #memb-paso-2 span[style*="9199ab"] {
+    color: #888888 !important;
+}
+/* Aviso tutor menor de edad */
+body[data-theme="dark"] #memb-tutor-aviso {
+    background: #2a1f00 !important;
+    border-color: #7a5500 !important;
+    color: #ffd54f !important;
+}
+/* Aviso doc info / reactivar */
+body[data-theme="dark"] #memb-p2-doc-info {
+    background: #2a1b3a !important;
+    border-color: #6a3a9a !important;
+    color: #ce93d8 !important;
+}
+body[data-theme="dark"] #memb-p2-reactivar-aviso {
+    background: #2a1f00 !important;
+    border-color: #7a5500 !important;
+    color: #ffd54f !important;
+}
+
+/* Error campos */
+body[data-theme="dark"] .memb-error-campo { background: #2d1515; color: #f87171; }
+
+/* Cards de planes (paso 3) */
+body[data-theme="dark"] .memb-plan-card {
+    background: #222222 !important;
+    border-color: #3e3e3e !important;
+}
+body[data-theme="dark"] .memb-plan-card:hover { border-color: #4a8aff !important; }
+
+/* Barra sticky de botones Volver/Continuar */
+body[data-theme="dark"] .memb-paso-acciones {
+    background: #1a1a1a !important;
+    border-top-color: #2e2e2e !important;
+}
+body[data-theme="dark"] .memb-modal-header {
+    background: #1a1a1a !important;
+}
+
+/* Botón secundario "Volver" */
+body[data-theme="dark"] .memb-btn-secundario {
+    background: #2e2e2e !important;
+    color: #e0e0e0 !important;
+    border-color: #3e3e3e !important;
+}
+body[data-theme="dark"] .memb-btn-secundario:hover {
+    background: #3a3a3a !important;
+}
+
+/* Botones de acciones de cada paso */
+body[data-theme="dark"] .memb-paso-acciones .memb-btn-cancel {
+    background: #2e2e2e; color: #aaaaaa; border-color: #3e3e3e;
+}
+
+/* ── PASO 4 (PAGO) — DARK MODE ──────────────────────────────────────────────── */
+
+/* Inputs numéricos paso 4 */
+body[data-theme="dark"] #memb-monto-total {
+    background: #2a2a2a !important;
+    color: #888888 !important;
+}
+body[data-theme="dark"] #memb-pago1 {
+    background: #222222 !important;
+    color: #e8e8e8 !important;
+    border-color: #3e3e3e !important;
+}
+/* Help text "Lo que paga hoy" */
+body[data-theme="dark"] #memb-pago1-help { color: #777777 !important; }
+
+/* Botones método de pago (selector simple) */
+body[data-theme="dark"] .memb-metodo-btn {
+    background: #222222;
+    border-color: #3e3e3e;
+}
+body[data-theme="dark"] .memb-metodo-btn:hover  { background: #1a2e4a; border-color: #4a8aff; }
+body[data-theme="dark"] .memb-metodo-btn.activo { background: #1a2e4a; border-color: #4a8aff; color: #79b8ff; }
+
+/* Tarjeta de cada split (_PM) */
+body[data-theme="dark"] .pm-split {
+    background: #1e1e2a !important;
+    border-color: #3a3a5a !important;
+}
+/* Label "Forma de pago" y "Método N" */
+body[data-theme="dark"] .pm-label            { color: #b0b0b0 !important; }
+body[data-theme="dark"] .pm-split-label      { color: #a899d4 !important; }
+body[data-theme="dark"] .pm-lbl              { color: #888888 !important; }
+
+/* Botones de método (_PM) */
+body[data-theme="dark"] .pm-metodo-btn {
+    background: #222222 !important;
+    border-color: #3e3e3e !important;
+    color: #d0d0d0 !important;
+}
+body[data-theme="dark"] .pm-metodo-btn:hover  { background: #1a1e3a !important; border-color: #6366f1 !important; color: #a5b4fc !important; }
+body[data-theme="dark"] .pm-metodo-btn.activo { background: #1a1e3a !important; border-color: #6366f1 !important; color: #a5b4fc !important; font-weight: 700; }
+
+/* Inputs generados por _PM */
+body[data-theme="dark"] .pm-monto,
+body[data-theme="dark"] .pm-referencia,
+body[data-theme="dark"] .pm-codigo {
+    background: #222222 !important;
+    border-color: #3e3e3e !important;
+    color: #e8e8e8 !important;
+}
+/* Total hint ("de S/ X.XX") */
+body[data-theme="dark"] .pm-total-hint { color: #777777 !important; }
+
+/* Barra de total cubierto (pago mixto) */
+body[data-theme="dark"] .pm-total-bar[style*="e8f5e9"] {
+    background: #0d2318 !important; border-color: #2a5a3a !important;
+}
+body[data-theme="dark"] .pm-total-bar[style*="fff3e0"] {
+    background: #2a1f00 !important; border-color: #7a5500 !important;
+}
+
+/* Botón "Adjuntar imagen" */
+body[data-theme="dark"] .pm-foto-btn {
+    background: #1a1535 !important;
+    border-color: #5b5fa8 !important;
+    color: #a5b4fc !important;
+}
+/* Botón "+ Agregar otro método de pago" */
+body[data-theme="dark"] .pm-add-btn {
+    border-color: #5b5fa8 !important;
+    color: #a5b4fc !important;
+}
+
+/* Select N° de cuotas */
+body[data-theme="dark"] #memb-num-cuotas {
+    background: #222222 !important;
+    border-color: #3e3e3e !important;
+    color: #e8e8e8 !important;
+}
+/* Label "N° de cuotas" y hint */
+body[data-theme="dark"] #memb-fraccion-wrap label[style*="555"] { color: #b0b0b0 !important; }
+body[data-theme="dark"] #memb-minimo-hint                       { color: #4ade80 !important; }
+
+/* ── VERIFICACIÓN DE PAGOS — DARK MODE ──────────────────────────────────────── */
+
+/* Pills de resumen */
+body[data-theme="dark"] #vpResumen > div {
+    background: #1a1a1a !important;
+    border-color: #2e2e2e !important;
+}
+body[data-theme="dark"] #vpResumen div[style*="color:#888"] {
+    color: #888888 !important;
+}
+
+/* Filas de la tabla */
+body[data-theme="dark"] #vpTbody tr {
+    background: transparent !important;
+}
+body[data-theme="dark"] #vpTbody tr[style*="fffbf5"] {
+    background: #1c1500 !important;
+}
+body[data-theme="dark"] #vpTbody td {
+    color: #d0d0d0 !important;
+    border-bottom-color: #222222 !important;
+}
+
+/* Número de venta */
+body[data-theme="dark"] #vpTbody td[style*="1565c0"] {
+    color: #90caf9 !important;
+}
+
+/* Texto secundario dentro de celdas */
+body[data-theme="dark"] #vpTbody div[style*="color:#555"],
+body[data-theme="dark"] #vpTbody div[style*="color:#444"],
+body[data-theme="dark"] #vpTbody div[style*="color:#333"] { color: #d0d0d0 !important; }
+body[data-theme="dark"] #vpTbody div[style*="color:#888"],
+body[data-theme="dark"] #vpTbody span[style*="color:#888"],
+body[data-theme="dark"] #vpTbody div[style*="color:#aaa"],
+body[data-theme="dark"] #vpTbody span[style*="color:#aaa"],
+body[data-theme="dark"] #vpTbody span[style*="color:#bbb"] { color: #666666 !important; }
+
+/* Badges de ESTADO */
+body[data-theme="dark"] #vpTbody span[style*="fff3e0"] {
+    background: #3a2200 !important; color: #ffb74d !important;
+}
+body[data-theme="dark"] #vpTbody span[style*="e8f5e9"] {
+    background: #0d2318 !important; color: #4ade80 !important;
+}
+body[data-theme="dark"] #vpTbody span[style*="fce4ec"] {
+    background: #2d1515 !important; color: #f87171 !important;
+}
+
+/* Botón comprobante (azul claro) */
+body[data-theme="dark"] #vpTbody button[style*="e3f2fd"] {
+    background: #1a2e4a !important;
+    border-color: #2a4a6a !important;
+    color: #90caf9 !important;
+}
+
+/* Badge "aprobado" en acciones (div verde) */
+body[data-theme="dark"] #vpTbody div[style*="e8f5e9"][style*="a5d6a7"] {
+    background: #0d2318 !important;
+    border-color: #2a5a3a !important;
+}
+body[data-theme="dark"] #vpTbody div[style*="e8f5e9"][style*="a5d6a7"] span[style*="2e7d32"] {
+    color: #4ade80 !important;
+}
+
+/* Badge "rechazado" en acciones (div rojo) */
+body[data-theme="dark"] #vpTbody div[style*="fce4ec"][style*="ef9a9a"] {
+    background: #2d1515 !important;
+    border-color: #5a2a2a !important;
+}
+body[data-theme="dark"] #vpTbody div[style*="fce4ec"][style*="ef9a9a"] span[style*="b71c1c"] {
+    color: #f87171 !important;
+}
+
+/* Botón Aprobar (verde claro) */
+body[data-theme="dark"] #vpTbody button[style*="e8f5e9"] {
+    background: #0d2318 !important;
+    border-color: #2a5a3a !important;
+    color: #4ade80 !important;
+}
+
+/* Botón Rechazar X (rojo claro) */
+body[data-theme="dark"] #vpTbody button[style*="ffebee"] {
+    background: #2d1515 !important;
+    border-color: #5a2a2a !important;
+    color: #f87171 !important;
+}

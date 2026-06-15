@@ -77,6 +77,15 @@ export const createPresentacion = async (req, res) => {
              VALUES ($1, $2, $3) RETURNING *`,
             [nombre.trim(), descripcion || null, req.usuario.id]
         );
+        registrarAuditoria({
+            id_usuario:     req.usuario.id,
+            nombre_usuario: req.usuario.nombre || req.usuario.username,
+            accion:         'CREAR',
+            modulo:         'Presentaciones',
+            descripcion:    `Presentación #${result.rows[0].id_presentacion} creada: "${nombre.trim()}"`,
+            ip:             getIP(req),
+            datos_nuevos:   { nombre: nombre.trim() },
+        });
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -340,12 +349,14 @@ export const updatePresentacionProducto = async (req, res) => {
         const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'EDITAR',
-            modulo:         'Productos',
-            descripcion:    `Producto "${old.nombre_producto}" (${old.nombre_presentacion}) — ${diffStr}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Productos',
+            descripcion:      `Producto "${old.nombre_producto}" (${old.nombre_presentacion}) — ${diffStr}`,
+            ip:               getIP(req),
+            datos_anteriores: { precio_costo: Number(old.precio_costo), precio_venta: Number(old.precio_venta), stock_minimo: Number(old.stock_minimo) },
+            datos_nuevos:     { precio_costo: Number(precio_costo ?? 0), precio_venta: Number(precio_venta), stock_minimo: Number(stock_minimo ?? 0) },
         });
 
         res.json(result.rows[0]);
@@ -364,7 +375,7 @@ export const deletePresentacionProducto = async (req, res) => {
     try {
         // No permitir eliminar si tiene stock
         const check = await pool.query(
-            `SELECT stock_actual, es_principal FROM producto_presentacion WHERE id=$1`, [id]
+            `SELECT stock_actual, es_principal, precio_costo, precio_venta FROM producto_presentacion WHERE id=$1`, [id]
         );
         if (check.rowCount === 0)
             return res.status(404).json({ message: 'Registro no encontrado' });
@@ -384,6 +395,15 @@ export const deletePresentacionProducto = async (req, res) => {
              WHERE id=$2 RETURNING id`,
             [req.usuario.id, id]
         );
+        registrarAuditoria({
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'ELIMINAR',
+            modulo:           'Productos',
+            descripcion:      `Presentación-producto #${id} eliminada (soft-delete)`,
+            ip:               getIP(req),
+            datos_anteriores: { id_pp: Number(id), precio_costo: Number(check.rows[0].precio_costo), precio_venta: Number(check.rows[0].precio_venta), stock_actual: check.rows[0].stock_actual },
+        });
         res.json({ message: 'Presentación eliminada del producto' });
     } catch (err) {
         console.error(err);

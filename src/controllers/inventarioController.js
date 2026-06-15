@@ -314,12 +314,14 @@ export const actualizarStock = async (req, res) => {
         await client.query('COMMIT');
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'EDITAR',
-            modulo:         'Inventario',
-            descripcion:    `Stock ${tipo} — PP ID: ${id_pp} | Antes: ${stockAntes} → Después: ${stockDespues}${observacion ? ` | Obs: ${observacion}` : ''}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Inventario',
+            descripcion:      `Stock ${tipo} — PP ID: ${id_pp} | Antes: ${stockAntes} → Después: ${stockDespues}${observacion ? ` | Obs: ${observacion}` : ''}`,
+            ip:               getIP(req),
+            datos_anteriores: { id_pp: Number(id_pp), stock: stockAntes },
+            datos_nuevos:     { stock: stockDespues, tipo_movimiento: tipo, cantidad: Number(cantidad) },
         });
 
         res.json({

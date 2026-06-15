@@ -87,24 +87,114 @@ function renderAuditoria(data) {
 
   tbody.innerHTML = data.data.map(r => {
     const fecha = r.created_at
-      ? new Date(r.created_at).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' })
+      ? new Date(r.created_at).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'medium' })
       : '—';
     const accionBadge = _audBadge(r.accion);
-    const ip = r.ip_usuario || '—';
-    const desc = r.descripcion || '—';
+    const ip          = r.ip_usuario || '—';
+    const diffHtml    = _renderDiff(r.datos_anteriores, r.datos_nuevos);
+    const moduloChip  = `<span style="background:#f0f4ff;color:#1565c0;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600">${r.modulo}</span>`;
+    const _accionAccent = { CREAR:'#4caf50', EDITAR:'#ff9800', ELIMINAR:'#f44336', LOGIN:'#2196f3', LOGOUT:'#9c27b0' };
+    const accentColor = _accionAccent[r.accion] || '#78909c';
 
     return `<tr>
-      <td style="font-size:12px;color:#888">${r.id}</td>
-      <td><span style="font-weight:600">${r.nombre_usuario || '—'}</span></td>
-      <td>${accionBadge}</td>
-      <td><span style="background:#f0f4ff;color:#1565c0;padding:2px 8px;border-radius:12px;font-size:12px">${r.modulo}</span></td>
-      <td style="font-size:13px;min-width:260px;max-width:420px;white-space:pre-wrap;word-break:break-word;line-height:1.45">${desc}</td>
-      <td style="font-size:12px;color:#888">${ip}</td>
-      <td style="font-size:12px;white-space:nowrap">${fecha}</td>
+      <td class="aud-dt" style="font-size:12px;color:#888">${r.id}</td>
+      <td class="aud-dt"><span style="font-weight:600">${r.nombre_usuario || '—'}</span></td>
+      <td class="aud-dt">${accionBadge}</td>
+      <td class="aud-dt">${moduloChip}</td>
+      <td class="aud-dt" style="font-size:13px;min-width:260px;max-width:420px;word-break:break-word;line-height:1.45">
+        <div><strong>${r.descripcion || '—'}</strong></div>
+        ${diffHtml}
+      </td>
+      <td class="aud-dt" style="font-size:12px;color:#888">${ip}</td>
+      <td class="aud-dt" style="font-size:12px;white-space:nowrap">${fecha}</td>
+      <td class="aud-mb" colspan="7">
+        <div class="aud-card" style="border-left:4px solid ${accentColor}">
+          <div class="aud-top-row">
+            ${accionBadge}
+            ${moduloChip}
+          </div>
+          <div class="aud-meta">
+            <span class="aud-usuario"><i class="bi bi-person-fill me-1"></i>${r.nombre_usuario || '—'}</span>
+            <span class="aud-fecha">${fecha}</span>
+          </div>
+          <div class="aud-body">
+            <div class="aud-desc"><strong>${r.descripcion || '—'}</strong></div>
+            ${diffHtml ? `<div class="aud-diff">${diffHtml}</div>` : ''}
+          </div>
+          ${ip !== '—' ? `<div class="aud-foot"><i class="bi bi-wifi me-1"></i>${ip}</div>` : ''}
+        </div>
+      </td>
     </tr>`;
   }).join('');
 
   _audPagBar('paginacionAuditoria', data, 'loadAuditoria');
+}
+
+// ── DIFF ENRIQUECIDO ──────────────────────────────────────────────────────────
+function _renderDiff(ant, nvo) {
+  if (!ant && !nvo) return '';
+
+  const antObj = (ant && typeof ant === 'object' && !Array.isArray(ant)) ? ant : null;
+  const nvoObj = (nvo && typeof nvo === 'object' && !Array.isArray(nvo)) ? nvo : null;
+
+  if (!antObj && !nvoObj) return '';
+
+  const MAX_SHOW = 5;
+  const allKeys = [...new Set([
+    ...(antObj ? Object.keys(antObj) : []),
+    ...(nvoObj ? Object.keys(nvoObj) : []),
+  ])];
+
+  const fmt = v => {
+    if (v === null || v === undefined) return '<em style="color:#999">null</em>';
+    if (Array.isArray(v)) {
+      if (v.length === 0) return '<em style="color:#999">vacío</em>';
+      if (typeof v[0] === 'object') return `[${v.length} elemento(s)]`;
+      return v.map(x => String(x)).join(', ');
+    }
+    if (typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+  };
+
+  const rows = [];
+  for (const key of allKeys) {
+    const vA = antObj ? antObj[key] : undefined;
+    const vN = nvoObj ? nvoObj[key] : undefined;
+    const hasA = antObj && key in antObj;
+    const hasN = nvoObj && key in nvoObj;
+
+    if (hasA && hasN) {
+      const sa = fmt(vA), sn = fmt(vN);
+      if (sa === sn) continue;
+      rows.push(`<span style="color:#555;font-size:11px"><b>${key}:</b> <del style="color:#c62828">${sa}</del> → <b style="color:#2e7d32">${sn}</b></span>`);
+    } else if (!hasA && hasN) {
+      rows.push(`<span style="color:#555;font-size:11px"><b>+ ${key}:</b> <b style="color:#2e7d32">${fmt(vN)}</b></span>`);
+    } else if (hasA && !hasN) {
+      rows.push(`<span style="color:#555;font-size:11px"><b>- ${key}:</b> <del style="color:#c62828">${fmt(vA)}</del></span>`);
+    }
+  }
+
+  if (!rows.length) return '';
+
+  const shown  = rows.slice(0, MAX_SHOW);
+  const hidden = rows.slice(MAX_SHOW);
+  const uid    = `diff_${Math.random().toString(36).slice(2, 8)}`;
+
+  let html = `<div style="margin-top:4px;display:flex;flex-direction:column;gap:2px">
+    ${shown.join('\n')}`;
+
+  if (hidden.length) {
+    html += `<span id="${uid}_btn" onclick="
+      document.getElementById('${uid}_extra').style.display='flex';
+      document.getElementById('${uid}_btn').style.display='none';
+    " style="color:#1565c0;cursor:pointer;font-size:11px">… +${hidden.length} más</span>
+    <span id="${uid}_extra" style="display:none;flex-direction:column;gap:2px">
+      ${hidden.join('\n')}
+    </span>`;
+  }
+
+  html += '</div>';
+  return html;
 }
 
 function _audBadge(accion) {

@@ -143,7 +143,8 @@ export const createAsistencia = async (req, res) => {
             accion:         'CREAR',
             modulo:         'Asistencia',
             descripcion:    `DNI: ${c.dni} | Asistencia #${result.rows[0].id_asistencia} — ${c.nombre} ${c.apellido} (membresía ${membresiaValida ? 'válida' : 'vencida'})`,
-            ip:             getIP(req)
+            ip:             getIP(req),
+            datos_nuevos:   { id_cliente: Number(id_cliente), nombre_cliente: `${c.nombre} ${c.apellido}`, dni: c.dni, membresia_valida: membresiaValida },
         });
 
         res.status(201).json({
@@ -175,14 +176,15 @@ export const deleteAsistencia = async (req, res) => {
             return res.status(404).json({ message: 'Asistencia no encontrada' });
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'ELIMINAR',
-            modulo:         'Asistencia',
-            descripcion:    prev
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'ELIMINAR',
+            modulo:           'Asistencia',
+            descripcion:      prev
                 ? `DNI: ${prev.dni} | Asistencia #${id} eliminada — ${prev.nombre_cliente}`
                 : `Asistencia #${id} eliminada`,
-            ip:             getIP(req)
+            ip:               getIP(req),
+            datos_anteriores: { id_asistencia: Number(id), nombre_cliente: prev?.nombre_cliente || null, dni: prev?.dni || null },
         });
 
         res.json({ message: 'Asistencia eliminada correctamente' });

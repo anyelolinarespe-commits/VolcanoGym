@@ -16,12 +16,21 @@ function addMeses(fechaStr, meses) {
     return d.toISOString().split('T')[0];
 }
 
-/** Calcula fecha fin según la unidad del plan (dias / meses / anos) */
+/** Calcula fecha fin según la unidad del plan (dias / meses / anos).
+ *  El día de matrícula es parcial (solo hasta medianoche), por lo que
+ *  fecha_fin = fecha_inicio + duración - 1 día.
+ *  Ej: matrícula 13-jun para 1 mes → vence el 12-jul (29 días + las horas restantes del día 13). */
 function calcFechaFin(fechaStr, valor, unidad) {
     const d = new Date(fechaStr + 'T12:00:00');
-    if (unidad === 'dias')      d.setDate(d.getDate() + valor);
-    else if (unidad === 'anos') d.setFullYear(d.getFullYear() + valor);
-    else                        d.setMonth(d.getMonth() + valor);
+    if (unidad === 'dias') {
+        d.setDate(d.getDate() + valor - 1);
+    } else if (unidad === 'anos') {
+        d.setFullYear(d.getFullYear() + valor);
+        d.setDate(d.getDate() - 1);
+    } else {
+        d.setMonth(d.getMonth() + valor);
+        d.setDate(d.getDate() - 1);
+    }
     return d.toISOString().split('T')[0];
 }
 
@@ -369,7 +378,8 @@ export const createMembresia = async (req, res) => {
                 accion:         'CREAR',
                 modulo:         'Membresías',
                 descripcion:    `Membresía #${membresia.id_membresia} nueva — Plan: ${plan.nombre} — Cliente #${id_cliente} — Total: S/ ${Number(monto_total).toFixed(2)}`,
-                ip:             getIP(req)
+                ip:             getIP(req),
+                datos_nuevos:   { id_plan: Number(id_plan), nombre_plan: plan.nombre, fecha_inicio, fecha_fin: fechaFin, monto_total: Number(monto_total), metodo_pago },
             });
             const cuotas = (await pool.query(
                 `SELECT * FROM pago WHERE id_membresia=$1 ORDER BY num_cuota`, [membresia.id_membresia]
@@ -431,7 +441,8 @@ export const createMembresia = async (req, res) => {
                 accion:         'CREAR',
                 modulo:         'Membresías',
                 descripcion:    `Membresía #${nRes.rows[0].id_membresia} programada — Plan: ${plan.nombre} — Cliente #${id_cliente} — Total: S/ ${Number(monto_total).toFixed(2)}`,
-                ip:             getIP(req)
+                ip:             getIP(req),
+                datos_nuevos:   { id_plan: Number(id_plan), nombre_plan: plan.nombre, fecha_inicio, fecha_fin: fechaFin, monto_total: Number(monto_total), metodo_pago },
             });
             const cuotas = (await pool.query(
                 `SELECT * FROM pago WHERE id_membresia=$1 ORDER BY num_cuota`,
@@ -499,12 +510,14 @@ export const createMembresia = async (req, res) => {
         await client.query('COMMIT');
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'CREAR',
-            modulo:         'Membresías',
-            descripcion:    `Membresía #${idMembresia} renovada — Plan: ${plan.nombre} — Cliente #${id_cliente} — Total: S/ ${Number(monto_total).toFixed(2)}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'CREAR',
+            modulo:           'Membresías',
+            descripcion:      `Membresía #${idMembresia} renovada — Plan: ${plan.nombre} — Cliente #${id_cliente} — Total: S/ ${Number(monto_total).toFixed(2)}`,
+            ip:               getIP(req),
+            datos_anteriores: { id_plan: membAnterior.id_plan, nombre_plan: membAnterior.nombre_plan, fecha_inicio: String(membAnterior.fecha_inicio).split('T')[0], fecha_fin: String(membAnterior.fecha_fin).split('T')[0] },
+            datos_nuevos:     { id_plan: Number(id_plan), nombre_plan: plan.nombre, fecha_inicio, fecha_fin: fechaFin, monto_total: Number(monto_total), metodo_pago },
         });
 
         // Retornar membresía actualizada con cuotas
@@ -735,7 +748,8 @@ export const pagarCuota = async (req, res) => {
             accion:         'EDITAR',
             modulo:         'Membresías',
             descripcion:    `Membresía #${id} — Cuota #${id_pago} ${restante <= 0.01 ? 'pagada completamente' : 'abono parcial'}: S/ ${montoFinal.toFixed(2)} (${esMixto ? 'Pago mixto' : metodoPrimario})`,
-            ip:             getIP(req)
+            ip:             getIP(req),
+            datos_nuevos:   { id_pago, monto_pagado: montoFinal, metodo_pago: metodoPrimario, estado_cuota: restante <= 0.01 ? 'pagado' : 'abono_parcial', es_mixto: esMixto },
         });
 
         res.json({
@@ -849,12 +863,14 @@ export const updateMembresia = async (req, res) => {
         await client.query('COMMIT');
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'EDITAR',
-            modulo:         'Membresías',
-            descripcion:    `Membresía #${id} actualizada — ${estado ? `Estado: ${estado}` : 'datos editados'}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Membresías',
+            descripcion:      `Membresía #${id} actualizada — ${estado ? `Estado: ${estado}` : 'datos editados'}`,
+            ip:               getIP(req),
+            datos_anteriores: { estado: curr.estado },
+            datos_nuevos:     { estado: estado ?? curr.estado },
         });
 
         res.json(result.rows[0]);
@@ -897,12 +913,14 @@ export const deleteMembresia = async (req, res) => {
         await client.query('COMMIT');
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'ELIMINAR',
-            modulo:         'Membresías',
-            descripcion:    `Membresía #${id} eliminada — Motivo: ${motivo.trim()}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'ELIMINAR',
+            modulo:           'Membresías',
+            descripcion:      `Membresía #${id} eliminada — Motivo: ${motivo.trim()}`,
+            ip:               getIP(req),
+            datos_anteriores: { id_membresia: Number(id), estado: existe.rows[0].estado },
+            datos_nuevos:     { estado: 'eliminada', motivo: motivo.trim() },
         });
 
         res.json({ message: `Membresía eliminada. Motivo: ${motivo.trim()}` });
@@ -1284,7 +1302,8 @@ export const crearMembresia = async (req, res) => {
       accion:         'CREAR',
       modulo:         'Membresías',
       descripcion:    `Membresía creada #${id_membresia} — Plan: ${plan.nombre} — Cliente ID: ${id_cliente_final}`,
-      ip:             getIP(req)
+      ip:             getIP(req),
+      datos_nuevos:   { id_membresia, id_plan: Number(id_plan), nombre_plan: plan.nombre, fecha_inicio, fecha_fin: fecha_fin_str, monto: montoNum, metodo_pago },
     });
 
     return res.status(201).json({

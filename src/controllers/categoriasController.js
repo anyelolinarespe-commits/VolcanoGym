@@ -56,7 +56,8 @@ export const createCategoria = async (req, res) => {
             accion:         'CREAR',
             modulo:         'Categorías',
             descripcion:    `Categoría creada: "${nombre.trim()}"`,
-            ip:             getIP(req)
+            ip:             getIP(req),
+            datos_nuevos:   { nombre: nombre.trim(), porcentaje_descuento: Number(porcentaje_descuento ?? 0) },
         });
 
         res.status(201).json(result.rows[0]);
@@ -100,12 +101,14 @@ export const updateCategoria = async (req, res) => {
         const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'EDITAR',
-            modulo:         'Categorías',
-            descripcion:    `Categoría #${id} "${nombre.trim()}" — ${diffStr}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Categorías',
+            descripcion:      `Categoría #${id} "${nombre.trim()}" — ${diffStr}`,
+            ip:               getIP(req),
+            datos_anteriores: { nombre: old.nombre, estado: old.estado, porcentaje_descuento: Number(old.porcentaje_descuento) },
+            datos_nuevos:     { nombre: nombre.trim(), estado: estado ?? 1, porcentaje_descuento: Number(porcentaje_descuento ?? 0) },
         });
 
         res.json(result.rows[0]);
@@ -136,12 +139,14 @@ export const deleteCategoria = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: 'Categoría no encontrada' });
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'ELIMINAR',
-            modulo:         'Categorías',
-            descripcion:    `Categoría #${id} eliminada (soft-delete)`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'ELIMINAR',
+            modulo:           'Categorías',
+            descripcion:      `Categoría #${id} eliminada (soft-delete)`,
+            ip:               getIP(req),
+            datos_anteriores: { id_categoria: Number(id), estado: 'activa' },
+            datos_nuevos:     { estado: 'eliminada' },
         });
 
         res.json({ message: 'Categoría eliminada correctamente' });

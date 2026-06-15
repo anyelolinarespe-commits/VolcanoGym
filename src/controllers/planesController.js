@@ -100,7 +100,8 @@ export const createPlan = async (req, res) => {
             accion:         'CREAR',
             modulo:         'Planes',
             descripcion:    `Plan creado: "${req.body.nombre}"`,
-            ip:             getIP(req)
+            ip:             getIP(req),
+            datos_nuevos:   { nombre: nombre.trim(), tipo_cliente, precio: Number(precio), duracion_meses: Number(duracion_meses), duracion_unidad, permite_fraccion: fraccion, max_cuotas: cuotas },
         });
 
         res.status(201).json(result.rows[0]);
@@ -195,12 +196,14 @@ export const updatePlan = async (req, res) => {
         const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'EDITAR',
-            modulo:         'Planes',
-            descripcion:    `Plan #${id} "${nombre}" — ${diffStr}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Planes',
+            descripcion:      `Plan #${id} "${nombre}" — ${diffStr}`,
+            ip:               getIP(req),
+            datos_anteriores: { nombre: old.nombre, precio: Number(old.precio), activo: old.activo, duracion_meses: Number(old.duracion_meses), duracion_unidad: old.duracion_unidad, permite_fraccion: old.permite_fraccion, max_cuotas: Number(old.max_cuotas), tasa_interes: Number(old.tasa_interes ?? 0) },
+            datos_nuevos:     { nombre, precio: Number(precio), activo: activo ?? true, duracion_meses: Number(duracion_meses), duracion_unidad: duracion_unidad ?? 'meses', permite_fraccion: fraccion, max_cuotas: cuotas, tasa_interes: tasaI },
         });
 
         res.json(result.rows[0]);
@@ -221,12 +224,14 @@ export const deletePlan = async (req, res) => {
             return res.status(404).json({ message: 'Plan no encontrado' });
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'ELIMINAR',
-            modulo:         'Planes',
-            descripcion:    `Plan #${id} desactivado`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'ELIMINAR',
+            modulo:           'Planes',
+            descripcion:      `Plan #${id} desactivado`,
+            ip:               getIP(req),
+            datos_anteriores: { id_plan: Number(id), activo: true },
+            datos_nuevos:     { activo: false },
         });
 
         res.json({ message: 'Plan desactivado correctamente' });

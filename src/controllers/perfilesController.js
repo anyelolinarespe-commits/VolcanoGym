@@ -43,7 +43,8 @@ export const createPerfil = async (req, res) => {
             accion:         'CREAR',
             modulo:         'Perfiles',
             descripcion:    `Perfil #${result.rows[0].id_perfil} creado: "${nombre.trim()}"`,
-            ip:             getIP(req)
+            ip:             getIP(req),
+            datos_nuevos:   { nombre: nombre.trim() },
         });
 
         res.status(201).json(result.rows[0]);
@@ -130,12 +131,14 @@ export const updatePerfil = async (req, res) => {
         const diffStr = cambios.length ? cambios.join(' | ') : 'sin cambios';
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'EDITAR',
-            modulo:         'Perfiles',
-            descripcion:    `Perfil #${id} "${nombre}" — ${diffStr}`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Perfiles',
+            descripcion:      `Perfil #${id} "${nombre}" — ${diffStr}`,
+            ip:               getIP(req),
+            datos_anteriores: { nombre: target_nombre, estado: target_estado },
+            datos_nuevos:     { nombre, estado: estado ?? 1 },
         });
 
         res.json(result.rows[0]);
@@ -206,12 +209,14 @@ export const deletePerfil = async (req, res) => {
         );
 
         registrarAuditoria({
-            id_usuario:     req.usuario.id,
-            nombre_usuario: req.usuario.nombre || req.usuario.username,
-            accion:         'ELIMINAR',
-            modulo:         'Perfiles',
-            descripcion:    `Perfil #${id} eliminado: "${target_nombre}"`,
-            ip:             getIP(req)
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'ELIMINAR',
+            modulo:           'Perfiles',
+            descripcion:      `Perfil #${id} eliminado: "${target_nombre}"`,
+            ip:               getIP(req),
+            datos_anteriores: { id_perfil: Number(id), nombre: target_nombre, estado: 'activo' },
+            datos_nuevos:     { estado: 'eliminado' },
         });
 
         res.json({ message: 'Perfil eliminado correctamente' });

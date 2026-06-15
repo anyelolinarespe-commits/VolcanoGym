@@ -386,7 +386,8 @@ export const createVenta = async (req, res) => {
       accion:         'CREAR',
       modulo:         'Ventas',
       descripcion:    `Venta registrada: ${numeroVenta} — Total: S/ ${total}`,
-      ip:             getIP(req)
+      ip:             getIP(req),
+      datos_nuevos:   { numero_venta: numeroVenta, total, metodo_pago: metodoPagoVenta, descuento_general: Number(descuento_general), productos: snapshots.map((s, idx) => ({ nombre: s, cantidad: items[idx].cantidad, precio_unitario: items[idx].precio_unitario })) },
     });
 
     res.status(201).json(await getVentaRaw(id_venta));
@@ -431,12 +432,14 @@ export const aprobarVenta = async (req, res) => {
     await client.query('COMMIT');
 
     registrarAuditoria({
-      id_usuario:     req.usuario.id,
-      nombre_usuario: req.usuario.nombre || req.usuario.username,
-      accion:         'EDITAR',
-      modulo:         'Ventas',
-      descripcion:    `Venta aprobada: ${venta.numero_venta || id} — Total: S/ ${venta.total}`,
-      ip:             getIP(req)
+      id_usuario:       req.usuario.id,
+      nombre_usuario:   req.usuario.nombre || req.usuario.username,
+      accion:           'EDITAR',
+      modulo:           'Verificación de Pagos',
+      descripcion:      `Venta aprobada: ${venta.numero_venta || id} — Total: S/ ${venta.total}`,
+      ip:               getIP(req),
+      datos_anteriores: { estado_venta: 'pendiente' },
+      datos_nuevos:     { estado_venta: 'registrada', metodo_pago: venta.metodo_pago, monto: Number(venta.total) },
     });
 
     res.json({ message: 'Venta aprobada y pagada correctamente' });
@@ -497,12 +500,14 @@ export const aprobarVerificacion = async (req, res) => {
     const numVenta = ventaR.rows[0]?.numero_venta || vp.id_venta;
 
     registrarAuditoria({
-      id_usuario:     req.usuario.id,
-      nombre_usuario: req.usuario.nombre || req.usuario.username,
-      accion:         'EDITAR',
-      modulo:         'Ventas',
-      descripcion:    `Pago ${vp.metodo_pago} aprobado para venta ${numVenta} — S/ ${vp.monto}${quedanPendientes === 0 ? ' (venta cerrada)' : ''}`,
-      ip:             getIP(req)
+      id_usuario:       req.usuario.id,
+      nombre_usuario:   req.usuario.nombre || req.usuario.username,
+      accion:           'EDITAR',
+      modulo:           'Verificación de Pagos',
+      descripcion:      `Pago ${vp.metodo_pago} aprobado para venta ${numVenta} — S/ ${vp.monto}${quedanPendientes === 0 ? ' (venta cerrada)' : ''}`,
+      ip:               getIP(req),
+      datos_anteriores: { estado_verificacion: 'pendiente' },
+      datos_nuevos:     { estado_verificacion: 'aprobado', metodo_pago: vp.metodo_pago, monto: Number(vp.monto), venta_cerrada: quedanPendientes === 0 },
     });
 
     res.json({
@@ -566,6 +571,16 @@ export const emitirComprobante = async (req, res) => {
       WHERE id=$4
     `, [tipo.id, serie, numElec, id]);
 
+    registrarAuditoria({
+      id_usuario:     req.usuario.id,
+      nombre_usuario: req.usuario.nombre || req.usuario.username,
+      accion:         'CREAR',
+      modulo:         'Comprobantes',
+      descripcion:    `Comprobante emitido: ${numCompleto} (${tipo.nombre}) — Venta ID: ${id}`,
+      ip:             getIP(req),
+      datos_nuevos:   { tipo_comprobante: tipo.nombre, codigo_sunat: tipo.codigo_sunat, serie, numero_electronico: numElec, numero_completo: numCompleto },
+    });
+
     res.json({
       id_venta:         Number(id),
       tipo_comprobante: tipo.nombre,
@@ -602,6 +617,17 @@ export const enviarSunat = async (req, res) => {
       return res.status(400).json({ message: 'Comprobante ya fue aceptado por SUNAT' });
 
     const result = await enviarASunat(id, venta);
+
+    registrarAuditoria({
+      id_usuario:     req.usuario.id,
+      nombre_usuario: req.usuario.nombre || req.usuario.username,
+      accion:         'EDITAR',
+      modulo:         'Comprobantes',
+      descripcion:    `Comprobante ${venta.serie_electronica}-${String(venta.numero_electronico).padStart(6,'0')} enviado a SUNAT — ${result.aceptado ? 'Aceptado' : 'Error'}`,
+      ip:             getIP(req),
+      datos_nuevos:   { estado_sunat: result.aceptado ? 'aceptado' : 'error', hash_cpe: result.hash, numero_completo: result.numero_completo },
+    });
+
     res.json(result);
   } catch (err) {
     console.error(err);
@@ -643,12 +669,14 @@ export const anularVenta = async (req, res) => {
 
     const venta = vR.rows[0];
     registrarAuditoria({
-      id_usuario:     req.usuario.id,
-      nombre_usuario: req.usuario.nombre || req.usuario.username,
-      accion:         'ELIMINAR',
-      modulo:         'Ventas',
-      descripcion:    `Venta anulada: ${venta.numero_venta || id} — Total: S/ ${venta.total}`,
-      ip:             getIP(req)
+      id_usuario:       req.usuario.id,
+      nombre_usuario:   req.usuario.nombre || req.usuario.username,
+      accion:           'ELIMINAR',
+      modulo:           'Ventas',
+      descripcion:      `Venta anulada: ${venta.numero_venta || id} — Total: S/ ${venta.total}`,
+      ip:               getIP(req),
+      datos_anteriores: { numero_venta: venta.numero_venta, total: Number(venta.total), estado_venta: venta.estado_venta },
+      datos_nuevos:     { estado_venta: 'anulada' },
     });
 
     res.json({ message: 'Venta anulada y stock restaurado' });
@@ -859,17 +887,26 @@ export const getVerificacionPagos = async (req, res) => {
     const params = [];
     let i = 1;
 
-    // estado: 'pendiente'=1, 'pagado'=2, 'rechazado'=0, 'todos'=1,2
-    const filtros = ['vp.estado IN (1, 2)'];  // por defecto mostrar pendientes y aprobados
+    // Siempre filtramos a nivel de VENTA para que el pago mixto
+    // muestre todos sus métodos agrupados sin importar el estado individual.
+    // 'todos'     → ventas con algún VP en estado 1 o 2
+    // 'pendiente' → ventas con al menos un VP pendiente (estado 1)
+    // 'pagado'    → ventas cuyo VP está completamente aprobado (estado 2, sin pendientes)
+    let filtroEstado;
+    if (estado === 'pendiente') {
+      filtroEstado = 'vp.id_venta IN (SELECT id_venta FROM verificacion_pago WHERE estado = 1)';
+    } else if (estado === 'pagado') {
+      filtroEstado = `vp.id_venta IN (SELECT id_venta FROM verificacion_pago WHERE estado = 2)
+        AND vp.id_venta NOT IN (SELECT id_venta FROM verificacion_pago WHERE estado = 1)`;
+    } else {
+      // todos: incluye pendientes, aprobados y rechazados
+      filtroEstado = 'vp.id_venta IN (SELECT id_venta FROM verificacion_pago WHERE estado IN (0, 1, 2))';
+    }
+    const filtros = [filtroEstado];
 
     if (buscar) {
       filtros.push(`(v.numero_venta ILIKE $${i} OR COALESCE(c.nombre||' '||c.apellido, v.nombre_cliente_libre) ILIKE $${i} OR COALESCE(c.dni, v.dni_cliente_libre) ILIKE $${i})`);
       params.push(`%${buscar}%`); i++;
-    }
-    if (estado === 'pendiente') {
-      filtros[0] = 'vp.estado = 1';
-    } else if (estado === 'pagado') {
-      filtros[0] = 'vp.estado = 2';
     }
 
     const where = 'WHERE ' + filtros.join(' AND ');

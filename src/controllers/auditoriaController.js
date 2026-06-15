@@ -39,6 +39,8 @@ export const getAuditoria = async (req, res) => {
                 a.descripcion,
                 a.ip_usuario,
                 a.created_at,
+                a.datos_anteriores,
+                a.datos_nuevos,
                 COUNT(*) OVER() AS total_registros
              FROM auditoria a
              ${where}
