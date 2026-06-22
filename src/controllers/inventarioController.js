@@ -114,35 +114,41 @@ export const getInventarioByProducto = async (req, res) => {
             WHERE id_producto = $1
         `, [id_producto]);
 
-        // Historial de ventas del producto
+        // Historial de ventas del producto (desde venta_detalle)
         const ventas = await pool.query(`
             SELECT
-                COUNT(*)                    AS total_ventas,
+                COUNT(DISTINCT vd.id_venta)          AS total_ventas,
                 COALESCE(SUM(
-                    (vp.precio_unitario - COALESCE(pp.precio_costo, 0)) * vp.cantidad
-                ), 0)                       AS ganancia_total,
-                COALESCE(SUM(vp.cantidad), 0) AS unidades_vendidas
-            FROM venta_producto vp
-            LEFT JOIN producto_presentacion pp ON pp.id = vp.id_pp
-            WHERE vp.id_producto = $1
+                    (vd.precio_unitario - COALESCE(pp.precio_costo, 0)) * vd.cantidad
+                ), 0)                                AS ganancia_total,
+                COALESCE(SUM(vd.cantidad), 0)        AS unidades_vendidas
+            FROM venta_detalle vd
+            JOIN producto_presentacion pp ON pp.id = vd.id_pp
+            JOIN venta v ON v.id = vd.id_venta
+            WHERE pp.id_producto = $1
+              AND v.estado_venta != 'anulada'
         `, [id_producto]);
 
-        // Últimas 10 ventas
+        // Últimas 10 ventas (desde venta_detalle)
         const ultimasVentas = await pool.query(`
             SELECT
-                vp.created_at,
-                COALESCE(c.nombre, 'Sin cliente')   AS cliente,
-                pr.nombre                            AS presentacion,
-                vp.cantidad,
-                vp.precio_unitario,
-                vp.total,
-                (vp.precio_unitario - COALESCE(pp.precio_costo, 0)) * vp.cantidad AS ganancia
-            FROM venta_producto vp
-            LEFT JOIN cliente c ON c.id_cliente = vp.id_cliente
-            LEFT JOIN producto_presentacion pp ON pp.id = vp.id_pp
-            LEFT JOIN presentacion pr ON pr.id_presentacion = pp.id_presentacion
-            WHERE vp.id_producto = $1
-            ORDER BY vp.created_at DESC
+                v.created_at,
+                CASE WHEN v.id_cliente IS NOT NULL
+                     THEN c.nombre || ' ' || c.apellido
+                     ELSE COALESCE(v.nombre_cliente_libre, 'Sin cliente') END AS cliente,
+                pr.nombre                                                      AS presentacion,
+                vd.cantidad,
+                vd.precio_unitario,
+                vd.subtotal                                                    AS total,
+                (vd.precio_unitario - COALESCE(pp.precio_costo, 0)) * vd.cantidad AS ganancia
+            FROM venta_detalle vd
+            JOIN venta v ON v.id = vd.id_venta
+            LEFT JOIN cliente c ON c.id_cliente = v.id_cliente
+            JOIN producto_presentacion pp ON pp.id = vd.id_pp
+            JOIN presentacion pr ON pr.id_presentacion = pp.id_presentacion
+            WHERE pp.id_producto = $1
+              AND v.estado_venta != 'anulada'
+            ORDER BY v.created_at DESC
             LIMIT 10
         `, [id_producto]);
 
