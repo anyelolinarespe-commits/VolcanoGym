@@ -46,6 +46,7 @@ const MODULOS_CONFIG = {
   'perfiles':             { icon: 'bi-shield-check',   label: 'Perfiles',               seccion: 'Administración',   color: '#e94560' },
   'usuarios':       { icon: 'bi-people',         label: 'Usuarios',       seccion: 'Administración',   color: '#0f3460' },
   'auditoria':      { icon: 'bi-journal-text',   label: 'Auditoría',      seccion: 'Administración',   color: '#6a1b9a' },
+  'configuracion':  { icon: 'bi-gear',           label: 'Configuración',  seccion: 'Administración',   color: '#546e7a' },
 };
 
 // Helper: normaliza la ruta para comparaciones (acepta guiones o guiones bajos)
@@ -141,7 +142,15 @@ document.addEventListener('fullscreenchange', () => {
 // API HELPER (fetch con JWT)
 let _refrescandoPermisos = false;
 
+// Medición opt-in de latencia percibida: activar con localStorage.perfDebug='1'
+function _perfStart() { return localStorage.getItem('perfDebug') === '1' ? performance.now() : 0; }
+function _perfEnd(t0, method, path) {
+  if (!t0) return;
+  console.debug(`[perf] ${method} ${path} — ${Math.round(performance.now() - t0)}ms`);
+}
+
 async function api(method, path, body) {
+  const _t0 = _perfStart();
   const res = await fetch(path, {
     method,
     headers: {
@@ -150,6 +159,7 @@ async function api(method, path, body) {
     },
     body: body ? JSON.stringify(body) : undefined
   });
+  _perfEnd(_t0, method, path);
   if (res.status === 401) { localStorage.clear(); window.location.replace('/'); return; }
   if (res.status === 403 && !_refrescandoPermisos) refrescarPermisos();
   let data;
@@ -161,11 +171,13 @@ async function api(method, path, body) {
 
 // API HELPER para subida de archivos (FormData — sin Content-Type forzado)
 async function apiForm(method, path, formData) {
+  const _t0 = _perfStart();
   const res = await fetch(path, {
     method,
     headers: { 'Authorization': `Bearer ${TOKEN}` },
     body: formData
   });
+  _perfEnd(_t0, method, path);
   if (res.status === 401) { localStorage.clear(); window.location.replace('/'); return; }
   if (res.status === 403 && !_refrescandoPermisos) refrescarPermisos();
   let data;
@@ -173,6 +185,47 @@ async function apiForm(method, path, formData) {
   catch { throw new Error(`Error ${res.status}: respuesta inesperada del servidor`); }
   if (!res.ok) throw new Error(data.message || 'Error');
   return data;
+}
+
+// ── Configuración cacheada (evita re-descargar el logo base64 en cada carga) ──
+const _CFG_CACHE_KEY = 'cfgCache';
+let _cfgData = null;
+
+function _cfgCacheGet() {
+  if (_cfgData) return _cfgData;
+  try { _cfgData = JSON.parse(localStorage.getItem(_CFG_CACHE_KEY) || 'null'); } catch { _cfgData = null; }
+  return _cfgData;
+}
+function _cfgCacheSet(cfg) {
+  _cfgData = cfg;
+  try { localStorage.setItem(_CFG_CACHE_KEY, JSON.stringify(cfg)); } catch (_) {}
+}
+function _cfgCacheClear() {
+  _cfgData = null;
+  try { localStorage.removeItem(_CFG_CACHE_KEY); } catch (_) {}
+}
+function _cfgAplicar(cfg) {
+  if (!cfg?.logo_base64) return;
+  const logoEl = document.querySelector('.sidebar-logo');
+  if (logoEl) logoEl.src = cfg.logo_base64;
+  // El icono/favicon es el mismo logo
+  document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(el => {
+    el.href = cfg.logo_base64;
+  });
+}
+// Refresca desde el servidor, actualiza caché y reaplica el logo.
+async function refrescarConfiguracion() {
+  try {
+    const cfg = await api('GET', '/api/configuracion');
+    if (cfg) { _cfgCacheSet(cfg); _cfgAplicar(cfg); }
+    return cfg;
+  } catch (_) { return _cfgCacheGet(); }
+}
+// Devuelve la config: usa caché si existe (y refresca en segundo plano).
+async function getConfiguracion() {
+  const cached = _cfgCacheGet();
+  if (cached) { refrescarConfiguracion(); return cached; }
+  return await refrescarConfiguracion();
 }
 
 // HELPERS
@@ -555,10 +608,11 @@ function goTo(view, fromHistory = false) {
   if (view === 'presentaciones') loadPresentaciones();
   if (view === 'productos')      loadProductos();
   if (view === 'inventario')     loadInventario();
-  if (view === 'asistencias')  { filtroAsistHoy(); _preloadClientesAsist(); }
+  if (view === 'asistencias')  { filtroAsistHoy(); _preloadClientesAsist(); cargarAsistenciasStats(); }
   if (view === 'ventas')               loadVentas();
   if (view === 'verificacion-pagos')   vpCargar(1);
   if (view === 'auditoria')          { cargarUsuariosAuditoria(); cargarModulosAuditoria(); loadAuditoria(1); }
+  if (view === 'configuracion')      { confInit(); }
 }
 
 window.addEventListener('popstate', e => {
@@ -801,6 +855,10 @@ document.addEventListener('DOMContentLoaded', () => {
     console.warn('No se pudieron cargar las opciones del usuario:', e.message);
   }
 
+  // Aplicar logo/icono desde caché de inmediato y refrescar en segundo plano
+  _cfgAplicar(_cfgCacheGet());
+  refrescarConfiguracion();   // no se espera: no debe bloquear el arranque
+
   buildSidebar();
   buildHomeCards();
 
@@ -825,20 +883,19 @@ document.addEventListener('DOMContentLoaded', () => {
     ventas:         async () => { const v           = await api('GET', '/api/ventas?limit=1');    const el = document.getElementById('countVentas');         if (el) el.textContent = v.total; },
   };
 
-  for (const [ruta, fn] of Object.entries(accesos)) {
-    if (MIS_OPCIONES.some(o => normRuta(o.ruta) === ruta)) {
-      try { await fn(); } catch (e) { console.warn(`Error cargando ${ruta}:`, e.message); }
-    }
-  }
+  // Lanzar todas las cargas de stats permitidas EN PARALELO (antes era en serie)
+  const tareas = Object.entries(accesos)
+    .filter(([ruta]) => MIS_OPCIONES.some(o => normRuta(o.ruta) === ruta))
+    .map(([ruta, fn]) => fn().catch(e => console.warn(`Error cargando ${ruta}:`, e.message)));
+  tareas.push(cargarBalance().catch(e => console.warn('Balance:', e.message)));
+  await Promise.allSettled(tareas);
 
-  // Poblar filtro planes en membresías
+  // Poblar filtro planes en membresías (depende de dataPlanes, ya cargado arriba)
   if (dataPlanes.length) {
     const sel = document.getElementById('filtroMembPlan');
-    dataPlanes.forEach(p => sel.innerHTML += `<option value="${p.id_plan}">${p.nombre}</option>`);
+    sel.insertAdjacentHTML('beforeend',
+      dataPlanes.map(p => `<option value="${p.id_plan}">${p.nombre}</option>`).join(''));
   }
-
-  // Cargar gráfico de balance de ingresos
-  try { await cargarBalance(); } catch (e) { console.warn('Balance:', e.message); }
 })();
 
 // Precarga silenciosa de clientes para que el buscador de asistencias funcione

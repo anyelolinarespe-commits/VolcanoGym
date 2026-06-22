@@ -62,10 +62,6 @@ function renderAsistencias(data, pag = null) {
                     onclick="verAsistenciasCliente(${a.id_cliente})">
                     <i class="bi bi-calendar-check"></i>
                 </button>
-                <button class="btn-icon danger" title="Eliminar asistencia"
-                    onclick="confirmarEliminarAsist(${a.id_asistencia})">
-                    <i class="bi bi-trash"></i>
-                </button>
             </td>
         </tr>`).join('');
 

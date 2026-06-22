@@ -24,6 +24,7 @@ import fotosRoutes from './routes/fotosRoutes.js';
 import ventasRoutes    from './routes/ventasRoutes.js';
 import reportesRoutes  from './routes/reportesRoutes.js';
 import auditoriaRoutes from './routes/auditoriaRoutes.js';
+import configuracionRoutes from './routes/configuracionRoutes.js';
 
 dotenv.config();
 
@@ -57,6 +58,20 @@ pool.query(`ALTER TABLE auditoria ADD COLUMN IF NOT EXISTS datos_anteriores JSON
   .catch(e => console.warn('Migration auditoria.datos_anteriores:', e.message));
 pool.query(`ALTER TABLE auditoria ADD COLUMN IF NOT EXISTS datos_nuevos JSONB`)
   .catch(e => console.warn('Migration auditoria.datos_nuevos:', e.message));
+
+// ── Índices en claves foráneas / filtros calientes (rendimiento de listados) ──
+[
+  `CREATE INDEX IF NOT EXISTS idx_membresia_cliente   ON membresia(id_cliente)`,
+  `CREATE INDEX IF NOT EXISTS idx_membresia_estado    ON membresia(estado)`,
+  `CREATE INDEX IF NOT EXISTS idx_pago_membresia      ON pago(id_membresia)`,
+  `CREATE INDEX IF NOT EXISTS idx_pago_estado_cuota   ON pago(estado_cuota)`,
+  `CREATE INDEX IF NOT EXISTS idx_cliente_deleted     ON cliente(deleted_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_pp_producto         ON producto_presentacion(id_producto)`,
+  `CREATE INDEX IF NOT EXISTS idx_venta_detalle_venta ON venta_detalle(id_venta)`,
+  `CREATE INDEX IF NOT EXISTS idx_asistencia_cliente  ON asistencia(id_cliente)`,
+  `CREATE INDEX IF NOT EXISTS idx_asistencia_fecha    ON asistencia(fecha_hora)`,
+].forEach(sql =>
+  pool.query(sql).catch(e => console.warn('Migration índice:', e.message)));
 
 // Campos de auditoría faltantes en tablas existentes
 pool.query(`ALTER TABLE venta            ADD COLUMN IF NOT EXISTS anulado_por    INTEGER REFERENCES usuarios(id_usuario)`)
@@ -95,6 +110,52 @@ pool.query(`
   WHERE NOT EXISTS (SELECT 1 FROM opciones WHERE ruta = 'auditoria')
 `).catch(e => console.warn('Migration opcion auditoria:', e.message));
 
+// Tabla de configuración del sistema
+pool.query(`
+  CREATE TABLE IF NOT EXISTS configuracion_sistema (
+    clave          VARCHAR(100) PRIMARY KEY,
+    valor          TEXT,
+    actualizado_at TIMESTAMPTZ DEFAULT NOW(),
+    actualizado_por INTEGER REFERENCES usuarios(id_usuario) ON DELETE SET NULL
+  )
+`).catch(e => console.warn('Migration configuracion_sistema:', e.message));
+
+// Tabla de redes sociales gestionables
+pool.query(`
+  CREATE TABLE IF NOT EXISTS redes_sociales_config (
+    id         SERIAL PRIMARY KEY,
+    nombre     VARCHAR(100) NOT NULL,
+    tipo       VARCHAR(50)  NOT NULL,
+    url        TEXT,
+    activo     BOOLEAN      DEFAULT TRUE,
+    orden      INTEGER      DEFAULT 0,
+    created_at TIMESTAMPTZ  DEFAULT NOW()
+  )
+`).catch(e => console.warn('Migration redes_sociales_config:', e.message));
+
+// Tabla de banners para la web pública
+pool.query(`
+  CREATE TABLE IF NOT EXISTS banners_config (
+    id         SERIAL PRIMARY KEY,
+    imagen     TEXT NOT NULL,
+    fecha_fin  TIMESTAMPTZ,
+    principal  BOOLEAN     DEFAULT FALSE,
+    orden      INTEGER     DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`).catch(e => console.warn('Migration banners_config:', e.message));
+
+// Columna principal para instalaciones previas
+pool.query(`ALTER TABLE banners_config ADD COLUMN IF NOT EXISTS principal BOOLEAN DEFAULT FALSE`)
+  .catch(e => console.warn('Migration banners_config.principal:', e.message));
+
+// Opción de menú para configuración (solo si no existe)
+pool.query(`
+  INSERT INTO opciones (nombre, ruta, icono, orden, activo)
+  SELECT 'Configuración', 'configuracion', 'bi-gear', 100, TRUE
+  WHERE NOT EXISTS (SELECT 1 FROM opciones WHERE ruta = 'configuracion')
+`).catch(e => console.warn('Migration opcion configuracion:', e.message));
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
@@ -122,6 +183,7 @@ app.use('/api/productos/:id/fotos', fotosRoutes);
 app.use('/api/ventas',    ventasRoutes);
 app.use('/api/reportes', reportesRoutes);
 app.use('/api/auditoria', auditoriaRoutes);
+app.use('/api/configuracion', configuracionRoutes);
 
 // Upload de capturas de comprobantes de pago
 app.post('/api/uploads/comprobante',

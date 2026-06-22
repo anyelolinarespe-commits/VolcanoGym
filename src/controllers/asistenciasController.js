@@ -8,8 +8,8 @@ export const getAsistencias = async (req, res) => {
     const conds  = [];
     let i = 1;
 
-    if (fecha_inicio) { conds.push(`a.fecha_hora >= $${i++}`); params.push(fecha_inicio + 'T00:00:00'); }
-    if (fecha_fin)    { conds.push(`a.fecha_hora <= $${i++}`); params.push(fecha_fin + 'T23:59:59'); }
+    if (fecha_inicio) { conds.push(`a.fecha_hora >= $${i++}`); params.push(fecha_inicio + 'T00:00:00-05:00'); }
+    if (fecha_fin)    { conds.push(`a.fecha_hora <= $${i++}`); params.push(fecha_fin + 'T23:59:59-05:00'); }
     if (id_cliente)   { conds.push(`a.id_cliente = $${i++}`);  params.push(id_cliente); }
     if (search)       {
         conds.push(`(LOWER(c.nombre || ' ' || c.apellido) LIKE LOWER($${i}) OR c.dni LIKE $${i})`);
@@ -68,11 +68,11 @@ export const getAsistenciasStats = async (req, res) => {
         const [mainRes, horaPicoRes] = await Promise.all([
             pool.query(`
                 SELECT
-                    COUNT(DISTINCT (id_cliente, fecha_hora::date))                                                                      AS total,
-                    COUNT(DISTINCT id_cliente) FILTER (WHERE fecha_hora::date = CURRENT_DATE)                                           AS hoy,
-                    COUNT(DISTINCT (id_cliente, fecha_hora::date)) FILTER (WHERE fecha_hora >= date_trunc('week',  NOW()))              AS esta_semana,
-                    COUNT(DISTINCT (id_cliente, fecha_hora::date)) FILTER (WHERE fecha_hora >= date_trunc('month', NOW()))              AS este_mes,
-                    ROUND(COUNT(DISTINCT (id_cliente, fecha_hora::date)) FILTER (WHERE fecha_hora >= NOW() - INTERVAL '7 days') / 7.0)  AS promedio_semanal
+                    COUNT(DISTINCT (id_cliente, (fecha_hora AT TIME ZONE 'America/Lima')::date))                                                                                              AS total,
+                    COUNT(DISTINCT id_cliente) FILTER (WHERE (fecha_hora AT TIME ZONE 'America/Lima')::date = (NOW() AT TIME ZONE 'America/Lima')::date)                                      AS hoy,
+                    COUNT(DISTINCT (id_cliente, (fecha_hora AT TIME ZONE 'America/Lima')::date)) FILTER (WHERE fecha_hora >= date_trunc('week',  NOW() AT TIME ZONE 'America/Lima') AT TIME ZONE 'America/Lima') AS esta_semana,
+                    COUNT(DISTINCT (id_cliente, (fecha_hora AT TIME ZONE 'America/Lima')::date)) FILTER (WHERE fecha_hora >= date_trunc('month', NOW() AT TIME ZONE 'America/Lima') AT TIME ZONE 'America/Lima') AS este_mes,
+                    ROUND(COUNT(DISTINCT (id_cliente, (fecha_hora AT TIME ZONE 'America/Lima')::date)) FILTER (WHERE fecha_hora >= NOW() - INTERVAL '7 days') / 7.0)                          AS promedio_semanal
                 FROM asistencia
             `),
             pool.query(`
