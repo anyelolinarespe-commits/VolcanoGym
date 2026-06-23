@@ -178,6 +178,16 @@ export const getPresentacionesByProducto = async (req, res) => {
     const { id_producto } = req.params;
     try {
         const result = await pool.query(`
+            WITH principal_img AS (
+                -- Foto principal de la VARIANTE principal del producto (para el fallback)
+                SELECT ppf.url_foto
+                FROM producto_presentacion pp2
+                JOIN producto_presentacion_foto ppf ON ppf.id_pp = pp2.id
+                WHERE pp2.id_producto = $1 AND pp2.es_principal = true AND pp2.estado != 2
+                  AND ppf.estado = 1
+                ORDER BY ppf.es_principal DESC, ppf.orden ASC, ppf.id_foto ASC
+                LIMIT 1
+            )
             SELECT
                 pp.id,
                 pp.id_producto,
@@ -191,9 +201,19 @@ export const getPresentacionesByProducto = async (req, res) => {
                 pp.estado,
                 CASE WHEN pp.precio_costo > 0
                     THEN ROUND((pp.precio_venta - pp.precio_costo) / pp.precio_costo * 100, 1)
-                    ELSE NULL END   AS ganancia_pct
+                    ELSE NULL END   AS ganancia_pct,
+                -- Imagen efectiva: la propia de la variante o, si no tiene, la de la principal
+                COALESCE(prop.url_foto, (SELECT url_foto FROM principal_img)) AS imagen,
+                (prop.url_foto IS NOT NULL)                                   AS tiene_imagen_propia
             FROM producto_presentacion pp
             JOIN presentacion p ON p.id_presentacion = pp.id_presentacion
+            LEFT JOIN LATERAL (
+                SELECT ppf.url_foto
+                FROM producto_presentacion_foto ppf
+                WHERE ppf.id_pp = pp.id AND ppf.estado = 1
+                ORDER BY ppf.es_principal DESC, ppf.orden ASC, ppf.id_foto ASC
+                LIMIT 1
+            ) prop ON true
             WHERE pp.id_producto = $1 AND pp.estado != 2
             ORDER BY pp.es_principal DESC, p.nombre ASC
         `, [id_producto]);

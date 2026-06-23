@@ -3078,12 +3078,12 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
 
         <div class="alert-msg" id="alertPreciosPresentacion" style="margin-bottom:10px"></div>
 
-        <div id="ppListado" style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:1px solid #eee">
+        <div id="ppListado" style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:1px solid #eee;flex-shrink:0">
           <div style="text-align:center;padding:24px;color:#bbb">Sin presentaciones aun</div>
         </div>
 
         <!-- Formulario inline agregar / editar -->
-        <div id="ppFormWrapper" style="background:#f8f9fa;border-radius:10px;padding:14px;border:2px solid #e0f2f1">
+        <div id="ppFormWrapper" style="background:#f8f9fa;border-radius:10px;padding:14px;border:2px solid #e0f2f1;flex-shrink:0">
           <div style="font-weight:700;font-size:13px;color:#1a1a2e;margin-bottom:10px">
             <i class="bi bi-plus-circle me-1" style="color:#26a69a"></i>
             <span id="ppFormTitle">AGREGAR NUEVA PRESENTACIÓN</span>
@@ -3122,9 +3122,31 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
               </button>
             </div>
           </div>
+
+          <!-- Galería de imágenes de la presentación (visible solo al editar una variante) -->
+          <div id="ppfPanel" style="display:none;margin-top:14px">
+            <div style="background:#fff;border:1px solid #e0f2f1;border-radius:12px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="width:26px;height:26px;border-radius:8px;background:#e0f2f1;display:inline-flex;align-items:center;justify-content:center;color:#26a69a">
+                  <i class="bi bi-images"></i>
+                </span>
+                <div>
+                  <div style="font-weight:700;font-size:12.5px;color:#1a1a2e;line-height:1.1">Imágenes de esta presentación</div>
+                  <div style="font-size:11px;color:#9aa">La principal sale primera · arrastra para ordenar</div>
+                </div>
+              </div>
+              <div id="ppfGaleria" style="margin:10px 0"></div>
+              <div id="ppfDropZone" style="border:2px dashed #cfd8dc;border-radius:10px;padding:16px;text-align:center;color:#90a4ae;cursor:pointer;background:#fafafa;transition:all .15s">
+                <i class="bi bi-cloud-arrow-up" style="font-size:24px;display:block;margin-bottom:4px;color:#26a69a"></i>
+                <span style="font-size:12.5px;font-weight:600;color:#607d8b">Arrastra una imagen o haz clic para subir</span>
+                <div style="font-size:10.5px;color:#b0bec5;margin-top:2px">JPEG, PNG, WEBP o GIF · máx 5 MB</div>
+              </div>
+              <input type="file" id="ppfInput" accept="image/*" style="display:none" onchange="ppfHandleInput(this)">
+            </div>
+          </div>
         </div>
 
-        <div class="modal-footer" style="margin:16px -24px 0;padding:14px 24px;border-top:1px solid #eee">
+        <div class="modal-footer pp-sticky-footer" style="position:sticky;bottom:0;z-index:5;margin:16px -24px 0;padding:14px 24px;border-top:1px solid #eee;background:#fff">
           <button class="btn-cancel" onclick="closeModal('modalProducto')">Cancelar</button>
           <button class="btn-save" onclick="saveProducto()">
             <i class="bi bi-check2 me-1"></i>Guardar
@@ -3844,22 +3866,23 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 
-  <script src="js/dashboard-core.js"></script>
-  <script src="js/clientes.js"></script>
-  <script src="js/membresias.js"></script>
-  <script src="js/planes.js"></script>
-  <script src="js/perfiles.js"></script>
-  <script src="js/usuarios.js"></script>
-  <script src="js/categorias.js"></script>
-  <script src="js/presentaciones.js"></script>
-  <script src="js/productos.js"></script>
-  <script src="js/fotos.js"></script>
-  <script src="js/inventario.js"></script>
-  <script src="js/asistencias.js"></script>
-  <script src="js/ventas.js"></script>
-  <script src="js/verificacion-pagos.js"></script>
-  <script src="js/auditoria.js"></script>
-  <script src="js/configuracion.js"></script>
+  <script src="js/dashboard-core.js?v=20260622"></script>
+  <script src="js/clientes.js?v=20260622"></script>
+  <script src="js/membresias.js?v=20260622"></script>
+  <script src="js/planes.js?v=20260622"></script>
+  <script src="js/perfiles.js?v=20260622"></script>
+  <script src="js/usuarios.js?v=20260622"></script>
+  <script src="js/categorias.js?v=20260622"></script>
+  <script src="js/presentaciones.js?v=20260622"></script>
+  <script src="js/productos.js?v=20260622b"></script>
+  <script src="js/fotos.js?v=20260622"></script>
+  <script src="js/presentacionFotos.js?v=20260622"></script>
+  <script src="js/inventario.js?v=20260622"></script>
+  <script src="js/asistencias.js?v=20260622"></script>
+  <script src="js/ventas.js?v=20260622"></script>
+  <script src="js/verificacion-pagos.js?v=20260622"></script>
+  <script src="js/auditoria.js?v=20260622"></script>
+  <script src="js/configuracion.js?v=20260622"></script>
 </body>
 
 </html>

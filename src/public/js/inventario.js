@@ -396,31 +396,42 @@ function renderActualizarStockHistorial(historial) {
       <thead>
         <tr style="background:#f0f4ff">
           <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">FECHA</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--color-text-secondary);font-weight:700">TIPO</th>
           <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">PRESENTACIÓN</th>
-          <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--color-text-secondary);font-weight:700">ANTES</th>
-          <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--color-text-secondary);font-weight:700">DESPUÉS</th>
-          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">BOLETA</th>
-          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">OBSERVACIÓN</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--color-text-secondary);font-weight:700">ANTES → DESPUÉS</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">REF / OBSERVACIÓN</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">USUARIO</th>
         </tr>
       </thead>
       <tbody>
-        ${historial.map(h => `
+        ${historial.map(h => {
+          const esPositivo = h.cantidad >= 0;
+          const deltaStr   = (esPositivo ? '+' : '') + h.cantidad;
+          return `
           <tr style="border-bottom:1px solid #f5f5f5">
-            <td style="padding:8px 12px;font-size:12px;color:var(--color-text-secondary)">
+            <td style="padding:8px 12px;font-size:12px;color:var(--color-text-secondary);white-space:nowrap">
               ${new Date(h.fecha).toLocaleDateString('es-PE')}<br>
               <span style="color:var(--color-text-muted)">${new Date(h.fecha).toLocaleTimeString('es-PE', {hour:'2-digit',minute:'2-digit'})}</span>
             </td>
-            <td style="padding:8px 12px">
-              <div style="font-size:12px">${h.presentacion}</div>
-              <span style="font-size:10px;background:${tipoBg[h.tipo]};color:${tipoColor[h.tipo]};padding:2px 6px;border-radius:8px;font-weight:700">
+            <td style="padding:8px 12px;text-align:center">
+              <span style="font-size:10px;background:${tipoBg[h.tipo] || '#eee'};color:${tipoColor[h.tipo] || '#555'};padding:3px 8px;border-radius:8px;font-weight:700;white-space:nowrap">
                 ${h.tipo.toUpperCase()}
               </span>
             </td>
-            <td style="padding:8px 12px;text-align:center;font-size:13px;color:var(--color-text-muted)">${h.stock_antes}</td>
-            <td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:700;color:${h.cantidad > 0 ? '#2e7d32' : '#c62828'}">${h.stock_despues}</td>
-            <td style="padding:8px 12px;font-size:12px;color:var(--color-text-secondary)">${h.boleta_ref || '—'}</td>
-            <td style="padding:8px 12px;font-size:12px;color:var(--color-text-secondary)">${h.observacion || '—'}</td>
-          </tr>`).join('')}
+            <td style="padding:8px 12px;font-size:12px">${h.presentacion}</td>
+            <td style="padding:8px 12px;text-align:center;font-size:13px">
+              <span style="color:var(--color-text-muted)">${h.stock_antes}</span>
+              <span style="color:#aaa;margin:0 4px">→</span>
+              <strong style="color:${esPositivo ? '#2e7d32' : '#c62828'}">${h.stock_despues}</strong>
+              <span style="font-size:11px;color:${esPositivo ? '#2e7d32' : '#c62828'};margin-left:4px">(${deltaStr})</span>
+            </td>
+            <td style="padding:8px 12px;font-size:12px;color:var(--color-text-secondary)">
+              ${h.boleta_ref ? `<div style="font-weight:600">${h.boleta_ref}</div>` : ''}
+              <div style="color:var(--color-text-muted)">${h.observacion || '—'}</div>
+            </td>
+            <td style="padding:8px 12px;font-size:12px;color:var(--color-text-secondary)">${h.usuario || '—'}</td>
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>`;
 }

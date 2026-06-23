@@ -306,6 +306,7 @@ function renderPreciosPresentacion(data) {
     <table style="width:100%;border-collapse:collapse">
       <thead>
         <tr style="background:#f0f4ff">
+          <th style="padding:10px 12px;text-align:center;font-size:11px;color:var(--color-text-secondary);font-weight:700;border-bottom:2px solid #e0e0ff">IMAGEN</th>
           <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700;border-bottom:2px solid #e0e0ff">PRESENTACIÓN</th>
           <th style="padding:10px 12px;text-align:right;font-size:11px;color:var(--color-text-secondary);font-weight:700;border-bottom:2px solid #e0e0ff">P. COSTO</th>
           <th style="padding:10px 12px;text-align:right;font-size:11px;color:var(--color-text-secondary);font-weight:700;border-bottom:2px solid #e0e0ff">P. VENTA</th>
@@ -324,7 +325,13 @@ function renderPreciosPresentacion(data) {
           const principalBadge = pp.es_principal
             ? `<span style="font-size:10px;background:#fff3e0;color:#e65100;padding:2px 6px;border-radius:8px;margin-left:4px">PRINCIPAL</span>`
             : '';
+          const imgHtml = pp.imagen
+            ? `<img src="${pp.imagen}" alt="img" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid #eee;display:inline-block">`
+            : `<div style="width:44px;height:44px;border-radius:8px;border:1px dashed #ccc;display:inline-flex;align-items:center;justify-content:center;color:#bbb"><i class="bi bi-image"></i></div>`;
+          const usaPrincipal = (!pp.tiene_imagen_propia && pp.imagen)
+            ? `<div style="font-size:9px;color:#aaa;margin-top:2px">usa principal</div>` : '';
           return `<tr style="border-bottom:1px solid #f5f5f5">
+            <td style="padding:12px;text-align:center">${imgHtml}${usaPrincipal}</td>
             <td style="padding:12px">
               <strong>${pp.presentacion}</strong>${principalBadge}
             </td>
@@ -375,7 +382,14 @@ function iniciarEditPP(idPP, idPresentacion, nombrePres, costo, venta, stockMin,
   document.getElementById('ppBtnCancelarEdit').style.display = 'inline-flex';
   document.getElementById('ppFormWrapper').style.borderColor = '#ffe0b2';
   document.getElementById('ppFormWrapper').style.background  = '#fffde7';
-  document.getElementById('ppFormWrapper').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  // Mostrar galería de imágenes de esta variante (requiere que la variante exista)
+  if (typeof ppfMostrarPanel === 'function') ppfMostrarPanel(idPP);
+
+  // Desplazar el formulario al inicio del área visible (evita filas cortadas detrás)
+  requestAnimationFrame(() =>
+    document.getElementById('ppFormWrapper').scrollIntoView({ behavior: 'smooth', block: 'start' })
+  );
 }
 
 // ── Cancelar edición volver a modo agregar ────────────
@@ -397,6 +411,9 @@ function cancelarEditPP() {
   document.getElementById('ppBtnCancelarEdit').style.display = 'none';
   document.getElementById('ppFormWrapper').style.borderColor = '#e0f2f1';
   document.getElementById('ppFormWrapper').style.background  = '#f8f9fa';
+
+  // Ocultar galería al volver a modo "agregar" (aún no existe la variante)
+  if (typeof ppfOcultarPanel === 'function') ppfOcultarPanel();
 }
 
 // ── Guardar (agregar o actualizar) presentación del producto ──
@@ -412,6 +429,17 @@ async function guardarPresentacionProducto() {
   if (!precioVenta || Number(precioVenta) <= 0) {
     showAlert('alertPreciosPresentacion', 'El precio de venta debe ser mayor a 0');
     return;
+  }
+
+  // Aviso: si la variante no tiene imagen propia, se usará la de la presentación principal.
+  // En modo edición consultamos la galería cargada; en modo agregar aún no existe ninguna.
+  const tieneFotosPropias = idPP && typeof ppfTieneFotos === 'function' && ppfTieneFotos();
+  if (!tieneFotosPropias) {
+    const ok = confirm(
+      'No has subido ninguna imagen propia para esta presentación.\n\n' +
+      '¿Deseas continuar? Se mostrará la imagen de la presentación principal del producto.'
+    );
+    if (!ok) return;
   }
 
   const btn = document.getElementById('ppBtnGuardar');

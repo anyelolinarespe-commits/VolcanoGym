@@ -555,6 +555,14 @@ async function editProducto(id) {
 // ── GUARDAR ───────────────────────────────────────────
 async function saveProducto() {
   const id           = document.getElementById('productoId').value;
+
+  // Si el producto ya existe y hay una presentación a medio editar/agregar en el formulario,
+  // guardarla primero (decisión de UX). Si es inválida, no cerramos para que el usuario la corrija.
+  if (id && typeof hayPresentacionPendiente === 'function' && hayPresentacionPendiente()) {
+    const okPP = await guardarPresentacionProducto();
+    if (!okPP) return;
+  }
+
   const id_categoria = document.getElementById('productoCategoriaSelect').value;
   const nombre       = document.getElementById('productoNombre').value.trim();
   const descripcion  = document.getElementById('productoDescripcion').value.trim();
@@ -721,6 +729,7 @@ async function cargarPreciosPresentacion(idProducto) {
       <table style="width:100%;border-collapse:collapse">
         <thead>
           <tr style="background:#f0f4ff">
+            <th style="padding:10px 14px;text-align:center;font-size:11px;color:var(--color-text-secondary);font-weight:700">IMAGEN</th>
             <th style="padding:10px 14px;text-align:left;font-size:11px;color:var(--color-text-secondary);font-weight:700">PRESENTACIÓN</th>
             <th style="padding:10px 14px;text-align:right;font-size:11px;color:var(--color-text-secondary);font-weight:700">PRECIO COSTO</th>
             <th style="padding:10px 14px;text-align:right;font-size:11px;color:var(--color-text-secondary);font-weight:700">PRECIO VENTA</th>
@@ -734,7 +743,13 @@ async function cargarPreciosPresentacion(idProducto) {
             const venta  = parseFloat(pr.precio_venta ?? 0);
             const gan    = costo > 0 ? (venta / 1.18) - costo : venta - costo;
             const ganPct = costo > 0 ? (gan / costo * 100).toFixed(1) : 0;
+            const imgHtml = pr.imagen
+              ? `<img src="${pr.imagen}" alt="img" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid #eee;display:inline-block">`
+              : `<div style="width:44px;height:44px;border-radius:8px;border:1px dashed #ccc;display:inline-flex;align-items:center;justify-content:center;color:#bbb"><i class="bi bi-image"></i></div>`;
+            const usaPrincipal = (!pr.tiene_imagen_propia && pr.imagen)
+              ? `<div style="font-size:9px;color:#aaa;margin-top:2px">usa principal</div>` : '';
             return `<tr style="border-bottom:1px solid #f0f0f0">
+              <td style="padding:11px 14px;text-align:center">${imgHtml}${usaPrincipal}</td>
               <td style="padding:11px 14px">
                 <strong>${pr.presentacion}</strong>
                 ${pr.es_principal
@@ -773,7 +788,7 @@ async function cargarPreciosPresentacion(idProducto) {
 // Llena el select de "Agregar presentación" excluyendo las ya asignadas
 async function cargarPresentacionesSelectPP(idProducto, idCategoria) {
   const sel = document.getElementById('ppPresentacionSelect');
-  if (!sel) return;
+  if (!sel || sel.disabled) return;   // en modo edición el select está bloqueado: no reconstruir
   sel.innerHTML = '<option value="">-- Seleccionar --</option>';
   if (!idCategoria) return;
 
@@ -811,8 +826,17 @@ function editarPresentacionProducto(idPP, nombre, costo, venta, idPresentacion, 
     sel.appendChild(opt);
   }
   sel.value = idPresentacion;
+  // Bloquear el tipo: una variante existente no cambia de presentación (se edita su precio/principal).
+  // Además evita que cargarPresentacionesSelectPP reconstruya el select y borre esta opción.
+  sel.disabled = true;
 
-  document.getElementById('ppFormWrapper')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  // Mostrar galería de imágenes de esta variante (requiere que la variante exista)
+  if (typeof ppfMostrarPanel === 'function') ppfMostrarPanel(idPP);
+
+  // Desplazar el formulario al inicio del área visible (evita filas cortadas detrás)
+  requestAnimationFrame(() =>
+    document.getElementById('ppFormWrapper')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  );
 }
 
 // Resetea el formulario inline al modo "agregar"
@@ -821,22 +845,27 @@ function cancelarEditPP() {
   document.getElementById('ppNuevoCosto').value         = '';
   document.getElementById('ppNuevoVenta').value         = '';
   document.getElementById('ppEsPrincipal').checked      = false;
-  document.getElementById('ppPresentacionSelect').value = '';
+  const selPP = document.getElementById('ppPresentacionSelect');
+  selPP.disabled = false;          // re-habilitar (estaba bloqueado en edición)
+  selPP.value    = '';
   document.getElementById('ppFormTitle').textContent    = 'AGREGAR NUEVA PRESENTACIÓN';
   document.getElementById('ppBtnLabel').textContent     = 'Agregar Presentación';
   document.getElementById('ppBtnIcon').className        = 'bi bi-plus-lg me-1';
   document.getElementById('ppBtnCancelarEdit').style.display = 'none';
 
-  const idProducto  = document.getElementById('ppProductoId').value;
+  // Ocultar galería al volver a modo "agregar" (aún no existe la variante)
+  if (typeof ppfOcultarPanel === 'function') ppfOcultarPanel();
+
+  const idProducto  = _idProductoActivo || document.getElementById('ppProductoId').value;
   const idCategoria = document.getElementById('productoCategoriaSelect').value;
   if (idProducto && idCategoria) {
     cargarPresentacionesSelectPP(Number(idProducto), idCategoria);
   }
 }
 
-// Guarda la presentación (nueva o editada)
+// Guarda la presentación (nueva o editada). Devuelve true si guardó, false si falló/canceló.
 async function guardarPresentacionProducto() {
-  const idProducto  = document.getElementById('ppProductoId').value;
+  const idProducto  = _idProductoActivo || document.getElementById('ppProductoId').value;
   const idPP        = document.getElementById('ppEditId').value;
   const idPres      = document.getElementById('ppPresentacionSelect').value;
   const costo       = parseFloat(document.getElementById('ppNuevoCosto').value  ?? 0) || 0;
@@ -845,15 +874,26 @@ async function guardarPresentacionProducto() {
 
   if (venta <= 0) {
     showAlert('alertPreciosPresentacion', 'El precio de venta es requerido y debe ser mayor a 0');
-    return;
+    return false;
   }
   if (costo > 0 && venta < costo) {
     showAlert('alertPreciosPresentacion', 'El precio de venta no puede ser menor al precio de costo');
-    return;
+    return false;
   }
   if (!idPP && !idPres) {
     showAlert('alertPreciosPresentacion', 'Selecciona una presentación');
-    return;
+    return false;
+  }
+
+  // Aviso: si la variante no tiene imagen propia, se usará la de la presentación principal.
+  // En edición consultamos la galería cargada; al agregar aún no existe ninguna.
+  const tieneFotosPropias = idPP && typeof ppfTieneFotos === 'function' && ppfTieneFotos();
+  if (!tieneFotosPropias) {
+    const ok = confirm(
+      'No has subido ninguna imagen propia para esta presentación.\n\n' +
+      '¿Deseas continuar? Se mostrará la imagen de la presentación principal del producto.'
+    );
+    if (!ok) return false;
   }
 
   const btn = document.getElementById('ppBtnGuardar');
@@ -885,11 +925,22 @@ async function guardarPresentacionProducto() {
       idPP ? '✓ Presentación actualizada' : '✓ Presentación agregada',
       'success'
     );
+    return true;
   } catch (e) {
     showAlert('alertPreciosPresentacion', e.message);
+    return false;
   } finally {
     if (btn) btn.disabled = false;
   }
+}
+
+// ¿Hay una presentación a medio editar/agregar en el formulario inline?
+function hayPresentacionPendiente() {
+  const idPP = document.getElementById('ppEditId')?.value;
+  if (idPP) return true;                       // editando una existente
+  const idPres = document.getElementById('ppPresentacionSelect')?.value;
+  const venta  = parseFloat(document.getElementById('ppNuevoVenta')?.value || 0);
+  return !!idPres && venta > 0;                // agregando una nueva con datos
 }
 
 // Elimina una presentación de producto (con confirmación)
@@ -897,7 +948,7 @@ async function eliminarPresentacionProducto(idPP, nombre) {
   if (!confirm(`¿Eliminar la presentación "${nombre}"? Esta acción no se puede deshacer.`)) return;
   try {
     await api('DELETE', `/api/presentaciones/producto-precio/${idPP}`);
-    const idProducto  = document.getElementById('ppProductoId').value;
+    const idProducto  = _idProductoActivo || document.getElementById('ppProductoId').value;
     const idCategoria = document.getElementById('productoCategoriaSelect').value;
     await cargarPreciosPresentacion(Number(idProducto));
     await cargarPresentacionesSelectPP(Number(idProducto), idCategoria);

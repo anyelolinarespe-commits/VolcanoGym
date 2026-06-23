@@ -21,6 +21,7 @@ import presentacionesRoutes  from './routes/presentacionesRoutes.js';
 import asistenciasRoutes     from './routes/asistenciasRoutes.js';
 import inventarioRoutes from './routes/inventarioRoutes.js';
 import fotosRoutes from './routes/fotosRoutes.js';
+import presentacionFotosRoutes from './routes/presentacionFotosRoutes.js';
 import ventasRoutes    from './routes/ventasRoutes.js';
 import reportesRoutes  from './routes/reportesRoutes.js';
 import auditoriaRoutes from './routes/auditoriaRoutes.js';
@@ -103,6 +104,23 @@ pool.query(`ALTER TABLE categoria_producto ADD COLUMN IF NOT EXISTS modificado_p
 pool.query(`ALTER TABLE perfiles         ADD COLUMN IF NOT EXISTS modificado_por INTEGER REFERENCES usuarios(id_usuario)`)
   .catch(e => console.warn('Migration perfiles.modificado_por:', e.message));
 
+// Galería de imágenes por presentación (variante de producto)
+pool.query(`
+  CREATE TABLE IF NOT EXISTS producto_presentacion_foto (
+    id_foto      INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_pp        INTEGER NOT NULL REFERENCES producto_presentacion(id) ON DELETE CASCADE,
+    url_foto     TEXT NOT NULL,
+    es_principal BOOLEAN NOT NULL DEFAULT FALSE,
+    orden        SMALLINT NOT NULL DEFAULT 0 CHECK (orden >= 0),
+    creado_por   INTEGER,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`).catch(e => console.warn('Migration producto_presentacion_foto:', e.message));
+pool.query(`CREATE INDEX IF NOT EXISTS idx_ppf_pp ON producto_presentacion_foto(id_pp)`)
+  .catch(e => console.warn('Migration idx_ppf_pp:', e.message));
+pool.query(`ALTER TABLE producto_presentacion_foto ADD COLUMN IF NOT EXISTS estado SMALLINT NOT NULL DEFAULT 1`)
+  .catch(e => console.warn('Migration ppf.estado:', e.message));
+
 // Opción de menú para el módulo de auditoría (solo si no existe)
 pool.query(`
   INSERT INTO opciones (nombre, ruta, icono, orden, activo)
@@ -163,7 +181,11 @@ app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
-app.use(express.static(__dirname + '/public'));
+// Estáticos: 'no-cache' obliga a revalidar (304 si no cambió, 200 si sí).
+// Evita que el navegador sirva JS/HTML viejos cacheados sin tener que forzar recarga.
+app.use(express.static(__dirname + '/public', {
+  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+}));
 
 // API
 app.use('/api/auth',           authRoutes);
@@ -180,6 +202,7 @@ app.use('/api/presentaciones', presentacionesRoutes);
 app.use('/api/asistencias',   asistenciasRoutes);
 app.use('/api/inventario', inventarioRoutes);
 app.use('/api/productos/:id/fotos', fotosRoutes);
+app.use('/api/presentaciones/producto-precio/:id_pp/fotos', presentacionFotosRoutes);
 app.use('/api/ventas',    ventasRoutes);
 app.use('/api/reportes', reportesRoutes);
 app.use('/api/auditoria', auditoriaRoutes);
@@ -199,7 +222,10 @@ app.post('/api/uploads/comprobante',
 // Páginas
 app.get('/',          (req, res) => res.sendFile(__dirname + '/public/login.html'));
 app.get('/login',     (req, res) => res.sendFile(__dirname + '/public/login.html'));
-app.use('/dashboard', (req, res) => res.sendFile(__dirname + '/public/dashboard.html'));
+app.use('/dashboard', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(__dirname + '/public/dashboard.html');
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor en http://localhost:${PORT}`));

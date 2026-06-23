@@ -554,6 +554,9 @@ body[data-theme="dark"] .modal-box [style*="border-bottom:1px solid #eee"] { bor
 body[data-theme="dark"] .modal-box [style*="border-top:1px solid #eee"]  { border-top-color:    #2e2e2e !important; }
 body[data-theme="dark"] .modal-box [style*="border-bottom:2px solid #eee"] { border-bottom-color: #2e2e2e !important; }
 body[data-theme="dark"] .modal-box textarea { background: #222222; border-color: #333333; color: #f0f0f0; }
+/* Footer fijo (sticky) del tab de presentaciones: fondo sólido para que no transparente al hacer scroll */
+.pp-sticky-footer { background: #fff; }
+body[data-theme="dark"] .pp-sticky-footer { background: #1a1a1a !important; }
 
 /* Modal Historial Cliente — scrollbar y body */
 body[data-theme="dark"] #modalHistorialCliente .modal-box { background: #1a1a1a; }
