@@ -1,0 +1,19 @@
+{
+  "name": "Volcano Gym",
+  "short_name": "VolcanoGym",
+  "description": "Panel de gestión Volcano Gym",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1a1a2e",
+  "theme_color": "#e94560",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

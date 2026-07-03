@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volcano Gym — Sede Balta · Chiclayo</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+
+        @media (min-width: 769px) {
+            .mobile-only { display: none !important; }
+        }
+        @media (max-width: 768px) {
+            .pc-only { display: none !important; }
+            body { padding-bottom: 70px; }
+        }
+
+        /* === BOTTOM NAV === */
+        .bottom-nav {
+            position: fixed; bottom: 0; left: 0; right: 0; height: 65px;
+            background-color: #ffffff; display: flex; justify-content: space-around;
+            align-items: center; box-shadow: 0 -2px 10px rgba(0,0,0,0.15);
+            z-index: 9999; border-top: 1px solid #e0e0e0;
+        }
+        .bottom-nav-item {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; text-decoration: none; color: #555555;
+            font-size: 11px; font-family: Arial, sans-serif; font-weight: bold;
+            flex: 1; transition: color 0.2s ease;
+        }
+        .bottom-nav-item i { font-size: 20px; margin-bottom: 4px; }
+        .bottom-nav-item.active { color: #ff3333; }
+
+        /* === WHATSAPP BUTTONS === */
+        .wsp-mobile {
+            position: fixed; top: 15px; right: 15px; background-color: #25d366;
+            color: white; width: 45px; height: 45px; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 24px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            z-index: 100000; text-decoration: none;
+        }
+        .wsp-pc {
+            position: fixed; bottom: 25px; right: 25px; background-color: #25d366;
+            color: white; width: 60px; height: 60px; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 32px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 9999; text-decoration: none; transition: transform 0.2s ease;
+        }
+        .wsp-pc:hover { transform: scale(1.1); }
+
+        /* === HERO DYNAMIC OVERLAYS === */
+        .hero-overlay {
+            position: absolute; top: 50%; left: 0; right: 0;
+            transform: translateY(-50%);
+            color: white; z-index: 10;
+            padding: 0 6%;
+        }
+        .slide-text { display: none; width: 100%; }
+        .slide-text.active { display: block; width: 100%; }
+        .slide-text h1 {
+            font-size: clamp(1.6rem, 4.5vw, 3.2rem);
+            font-weight: 900;
+            line-height: 1.15;
+            margin-bottom: 8px;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.8);
+        }
+        .slide-text h1 span { color: var(--yellow); }
+        .slide-text p {
+            font-size: clamp(0.85rem, 2vw, 1.1rem);
+            margin-bottom: 18px;
+            color: #e8e8e8;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
+        }
+        /* === HERO ARROWS === */
+        .hero-arrow {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            z-index: 20;
+            background: rgba(0,0,0,0.35);
+            border: 2px solid rgba(255,255,255,0.35);
+            color: #fff; width: 48px; height: 48px; border-radius: 50%;
+            font-size: 18px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background .2s, border-color .2s, transform .15s;
+            backdrop-filter: blur(4px);
+        }
+        .hero-arrow:hover {
+            background: rgba(233,69,96,0.7);
+            border-color: transparent;
+            transform: translateY(-50%) scale(1.1);
+        }
+        .hero-arrow-left  { left: 18px; }
+        .hero-arrow-right { right: 18px; }
+        @media (max-width: 768px) {
+            .hero-arrow { width: 38px; height: 38px; font-size: 14px; }
+            .hero-arrow-left  { left: 10px; }
+            .hero-arrow-right { right: 10px; }
+        }
+        .btn-saber-mas {
+            background: var(--yellow); color: #fff; border: none;
+            padding: 12px 28px; font-weight: 700; font-size: 0.9rem;
+            cursor: pointer; letter-spacing: 1px; text-transform: uppercase;
+            transition: opacity 0.2s;
+        }
+        .btn-saber-mas:hover { opacity: 0.85; }
+
+
+        /* === LOCATION / MAP === */
+        .location-section {
+            background: #0d0d0d;
+            padding: 70px 20px;
+            border-top: 3px solid var(--yellow);
+        }
+        .location-inner {
+            max-width: 1100px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1.4fr;
+            gap: 50px;
+            align-items: start;
+        }
+        .location-info h2 {
+            color: #fff;
+            font-size: clamp(1.4rem, 3vw, 2rem);
+            font-weight: 900;
+            margin-bottom: 10px;
+        }
+        .location-info h2 span { color: var(--yellow); }
+        .location-info .loc-sub {
+            color: #777;
+            font-size: 0.9rem;
+            margin-bottom: 32px;
+        }
+        .loc-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+        .loc-icon {
+            width: 42px; height: 42px;
+            background: rgba(246,0,0,0.12);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .loc-icon i { color: var(--yellow); font-size: 1rem; }
+        .loc-item-text h5 { color: #e0e0e0; font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
+        .loc-item-text p, .loc-item-text a { color: #aaa; font-size: 0.9rem; line-height: 1.5; text-decoration: none; }
+        .loc-item-text a:hover { color: var(--yellow); }
+        .location-map iframe {
+            width: 100%;
+            height: 380px;
+            border: none;
+            border-radius: 12px;
+            filter: grayscale(20%) contrast(1.05);
+        }
+        @media (max-width: 768px) {
+            .location-inner { grid-template-columns: 1fr; gap: 32px; }
+            .location-map iframe { height: 260px; }
+        }
+
+        /* === VALUES / COMMUNITY === */
+        .values-section {
+            background: #111;
+            padding: 70px 20px;
+        }
+        .values-section .section-title {
+            text-align: center;
+            color: #fff;
+            font-size: clamp(1.4rem, 3vw, 2rem);
+            font-weight: 900;
+            margin-bottom: 8px;
+        }
+        .values-section .section-title span { color: var(--yellow); }
+        .values-section .section-sub {
+            text-align: center;
+            color: #777;
+            font-size: 0.95rem;
+            margin-bottom: 50px;
+        }
+        .values-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .value-card {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 10px;
+            padding: 32px 20px;
+            text-align: center;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .value-card:hover {
+            border-color: var(--yellow);
+            transform: translateY(-5px);
+        }
+        .value-icon {
+            width: 64px; height: 64px;
+            background: rgba(246,0,0,0.12);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 18px;
+        }
+        .value-icon i { font-size: 1.7rem; color: var(--yellow); }
+        .value-card h4 { color: #fff; font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+        .value-card p { color: #888; font-size: 0.85rem; line-height: 1.5; }
+        @media (max-width: 768px) {
+            .values-grid { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 480px) {
+            .values-grid { grid-template-columns: 1fr; }
+        }
+
+        /* === ANIMAL INTERIOR === */
+        .animal-section {
+            background: #0d0d0d;
+            padding: 70px 20px;
+        }
+        .animal-section .section-title {
+            text-align: center;
+            color: #fff;
+            font-size: clamp(1.4rem, 3.5vw, 2.2rem);
+            font-weight: 900;
+            margin-bottom: 8px;
+        }
+        .animal-section .section-title span { color: var(--yellow); }
+        .animal-section .section-sub {
+            text-align: center;
+            color: #888;
+            font-size: 0.95rem;
+            margin-bottom: 50px;
+            max-width: 520px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .animal-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            max-width: 1000px;
+            margin: 0 auto 40px;
+        }
+        .animal-card {
+            background: #171717;
+            border: 2px solid #222;
+            border-radius: 14px;
+            padding: 30px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.3s, transform 0.3s, background 0.3s;
+            user-select: none;
+        }
+        .animal-card:hover {
+            border-color: var(--yellow);
+            transform: translateY(-6px);
+        }
+        .animal-card.selected {
+            border-color: var(--yellow);
+            background: #1f0000;
+        }
+        .animal-emoji {
+            font-size: 3rem;
+            margin-bottom: 12px;
+            display: block;
+        }
+        .animal-card h4 { color: #fff; font-size: 1.1rem; font-weight: 800; margin-bottom: 6px; }
+        .animal-card .animal-type { color: var(--yellow); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
+        .animal-card p { color: #777; font-size: 0.82rem; line-height: 1.45; }
+        .animal-result {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #1a0000;
+            border: 2px solid var(--yellow);
+            border-radius: 12px;
+            padding: 28px 24px;
+            text-align: center;
+            display: none;
+        }
+        .animal-result.visible { display: block; }
+        .animal-result h3 { color: var(--yellow); font-size: 1.3rem; font-weight: 900; margin-bottom: 10px; }
+        .animal-result p { color: #d0d0d0; font-size: 0.95rem; line-height: 1.6; }
+        .btn-animal-cta {
+            margin-top: 18px;
+            display: inline-block;
+            background: var(--yellow);
+            color: #fff;
+            border: none;
+            padding: 12px 28px;
+            font-weight: 800;
+            font-size: 0.9rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-radius: 4px;
+        }
+        @media (max-width: 768px) {
+            .animal-grid { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 400px) {
+            .animal-grid { grid-template-columns: 1fr; }
+        }
+
+        /* === INSTALLATION SECTION === */
+        .installation-detail {
+            background: #0a0a0a;
+        }
+        .detail-wrapper {
+            display: flex; align-items: center; gap: 50px; flex-wrap: wrap;
+        }
+        .detail-text { flex: 1; min-width: 260px; }
+        .detail-text h2 { color: #fff; font-size: clamp(1.4rem, 3vw, 2rem); font-weight: 900; margin-bottom: 16px; }
+        .detail-text h2 span { color: var(--yellow); }
+        .detail-text p { color: #888; font-size: 0.95rem; line-height: 1.7; margin-bottom: 20px; }
+        .detail-image { flex: 1; min-width: 260px; }
+        .detail-image img { width: 100%; border-radius: 10px; }
+        .btn-main { background: var(--yellow); color: #fff; border: none; padding: 14px 30px; cursor: pointer; font-weight: 700; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; transition: opacity 0.2s; }
+        .btn-main:hover { opacity: 0.85; }
+
+        /* === NEWSLETTER === */
+        .newsletter-section {
+            background: linear-gradient(135deg, #0f0000 0%, #1a0000 100%);
+            padding: 70px 20px;
+            text-align: center;
+            border-top: 2px solid var(--yellow);
+        }
+        .newsletter-section h2 {
+            color: #fff;
+            font-size: clamp(1.4rem, 3.5vw, 2rem);
+            font-weight: 900;
+            margin-bottom: 10px;
+        }
+        .newsletter-section h2 span { color: var(--yellow); }
+        .newsletter-section p { color: #888; font-size: 0.95rem; margin-bottom: 30px; }
+        .newsletter-form {
+            display: flex;
+            gap: 12px;
+            max-width: 500px;
+            margin: 0 auto;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .newsletter-form input[type="email"] {
+            flex: 1;
+            min-width: 220px;
+            padding: 14px 18px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #f0f0f0;
+            font-size: 0.95rem;
+            border-radius: 4px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .newsletter-form input[type="email"]:focus { border-color: var(--yellow); }
+        .newsletter-form input[type="email"]::placeholder { color: #666; }
+        .btn-subscribe {
+            background: var(--yellow);
+            color: #fff;
+            border: none;
+            padding: 14px 28px;
+            font-weight: 800;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            cursor: pointer;
+            border-radius: 4px;
+            letter-spacing: 1px;
+            transition: opacity 0.2s;
+        }
+        .btn-subscribe:hover { opacity: 0.85; }
+        .newsletter-note { color: #555; font-size: 0.8rem; margin-top: 14px; }
+
+        /* === FOOTER === */
+        .main-footer { background: #0a0a0a; color: #676767; padding: 40px 0 20px; border-top: 1px solid #222; }
+        .footer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 30px; max-width: 1200px; margin: 0 auto; padding: 0 20px 30px; }
+        .footer-col h4 { color: #e0e0e0; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+        .footer-col a { color: #676767; text-decoration: none; display: block; margin-bottom: 10px; font-size: 0.9rem; transition: color 0.2s; }
+        .footer-col a:hover { color: var(--yellow); }
+        .footer-col p { font-size: 0.88rem; line-height: 1.7; display: flex; align-items: center; gap: 6px; }
+        .footer-socials { display: flex; gap: 14px; margin-top: 6px; }
+        .footer-socials a { color: #676767; font-size: 1.3rem; transition: color 0.2s; }
+        .footer-socials a:hover { color: var(--yellow); }
+        .app-badges { display: flex; flex-direction: column; gap: 10px; }
+        .app-badge-btn { display: flex !important; align-items: center; gap: 10px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 8px 14px; color: #e0e0e0 !important; font-size: 0.85rem; transition: background 0.2s, border-color 0.2s; }
+        .app-badge-btn:hover { background: #2a2a2a !important; border-color: #555; color: #fff !important; }
+        .app-badge-btn i { font-size: 1.4rem; color: #fff; }
+        .footer-bottom {
+            border-top: 1px solid #1a1a1a;
+            padding: 18px 20px 0;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .footer-bottom p { font-size: 0.82rem; }
+        .footer-slogan { color: var(--yellow); font-weight: 700; font-size: 0.88rem; font-style: italic; }
+
+        /* === YELLOW ACTION BAR === */
+        .yellow-action-bar {
+            background: var(--yellow);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 10%;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .yellow-content { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .yellow-content p { color: #fff; font-weight: 800; font-size: 0.95rem; letter-spacing: 1px; }
+        .btn-ver-mas {
+            background: #fff; color: var(--yellow); border: none;
+            padding: 8px 22px; font-weight: 800; font-size: 0.85rem;
+            cursor: pointer; letter-spacing: 1px; transition: opacity 0.2s;
+        }
+        .btn-ver-mas:hover { opacity: 0.85; }
+        .yellow-tagline { color: rgba(255,255,255,0.8); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+        @media (max-width: 768px) {
+            .yellow-action-bar { flex-direction: column; text-align: center; padding: 14px 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- WhatsApp flotante -->
+    <a href="https://wa.me/51963247284?text=Hola!%20Me%20gustaría%20recibir%20más%20información%20sobre%20el%20gimnasio." target="_blank" class="wsp-mobile mobile-only">
+        <i class="fab fa-whatsapp"></i>
+    </a>
+    <a href="https://wa.me/51963247284?text=Hola!%20Me%20gustaría%20recibir%20más%20información%20sobre%20el%20gimnasio." target="_blank" class="wsp-pc pc-only">
+        <i class="fab fa-whatsapp"></i>
+    </a>
+
+    <!-- MENÚ SUPERIOR -->
+    <header class="navbar">
+        <div class="logo">VOLCANO <span>GYM</span></div>
+
+        <input type="checkbox" id="menu-bar" class="pc-only">
+        <label for="menu-bar" class="menu-icon pc-only"><i class="fas fa-bars"></i></label>
+
+        <nav class="nav-links pc-only">
+            <a href="index.html" class="active">Inicio</a>
+            <a href="planes.html">Planes</a>
+            <a href="catalogo.html">Catálogo</a>
+            <a href="/cliente" style="background:#f60000;color:#fff;padding:7px 16px;border-radius:20px;font-weight:800">Mi Cuenta</a>
+        </nav>
+    </header>
+
+    <!-- BARRA DE NAVEGACIÓN INFERIOR (MÓVIL) -->
+    <nav class="bottom-nav mobile-only">
+        <a href="index.html" class="bottom-nav-item active">
+            <i class="fas fa-home"></i>
+            <span>Inicio</span>
+        </a>
+        <a href="planes.html" class="bottom-nav-item">
+            <i class="fas fa-dumbbell"></i>
+            <span>Planes</span>
+        </a>
+        <a href="catalogo.html" class="bottom-nav-item">
+            <i class="fas fa-store"></i>
+            <span>Catálogo</span>
+        </a>
+        <a href="/cliente" class="bottom-nav-item">
+            <i class="fas fa-user"></i>
+            <span>Mi Cuenta</span>
+        </a>
+    </nav>
+
+    <!-- ================================================ -->
+    <!-- 1. HERO SECTION — CARRUSEL CON MENSAJES DINÁMICOS -->
+    <!-- ================================================ -->
+    <section class="hero">
+        <div id="heroSlider" class="hero-slider">
+            <!-- generado por loadHeroSlides() -->
+        </div>
+
+        <!-- Barra de acción inferior del hero -->
+        <div class="yellow-action-bar">
+            <div class="yellow-content">
+                <p>MUSCULACIÓN · FUNCIONAL · BAILE · NUTRICIÓN</p>
+                <button class="btn-ver-mas" onclick="window.location.href='planes.html'">VER PLANES</button>
+            </div>
+            <div class="yellow-tagline">LLEGA LA REVOLUCIÓN <strong>DEL GYM</strong></div>
+        </div>
+    </section>
+
+
+    <!-- ========================================= -->
+    <!-- 4. VALORES Y COMUNIDAD                    -->
+    <!-- ========================================= -->
+    <section class="values-section">
+        <h2 class="section-title">¿POR QUÉ ELEGIR <span>VOLCANO?</span></h2>
+        <p class="section-sub">Compartimos más que un entrenamiento, compartimos pasión</p>
+        <div class="values-grid">
+            <div class="value-card">
+                <div class="value-icon"><i class="fas fa-tv"></i></div>
+                <h4>Pantallas Gigantes</h4>
+                <p>No te pierdas ningún partido mientras entrenas. Transmisiones en vivo.</p>
+            </div>
+            <div class="value-card">
+                <div class="value-icon"><i class="fas fa-fire"></i></div>
+                <h4>Máxima Motivación</h4>
+                <p>No pierdas tu rutina, nosotros te motivamos cada día con ambiente de élite.</p>
+            </div>
+            <div class="value-card">
+                <div class="value-icon"><i class="fas fa-users"></i></div>
+                <h4>Comunidad Real</h4>
+                <p>Una tribu que te impulsa. Retos grupales, eventos y mucho más.</p>
+            </div>
+            <div class="value-card">
+                <div class="value-icon"><i class="fas fa-dumbbell"></i></div>
+                <h4>Equipos de Alto Nivel</h4>
+                <p>Tecnología de punta y mantenimiento diario para tu mejor rendimiento.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========================================= -->
+    <!-- 5. ¿QUÉ ANIMAL ERES? (ANIMAL INTERIOR)   -->
+    <!-- ========================================= -->
+    <section class="animal-section" id="animal">
+        <h2 class="section-title">¿QUÉ <span>ANIMAL</span> ERES?</h2>
+        <p class="section-sub">Entrenando según tu animal interior. Descubre tu perfil y encuentra el plan perfecto para ti.</p>
+
+        <div class="animal-grid">
+            <div class="animal-card" onclick="selectAnimal(this, 'lobo')">
+                <span class="animal-emoji">🐺</span>
+                <h4>LOBO</h4>
+                <div class="animal-type">Resistencia</div>
+                <p>Amas el cardio, los retos de largo aliento y nunca te rindes.</p>
+            </div>
+            <div class="animal-card" onclick="selectAnimal(this, 'tigre')">
+                <span class="animal-emoji">🐯</span>
+                <h4>TIGRE</h4>
+                <div class="animal-type">Agilidad</div>
+                <p>Explosivo, rápido y preciso. Funcional y HIIT son lo tuyo.</p>
+            </div>
+            <div class="animal-card" onclick="selectAnimal(this, 'oso')">
+                <span class="animal-emoji">🐻</span>
+                <h4>OSO</h4>
+                <div class="animal-type">Fuerza</div>
+                <p>Powerlifting, masa muscular y pesos libres. La bestia del gym.</p>
+            </div>
+            <div class="animal-card" onclick="selectAnimal(this, 'trex')">
+                <span class="animal-emoji">🦖</span>
+                <h4>T-REX</h4>
+                <div class="animal-type">Leyenda</div>
+                <p>No sigues rutinas, las creas. Dominación total del gimnasio.</p>
+            </div>
+        </div>
+
+        <div class="animal-result" id="animal-result">
+            <h3 id="animal-result-title"></h3>
+            <p id="animal-result-desc"></p>
+            <button class="btn-animal-cta" onclick="window.open('https://wa.me/51963247284?text='+encodeURIComponent('Hola! Descubrí mi animal interior y quiero más información sobre mis planes.'),'_blank')">
+                <i class="fab fa-whatsapp" style="margin-right:8px;"></i>VER MI PLAN IDEAL
+            </button>
+        </div>
+    </section>
+
+    <!-- ========================================= -->
+    <!-- 6. NUESTRA INSTALACIÓN                    -->
+    <!-- ========================================= -->
+    <section class="installation-detail">
+        <div class="container detail-wrapper">
+            <div class="detail-text">
+                <h2>NUESTRA <span>INSTALACIÓN</span></h2>
+                <p>Máquinas de última generación, pesas libres y zonas especializadas para cada tipo de entrenamiento. En Volcano Gym encontrarás el espacio ideal para romper tus límites y alcanzar tus metas.</p>
+                <button class="btn-main" onclick="window.open('https://wa.me/51963247284?text=Hola!%20Quiero%20conocer%20las%20instalaciones%20de%20Volcano%20Gym.','_blank')">CONOCER MÁS</button>
+            </div>
+            <div class="detail-image">
+                <img src="images (4).jfif" alt="Instalación Volcano Gym">
+            </div>
+        </div>
+    </section>
+
+    <!-- ========================================= -->
+    <!-- 7. UBICACIÓN — SEDE BALTA                 -->
+    <!-- ========================================= -->
+    <section class="location-section" id="ubicacion">
+        <div class="location-inner">
+            <div class="location-info">
+                <h2>ENCUÉNTRANOS — <span>SEDE BALTA</span></h2>
+                <p class="loc-sub">Ven a conocer nuestras instalaciones en el corazón de Chiclayo.</p>
+
+                <div class="loc-item">
+                    <div class="loc-icon"><i class="fas fa-map-marker-alt"></i></div>
+                    <div class="loc-item-text">
+                        <h5>Dirección</h5>
+                        <p>Av. José Balta 2340, Chiclayo, Peru</p>
+                    </div>
+                </div>
+                <div class="loc-item">
+                    <div class="loc-icon"><i class="fas fa-phone"></i></div>
+                    <div class="loc-item-text">
+                        <h5>Teléfono / WhatsApp</h5>
+                        <a class="loc-whatsapp" href="https://wa.me/51994681954" target="_blank">+51 994 681 954</a>
+                    </div>
+                </div>
+                <div class="loc-item">
+                    <div class="loc-icon"><i class="fas fa-envelope"></i></div>
+                    <div class="loc-item-text">
+                        <h5>Correo</h5>
+                        <a class="loc-email" href="mailto:Volcanogym21@gmail.com">Volcanogym21@gmail.com</a>
+                    </div>
+                </div>
+                <div class="loc-item">
+                    <div class="loc-icon"><i class="fas fa-clock"></i></div>
+                    <div class="loc-item-text">
+                        <h5>Horarios</h5>
+                        <p>Lun – Vie: 7:00 AM – 5:00 PM<br>Sábado: 9:00 AM – 11:00 AM<br>Domingo: Cerrado</p>
+                    </div>
+                </div>
+                <div class="loc-item">
+                    <div class="loc-icon"><i class="fas fa-dumbbell"></i></div>
+                    <div class="loc-item-text">
+                        <h5>Servicios</h5>
+                        <p>Musculación · Funcional · Baile · Nutrición</p>
+                    </div>
+                </div>
+            </div>
+            <div class="location-map">
+                <iframe
+                    src="https://maps.google.com/maps?q=Av.+Jos%C3%A9+Balta+2340,+Chiclayo,+Per%C3%BA&output=embed&z=16"
+                    allowfullscreen
+                    loading="lazy"
+                    title="Ubicación Volcano Gym — Sede Balta">
+                </iframe>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========================================= -->
+    <!-- FOOTER                                    -->
+    <!-- ========================================= -->
+    <footer class="main-footer">
+        <div class="footer-grid">
+            <div class="footer-col">
+                <div class="logo" style="font-size:1.4rem; margin-bottom:12px;">VOLCANO <span>GYM</span></div>
+                <p>Sede Balta — Gimnasio y centro de fitness en Chiclayo.</p>
+                <div class="footer-socials" id="footer-socials" style="margin-top:16px;">
+                    <!-- renderizado dinámico desde localStorage volcano_contacto.redes -->
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4>Sede Balta</h4>
+                <p><i class="fas fa-map-marker-alt" style="color:var(--yellow);margin-right:6px"></i>Av. José Balta 2340, Chiclayo</p>
+                <p style="margin-top:8px"><i class="fas fa-phone" style="color:var(--yellow);margin-right:6px"></i><a class="footer-tel" href="tel:+51994681954" style="color:inherit;text-decoration:none">+51 994 681 954</a></p>
+                <p style="margin-top:8px"><i class="fas fa-envelope" style="color:var(--yellow);margin-right:6px"></i><a class="footer-email" href="mailto:Volcanogym21@gmail.com" style="color:inherit;text-decoration:none">Volcanogym21@gmail.com</a></p>
+            </div>
+            <div class="footer-col">
+                <h4>Horarios</h4>
+                <p>Lun – Vie: 7:00 AM – 5:00 PM</p>
+                <p>Sábado: 9:00 AM – 11:00 AM</p>
+                <p style="margin-top:8px;color:#555">Domingo: Cerrado</p>
+            </div>
+            <div class="footer-col">
+                <h4>Servicios</h4>
+                <p style="margin-bottom:8px">Musculación</p>
+                <p style="margin-bottom:8px">Entrenamiento Funcional</p>
+                <p style="margin-bottom:8px">Clases de Baile</p>
+                <p>Nutrición y Dieta</p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>© 2026 Volcano Gym — Todos los derechos reservados.</p>
+            <span class="footer-slogan">"Tu mejor versión dentro y fuera de la cancha"</span>
+        </div>
+    </footer>
+
+    <script>
+        // === HERO SLIDER — CONFIG DINÁMICA (editable desde Dashboard > Configuración > Carrusel) ===
+        const HERO_STORAGE_KEY = 'volcano_hero_slides';
+        const HERO_DEFAULTS = [
+          { img: 'hero_trex.png',     titulo: 'PRE VENTA',          acento: '2026\nVOLCANO GYM',  sub: '¡Los primeros 50 inscritos reciben precio especial!', btn: 'VER PLANES',  target: 'planes' },
+          { img: 'hero_animales.png', titulo: 'SACA TU',            acento: 'ANIMAL INTERIOR',    sub: '¿Y tú qué animal eres? Lobo, Tigre, Oso...',           btn: 'DESCÚBRELO',  target: 'animal' },
+          { img: 'hero_mundial.png',  titulo: 'EL MUNDIAL SE VIVE', acento: 'EN EL GYM',          sub: 'Entrena, alienta, disfruta. Pantallas gigantes.',       btn: 'INSCRIBIRME', target: 'planes' }
+        ];
+
+        function getHeroConfig() {
+          try {
+            const stored = localStorage.getItem(HERO_STORAGE_KEY);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                const visible = parsed
+                  .filter(s => s.estado !== 'inactivo')
+                  .sort((a, b) => {
+                    if (a.estado === 'principal') return -1;
+                    if (b.estado === 'principal') return 1;
+                    return (a.orden || 0) - (b.orden || 0);
+                  });
+                return visible.length ? visible : HERO_DEFAULTS;
+              }
+            }
+          } catch(e) {}
+          return HERO_DEFAULTS;
+        }
+
+        function _heroNavigate(url) {
+          if (!url) return;
+          if (url.startsWith('#')) {
+            const el = document.getElementById(url.slice(1));
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          } else {
+            window.location.href = url;
+          }
+        }
+
+        function loadHeroSlides() {
+          const slides = getHeroConfig();
+          const container = document.getElementById('heroSlider');
+          if (!container) return;
+          const imgs = slides.map((s, i) => {
+            const src = s.imgBase64 || s.img || '';
+            const url = s.url || s.btnUrl || (s.target ? '#' + s.target : '');
+            const clickAttr = url
+              ? ` onclick="_heroNavigate('${url.replace(/'/g,"\\'")}')" style="cursor:pointer"`
+              : '';
+            return `<img src="${src}" class="slide${i===0?' active':''}" alt=""${clickAttr}>`;
+          }).join('');
+          container.innerHTML = imgs +
+            `<button class="hero-arrow hero-arrow-left"  onclick="heroPrev()" aria-label="Anterior"><i class="fas fa-chevron-left"></i></button>` +
+            `<button class="hero-arrow hero-arrow-right" onclick="heroNext()" aria-label="Siguiente"><i class="fas fa-chevron-right"></i></button>`;
+        }
+
+        loadHeroSlides();
+
+        // Slider: autoplay + flechas
+        let currentSlide = 0;
+        let _heroTimer;
+
+        function heroGoTo(n) {
+            const slides = document.querySelectorAll('.slide');
+            if (!slides.length) return;
+            slides[currentSlide].classList.remove('active');
+            currentSlide = ((n % slides.length) + slides.length) % slides.length;
+            slides[currentSlide].classList.add('active');
+        }
+
+        function heroPrev() {
+            clearInterval(_heroTimer);
+            heroGoTo(currentSlide - 1);
+            _heroTimer = setInterval(() => heroGoTo(currentSlide + 1), 4500);
+        }
+
+        function heroNext() {
+            clearInterval(_heroTimer);
+            heroGoTo(currentSlide + 1);
+            _heroTimer = setInterval(() => heroGoTo(currentSlide + 1), 4500);
+        }
+
+        _heroTimer = setInterval(() => heroGoTo(currentSlide + 1), 4500);
+
+        // === ANIMAL INTERIOR ===
+        const animalData = {
+            lobo: {
+                title: '🐺 Eres un LOBO — Perfil: Resistencia',
+                desc: 'Tu fuerza está en no parar nunca. El cardio, el LISS y los retos de fondo son tu terreno. Te recomendamos el plan Trimestral para comenzar a correr con la manada.'
+            },
+            tigre: {
+                title: '🐯 Eres un TIGRE — Perfil: Agilidad',
+                desc: 'Explosivo y preciso. El entrenamiento funcional y el HIIT te definen. El plan Semestral es perfecto para que desates todo tu potencial sin límites.'
+            },
+            oso: {
+                title: '🐻 Eres un OSO — Perfil: Fuerza',
+                desc: 'La potencia es tu sello. Pesos libres, sentadilla, press de banca. El plan Anual te da el tiempo que necesitas para dominar cada máquina del gym.'
+            },
+            trex: {
+                title: '🦖 Eres un T-REX — Perfil: Leyenda',
+                desc: 'No existe un límite para ti. Combinas todo: fuerza, resistencia y agilidad. El plan Anual es el único digno de una leyenda. Tienes pre-venta exclusiva.'
+            }
+        };
+
+        function selectAnimal(card, type) {
+            document.querySelectorAll('.animal-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            const result = document.getElementById('animal-result');
+            document.getElementById('animal-result-title').textContent = animalData[type].title;
+            document.getElementById('animal-result-desc').textContent = animalData[type].desc;
+            result.classList.add('visible');
+            setTimeout(() => result.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 150);
+        }
+
+        // === CONTACTO DINÁMICO ===
+        // El dashboard (Configuración > Redes Sociales) escribe en localStorage['volcano_contacto'].
+        // Si no hay nada guardado, se usan los valores por defecto.
+        const CONTACTO_KEY = 'volcano_contacto';
+        const CONTACTO_DEFAULT = { whatsapp: '51994681954', email: 'Volcanogym21@gmail.com', telefono: '994 681 954' };
+        function getContacto() {
+            try { return Object.assign({}, CONTACTO_DEFAULT, JSON.parse(localStorage.getItem(CONTACTO_KEY) || '{}')); }
+            catch(e) { return CONTACTO_DEFAULT; }
+        }
+        function waUrl(msg) {
+            const C = getContacto();
+            const num = C.whatsapp.replace(/\D/g,'');
+            return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
+        }
+        // Mapa de tipo → icono Font Awesome (la web usa FA, el dashboard usa Bootstrap Icons)
+        const FA_ICONS = {
+            facebook: 'fab fa-facebook',   instagram: 'fab fa-instagram',
+            whatsapp: 'fab fa-whatsapp',   tiktok:    'fab fa-tiktok',
+            youtube:  'fab fa-youtube',    telegram:  'fab fa-telegram',
+            twitter:  'fab fa-x-twitter',  email:     'fas fa-envelope',
+            telefono: 'fas fa-phone',      web:       'fas fa-globe',
+        };
+        function _faHref(tipo, url) {
+            if (!url) return '#';
+            if (tipo === 'whatsapp') return `https://wa.me/${url.replace(/\D/g,'')}`;
+            if (tipo === 'telefono') return `tel:${url}`;
+            if (tipo === 'email')    return `mailto:${url}`;
+            return url;
+        }
+
+        function applyContacto() {
+            const C = getContacto();
+            const waBase = `https://wa.me/${(C.whatsapp||'').replace(/\D/g,'')}`;
+            const waMsg  = waUrl('Hola! Me gustaría recibir más información sobre el gimnasio.');
+
+            // Botones flotantes WhatsApp
+            document.querySelectorAll('.wsp-mobile, .wsp-pc').forEach(a => a.href = waMsg);
+            // Teléfono/WhatsApp en sección ubicación
+            const locWa = document.querySelector('.loc-whatsapp');
+            if (locWa) { locWa.href = waBase; }
+            // Email en ubicación y footer
+            const locEmail = document.querySelector('.loc-email');
+            if (locEmail) { locEmail.href = 'mailto:' + C.email; locEmail.textContent = C.email; }
+            const footerEmail = document.querySelector('.footer-email');
+            if (footerEmail) { footerEmail.href = 'mailto:' + C.email; footerEmail.textContent = C.email; }
+            // Teléfono visible en footer
+            const footerTel = document.querySelector('.footer-tel');
+            if (footerTel) { footerTel.href = 'tel:+' + (C.whatsapp||'').replace(/\D/g,''); }
+
+            // Redes sociales dinámicas en footer — solo activas, en el orden del dashboard
+            const socials = document.getElementById('footer-socials');
+            if (socials) {
+                const redes = Array.isArray(C.redes) ? C.redes : [];
+                if (redes.length) {
+                    socials.innerHTML = redes.map(r =>
+                        `<a href="${_faHref(r.tipo, r.url)}" target="_blank" rel="noopener"
+                            aria-label="${r.nombre}" title="${r.nombre}">
+                           <i class="${FA_ICONS[r.tipo] || 'fas fa-link'}"></i>
+                         </a>`
+                    ).join('');
+                } else {
+                    // Fallback: mostrar WhatsApp si al menos hay número
+                    if (C.whatsapp) {
+                        socials.innerHTML = `<a href="${waBase}" target="_blank" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>`;
+                    }
+                }
+            }
+        }
+        applyContacto();
+
+        // === NEWSLETTER (LEGACY — mantenido para compatibilidad) ===
+        function handleSubscribe(e) {
+            e.preventDefault();
+            const email = e.target.querySelector('input[type="email"]').value;
+            const btn = e.target.querySelector('.btn-subscribe');
+            btn.textContent = '¡LISTO!';
+            btn.style.background = '#1a7a1a';
+            e.target.querySelector('input').value = '';
+            setTimeout(() => {
+                btn.textContent = 'SUSCRIBIRME';
+                btn.style.background = '';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
