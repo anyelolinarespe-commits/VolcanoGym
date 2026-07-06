@@ -10,6 +10,7 @@
   body{background:#080808;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
   .logo{color:#fff;font-weight:900;font-size:2rem;letter-spacing:2px;text-align:center;margin-bottom:6px}
   .logo span{color:#f60000}
+  .logo img{max-height:52px;max-width:220px;object-fit:contain;vertical-align:middle}
   .tagline{color:#d0d0d0;font-size:0.75rem;text-align:center;letter-spacing:3px;text-transform:uppercase;margin-bottom:40px}
   .card{background:#111;border:1px solid #1e1e1e;border-radius:16px;padding:36px 32px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
   .card h2{color:#fff;font-size:1.1rem;font-weight:700;margin-bottom:4px}
@@ -39,7 +40,10 @@
 </head>
 <body>
 
-<div class="logo">VOLCANO <span>GYM</span></div>
+<div class="logo" id="brandLogo">
+  <span id="brandLogoText"><span></span></span>
+  <img id="brandLogoImg" alt="Logo" style="display:none">
+</div>
 <div class="tagline">Área de Clientes</div>
 
 <div class="card">
@@ -71,6 +75,33 @@
 
 <script>
   const API = window.location.port === '3001' ? 'http://localhost:8080' : '';
+
+  // Logo configurado en Dashboard > Configuración > Identidad Visual.
+  // Best-effort: si falla o no hay nada configurado, se mantiene el texto
+  // "VOLCANO GYM" (fallback) y el favicon por defecto del navegador.
+  (async function aplicarBrandingCliente() {
+    try {
+      const res = await fetch(`${API}/api/configuracion/publica`);
+      if (!res.ok) return;
+      const cfg = await res.json();
+
+      if (cfg.logo_login_base64) {
+        const texto = document.getElementById('brandLogoText');
+        const img   = document.getElementById('brandLogoImg');
+        img.src = cfg.logo_login_base64; img.style.display = '';
+        texto.style.display = 'none';
+      }
+      if (cfg.logo_base64) {
+        let icon = document.querySelector('link[rel="icon"]');
+        if (!icon) {
+          icon = document.createElement('link');
+          icon.rel = 'icon';
+          document.head.appendChild(icon);
+        }
+        icon.href = cfg.logo_base64;
+      }
+    } catch (_) { /* mantiene el fallback */ }
+  })();
 
   function togglePw() {
     const inp = document.getElementById('password');

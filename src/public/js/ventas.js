@@ -266,6 +266,8 @@ async function handleComprobanteFileMixto(idx, file) {
 
 // ── CARGAR LISTADO ────────────────────────────────────────────────────────────
 async function loadResumenVentasHoy() {
+  const fechaEl = document.getElementById('vt-resumen-fecha');
+  if (fechaEl) fechaEl.textContent = new Date().toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   try {
     const r = await api('GET', '/api/ventas/resumen-hoy');
     document.getElementById('vt-resumen-pendiente').textContent = `S/ ${Number(r.pendiente_caja).toFixed(2)}`;

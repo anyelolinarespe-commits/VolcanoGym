@@ -17,6 +17,9 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
   <link rel="stylesheet" href="dashboard.css?v=20260623c">
   <link rel="stylesheet" href="dashboard-responsive.css">
+  <!-- Tailwind (solo utilidades — preflight desactivado para no chocar con Bootstrap/CSS existente) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { corePlugins: { preflight: false } };</script>
 </head>
 
 <body>
@@ -84,54 +87,6 @@
         <h4 style="font-weight:700;color:#1a1a2e;margin-bottom:6px;">Dashboard</h4>
         <p style="color:#888;font-size:14px;margin-bottom:24px;">Bienvenido al sistema de gestión</p>
         <div class="row g-3" id="homeCards"></div>
-
-        <!-- Balance de Ingresos -->
-        <div id="homeBalance" style="margin-top:32px;display:none;">
-          <div class="balance-header">
-            <div class="balance-title-wrap">
-              <span class="balance-title"><i class="bi bi-bar-chart-line me-2"></i>Balance de Ingresos</span>
-              <span class="balance-subtitle">Ingresos consolidados del gimnasio</span>
-            </div>
-            <select id="balancePeriodo" class="balance-periodo-sel" onchange="cargarBalance()">
-              <option value="3">Últimos 3 meses</option>
-              <option value="6">Últimos 6 meses</option>
-              <option value="12" selected>Últimos 12 meses</option>
-            </select>
-          </div>
-          <div class="row g-2 mb-3">
-            <div class="col-6 col-md-3">
-              <div class="bkpi-card">
-                <div class="bkpi-label">Total este mes</div>
-                <div class="bkpi-value" id="bkpiTotal">—</div>
-                <div class="bkpi-badge" id="bkpiVariacion"></div>
-              </div>
-            </div>
-            <div class="col-6 col-md-3">
-              <div class="bkpi-card">
-                <div class="bkpi-label">Membresías este mes</div>
-                <div class="bkpi-value bkpi-blue" id="bkpiMemb">—</div>
-                <div class="bkpi-sub">Cuotas cobradas</div>
-              </div>
-            </div>
-            <div class="col-6 col-md-3">
-              <div class="bkpi-card">
-                <div class="bkpi-label">Ventas este mes</div>
-                <div class="bkpi-value bkpi-green" id="bkpiVentas">—</div>
-                <div class="bkpi-sub">Productos vendidos</div>
-              </div>
-            </div>
-            <div class="col-6 col-md-3">
-              <div class="bkpi-card bkpi-card-deuda">
-                <div class="bkpi-label">Deuda pendiente</div>
-                <div class="bkpi-value bkpi-red" id="bkpiDeuda">—</div>
-                <div class="bkpi-sub">Sin cobrar</div>
-              </div>
-            </div>
-          </div>
-          <div class="balance-chart-wrap">
-            <canvas id="balanceChart"></canvas>
-          </div>
-        </div>
       </div>
 
       <div class="view" id="view-clientes">
@@ -250,6 +205,8 @@
             <option value="anulada">Anulada</option>
             <option value="congelada">Congelada</option>
             <option value="programada">Programada</option>
+            <option value="pendiente_validacion">Pend. validación</option>
+            <option value="rechazada">Rechazada</option>
           </select>
           <select id="filtroMembPlan" class="form-control" style="width:180px" onchange="loadMembresias()">
             <option value="todos">Todos los planes</option>
@@ -678,47 +635,98 @@
           <span class="mod-title"><i class="bi bi-check2-circle me-2"></i>Verificación de Pagos</span>
         </div>
 
-        <!-- Filtros -->
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
-          <input type="text" id="vpBuscar" class="form-control" placeholder="Buscar por N° venta, cliente o DNI..."
-            style="max-width:280px" oninput="vpBuscarTimer()">
-          <select id="vpEstado" class="form-control" style="max-width:160px" onchange="vpCargar(1)">
-            <option value="pendiente" selected>Pendientes</option>
-            <option value="todos">Todos</option>
-            <option value="pagado">Aprobados</option>
-          </select>
-          <button class="btn-save" onclick="vpCargar(1)" style="background:#1565c0">
-            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        <!-- Tabs: Ventas / Membresías -->
+        <div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:1.5px solid #e5e7eb">
+          <button id="vpTabBtnVentas" class="btn-cancel" style="border-radius:8px 8px 0 0;border-bottom:none;background:#1565c0;color:#fff" onclick="vpSwitchTab('ventas')">
+            <i class="bi bi-receipt me-1"></i>Ventas
+          </button>
+          <button id="vpTabBtnMembresias" class="btn-cancel" style="border-radius:8px 8px 0 0;border-bottom:none" onclick="vpSwitchTab('membresias')">
+            <i class="bi bi-card-checklist me-1"></i>Membresías
           </button>
         </div>
 
-        <!-- Resumen rápido -->
-        <div id="vpResumen" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>
+        <!-- ══ TAB: VENTAS ══ -->
+        <div id="vp-tab-ventas">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+            <input type="text" id="vpBuscar" class="form-control" placeholder="Buscar por N° venta, cliente o DNI..."
+              style="max-width:280px" oninput="vpBuscarTimer()">
+            <select id="vpEstado" class="form-control" style="max-width:160px" onchange="vpCargar(1)">
+              <option value="pendiente" selected>Pendientes</option>
+              <option value="todos">Todos</option>
+              <option value="pagado">Aprobados</option>
+            </select>
+            <button class="btn-save" onclick="vpCargar(1)" style="background:#1565c0">
+              <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+            </button>
+          </div>
 
-        <!-- Tabla -->
-        <div style="overflow-x:auto">
-          <table class="tabla-base" id="vpTabla">
-            <thead>
-              <tr>
-                <th>N° Venta</th>
-                <th>Cliente</th>
-                <th>Productos</th>
-                <th style="text-align:right">Total</th>
-                <th style="text-align:center">Método de Pago</th>
-                <th>N° Operación</th>
-                <th>Referencia</th>
-                <th style="text-align:center">Comprobante</th>
-                <th>Fecha</th>
-                <th>Estado</th>
-                <th style="text-align:center">Acciones</th>
-              </tr>
-            </thead>
-            <tbody id="vpTbody">
-              <tr><td colspan="10" class="cargando">Cargando...</td></tr>
-            </tbody>
-          </table>
+          <div id="vpResumen" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>
+
+          <div style="overflow-x:auto">
+            <table class="tabla-base" id="vpTabla">
+              <thead>
+                <tr>
+                  <th>N° Venta</th>
+                  <th>Cliente</th>
+                  <th>Productos</th>
+                  <th style="text-align:right">Total</th>
+                  <th style="text-align:center">Método de Pago</th>
+                  <th>N° Operación</th>
+                  <th>Referencia</th>
+                  <th style="text-align:center">Comprobante</th>
+                  <th>Fecha</th>
+                  <th>Estado</th>
+                  <th style="text-align:center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="vpTbody">
+                <tr><td colspan="11" class="cargando">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="vpPaginacion" style="margin-top:12px;display:flex;justify-content:center;gap:6px"></div>
         </div>
-        <div id="vpPaginacion" style="margin-top:12px;display:flex;justify-content:center;gap:6px"></div>
+
+        <!-- ══ TAB: MEMBRESÍAS ══ -->
+        <div id="vp-tab-membresias" style="display:none">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+            <input type="text" id="vpmBuscar" class="form-control" placeholder="Buscar por cliente, DNI o plan..."
+              style="max-width:280px" oninput="vpmBuscarTimer()">
+            <select id="vpmEstado" class="form-control" style="max-width:160px" onchange="vpmCargar(1)">
+              <option value="pendiente" selected>Pendientes</option>
+              <option value="todos">Todos</option>
+              <option value="pagado">Aprobados</option>
+            </select>
+            <button class="btn-save" onclick="vpmCargar(1)" style="background:#1565c0">
+              <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+            </button>
+          </div>
+
+          <div id="vpmResumen" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>
+
+          <div style="overflow-x:auto">
+            <table class="tabla-base" id="vpmTabla">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>DNI</th>
+                  <th>Plan / Cuota</th>
+                  <th style="text-align:right">Monto</th>
+                  <th style="text-align:center">Método de Pago</th>
+                  <th>N° Operación</th>
+                  <th style="text-align:center">Comprobante</th>
+                  <th>Fecha</th>
+                  <th>Estado</th>
+                  <th style="text-align:center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="vpmTbody">
+                <tr><td colspan="10" class="cargando">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="vpmPaginacion" style="margin-top:12px;display:flex;justify-content:center;gap:6px"></div>
+        </div>
       </div>
 
       <div class="view" id="view-ventas">
@@ -727,6 +735,11 @@
           <button class="btn-save" onclick="abrirNuevaVenta()">
             <i class="bi bi-plus-lg me-1"></i>Nueva Venta
           </button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;color:#888;font-size:13px">
+          <i class="bi bi-calendar-day"></i>
+          <span>Resumen del día · <strong id="vt-resumen-fecha" style="color:#555"></strong></span>
         </div>
 
         <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
@@ -791,6 +804,268 @@
         </div>
       </div>
       <!-- ══ /VENTAS ══════════════════════════════════════════════════════════ -->
+
+      <!-- ══ CAJA: MI SESIÓN ══════════════════════════════════════════════════ -->
+      <div class="view" id="view-caja-mi-sesion">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-cash-coin me-2"></i>Mi Sesión de Caja</span>
+        </div>
+
+        <div id="caja-sin-sesion" style="display:none;text-align:center;padding:60px 20px">
+          <i class="bi bi-cash-stack" style="font-size:56px;color:#ccc"></i>
+          <div style="font-size:18px;font-weight:600;color:#555;margin-top:14px">No tienes una sesión de caja abierta</div>
+          <div style="font-size:13.5px;color:#888;margin-top:4px">Selecciona una caja registradora para comenzar tu turno.</div>
+          <button class="btn-save" style="margin-top:18px" onclick="abrirModalAperturaCaja()">
+            <i class="bi bi-door-open me-1"></i>Abrir Caja
+          </button>
+        </div>
+
+        <div id="caja-con-sesion" style="display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+            <div>
+              <div style="font-size:17px;font-weight:700" id="ms-caja-nombre">—</div>
+              <div style="font-size:13px;color:#888"><span id="ms-codigo-sesion">—</span> · Apertura: <span id="ms-fecha-apertura">—</span></div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn-cancel" onclick="abrirModalMovimiento()"><i class="bi bi-arrow-left-right me-1"></i>Movimiento</button>
+              <button class="btn-save" style="background:#c62828" onclick="abrirModalCierreCaja()"><i class="bi bi-door-closed me-1"></i>Cerrar Sesión</button>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+            <div style="background:#f5f5f5;border:1.5px solid #ddd;border-radius:10px;padding:14px 20px;min-width:150px">
+              <div style="font-size:20px;font-weight:700;color:#555" id="ms-kpi-apertura">S/ 0.00</div>
+              <div style="font-size:13px;color:#888;margin-top:2px">Apertura</div>
+            </div>
+            <div style="background:#e8f5e9;border:1.5px solid #a5d6a7;border-radius:10px;padding:14px 20px;min-width:150px">
+              <div style="font-size:20px;font-weight:700;color:#2e7d32" id="ms-kpi-ventas">S/ 0.00</div>
+              <div style="font-size:13px;color:#888;margin-top:2px">Ventas</div>
+            </div>
+            <div style="background:#e3f2fd;border:1.5px solid #90caf9;border-radius:10px;padding:14px 20px;min-width:150px">
+              <div style="font-size:20px;font-weight:700;color:#1565c0" id="ms-kpi-ingresos">S/ 0.00</div>
+              <div style="font-size:13px;color:#888;margin-top:2px">Ingresos manuales</div>
+            </div>
+            <div style="background:#fff3e0;border:1.5px solid #ffcc80;border-radius:10px;padding:14px 20px;min-width:150px">
+              <div style="font-size:20px;font-weight:700;color:#e65100" id="ms-kpi-egresos">S/ 0.00</div>
+              <div style="font-size:13px;color:#888;margin-top:2px">Egresos manuales</div>
+            </div>
+            <div style="background:#f3e5f5;border:1.5px solid #ce93d8;border-radius:10px;padding:14px 20px;min-width:150px">
+              <div style="font-size:20px;font-weight:700;color:#6a1b9a" id="ms-kpi-encaja">S/ 0.00</div>
+              <div style="font-size:13px;color:#888;margin-top:2px">En Caja (efectivo)</div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:start">
+            <div class="table-card" style="padding:16px">
+              <div style="font-weight:600;margin-bottom:10px">Desglose por método de pago</div>
+              <div id="ms-desglose-metodos" style="display:flex;flex-direction:column;gap:8px"></div>
+            </div>
+            <div class="table-card" style="padding:16px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <span style="font-weight:600">Movimientos recientes</span>
+                <a href="#" id="ms-ver-todos" onclick="abrirModalMovimientos();return false;"
+                   style="font-size:13px;font-weight:600;color:var(--accent);text-decoration:none;white-space:nowrap">
+                  Ver todos <i class="bi bi-chevron-right" style="font-size:11px"></i>
+                </a>
+              </div>
+              <div id="ms-movimientos" style="display:flex;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- ══ /CAJA: MI SESIÓN ═════════════════════════════════════════════════ -->
+
+      <!-- ══ CAJA: HISTORIAL DE SESIONES ══════════════════════════════════════ -->
+      <div class="view" id="view-caja-historial-sesiones">
+        <!-- Sub-panel: LISTA -->
+        <div id="hs-lista-panel">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-clock-history me-2"></i>Historial de Sesiones</span>
+        </div>
+        <div style="font-size:13px;color:#888;margin-bottom:10px">Registro histórico de aperturas y cierres de caja — auditoría de solo lectura.</div>
+        <div class="table-card">
+          <div class="table-toolbar">
+            <input type="text" id="searchHistorialSesiones" placeholder="🔍 Buscar por código, caja o cajero..."
+              oninput="loadHistorialSesiones(1)" style="width:260px">
+            <select id="filtroEstadoSesion" onchange="loadHistorialSesiones(1)" style="margin-left:10px;height:38px;border:1px solid #ddd;border-radius:6px;padding:0 10px;font-size:13px">
+              <option value="">Todos los estados</option>
+              <option value="1">Abiertas</option>
+              <option value="0">Cerradas</option>
+            </select>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm border-collapse">
+              <thead>
+                <tr class="border-b border-gray-100">
+                  <th class="text-left font-medium text-gray-400 text-xs px-4 py-3 w-12">N°</th>
+                  <th class="text-left font-medium text-gray-400 text-xs px-4 py-3 cursor-pointer select-none" onclick="sortHistorialSesiones('sesion')">
+                    Sesión <i class="bi bi-arrow-down-up text-[10px] ml-0.5 text-gray-300" id="hs-sort-sesion"></i>
+                  </th>
+                  <th class="text-left font-medium text-gray-400 text-xs px-4 py-3 cursor-pointer select-none" onclick="sortHistorialSesiones('cajero')">
+                    Cajero <i class="bi bi-arrow-down-up text-[10px] ml-0.5 text-gray-300" id="hs-sort-cajero"></i>
+                  </th>
+                  <th class="text-left font-medium text-gray-400 text-xs px-4 py-3 cursor-pointer select-none" onclick="sortHistorialSesiones('periodo')">
+                    Periodo <i class="bi bi-arrow-down text-[10px] ml-0.5 text-orange-500" id="hs-sort-periodo"></i>
+                  </th>
+                  <th class="text-left font-medium text-gray-400 text-xs px-4 py-3 cursor-pointer select-none" onclick="sortHistorialSesiones('ventas')">
+                    Ventas <i class="bi bi-arrow-down-up text-[10px] ml-0.5 text-gray-300" id="hs-sort-ventas"></i>
+                  </th>
+                  <th class="text-left font-medium text-gray-400 text-xs px-4 py-3 cursor-pointer select-none" onclick="sortHistorialSesiones('diferencia')">
+                    Diferencia <i class="bi bi-arrow-down-up text-[10px] ml-0.5 text-gray-300" id="hs-sort-diferencia"></i>
+                  </th>
+                  <th class="text-left font-medium text-gray-400 text-xs px-4 py-3 cursor-pointer select-none" onclick="sortHistorialSesiones('estado')">
+                    Estado <i class="bi bi-arrow-down-up text-[10px] ml-0.5 text-gray-300" id="hs-sort-estado"></i>
+                  </th>
+                  <th class="text-right font-medium text-gray-400 text-xs px-4 py-3">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyHistorialSesiones" class="divide-y divide-gray-100">
+                <tr><td colspan="8" class="p-6 text-center text-sm text-gray-400">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </div>
+        <!-- /Sub-panel LISTA -->
+
+        <!-- Sub-panel: DETALLE (página completa) -->
+        <div id="hs-detalle-panel" style="display:none">
+          <!-- Header con volver + acciones -->
+          <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
+            <div class="flex items-start gap-3">
+              <button onclick="cerrarDetalleSesion()"
+                class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-gray-700">
+                <i class="bi bi-arrow-left"></i>
+              </button>
+              <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-xl text-orange-500">
+                <i class="bi bi-cash-stack"></i>
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-lg font-bold text-gray-900" id="hd-caja-nombre">—</span>
+                  <span id="hd-estado-badge"></span>
+                </div>
+                <div class="text-[13px] text-gray-400" id="hd-codigo">—</div>
+                <div class="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[13px] text-gray-500">
+                  <span><i class="bi bi-person me-1"></i><span id="hd-cajero">—</span></span>
+                  <span><i class="bi bi-calendar-event me-1"></i>Apertura: <span id="hd-apertura">—</span></span>
+                  <span><i class="bi bi-box-arrow-right me-1"></i>Cierre: <span id="hd-cierre">—</span></span>
+                  <span><i class="bi bi-clock me-1"></i><span id="hd-duracion">—</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- KPIs -->
+          <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5 mb-5">
+            <div class="rounded-xl border border-gray-200 bg-white p-4">
+              <div class="flex items-center justify-between text-gray-400"><span class="text-xs font-medium uppercase tracking-wide">Apertura</span><i class="bi bi-box-arrow-in-down"></i></div>
+              <div class="mt-1 text-xl font-bold text-gray-900" id="hd-kpi-apertura">S/ 0.00</div>
+            </div>
+            <div class="rounded-xl border border-gray-200 bg-white p-4">
+              <div class="flex items-center justify-between text-gray-400"><span class="text-xs font-medium uppercase tracking-wide">Total Ventas</span><i class="bi bi-graph-up-arrow text-green-500"></i></div>
+              <div class="mt-1 text-xl font-bold text-gray-900" id="hd-kpi-ventas">S/ 0.00</div>
+            </div>
+            <div class="rounded-xl border border-gray-200 bg-white p-4">
+              <div class="flex items-center justify-between text-gray-400"><span class="text-xs font-medium uppercase tracking-wide">Ingresos</span><i class="bi bi-arrow-down-left-circle text-blue-500"></i></div>
+              <div class="mt-1 text-xl font-bold text-gray-900" id="hd-kpi-ingresos">S/ 0.00</div>
+            </div>
+            <div class="rounded-xl border border-orange-200 bg-orange-50/40 p-4">
+              <div class="flex items-center justify-between text-orange-400"><span class="text-xs font-medium uppercase tracking-wide">Egresos</span><i class="bi bi-arrow-up-right-circle text-orange-500"></i></div>
+              <div class="mt-1 text-xl font-bold text-gray-900" id="hd-kpi-egresos">S/ 0.00</div>
+            </div>
+            <div class="rounded-xl border border-purple-200 bg-purple-50/40 p-4">
+              <div class="flex items-center justify-between text-purple-400"><span class="text-xs font-medium uppercase tracking-wide">Esperado en Caja</span><i class="bi bi-wallet2 text-purple-500"></i></div>
+              <div class="mt-1 text-xl font-bold text-gray-900" id="hd-kpi-esperado">S/ 0.00</div>
+            </div>
+          </div>
+
+          <!-- Grid 2 columnas -->
+          <div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
+            <!-- Izquierda: desglose + arqueo + movimientos -->
+            <div class="space-y-5 lg:col-span-2">
+              <div class="rounded-xl border border-gray-200 bg-white p-5">
+                <div class="mb-3 flex items-center gap-2 font-semibold text-gray-800"><i class="bi bi-credit-card-2-front text-gray-400"></i>Desglose por Método de Pago</div>
+                <div id="hd-desglose"></div>
+              </div>
+              <div class="rounded-xl border border-gray-200 bg-white p-5">
+                <div class="mb-3 flex items-center gap-2 font-semibold text-gray-800"><i class="bi bi-calculator text-gray-400"></i>Arqueo de Cierre</div>
+                <div id="hd-arqueo"></div>
+              </div>
+              <div class="rounded-xl border border-gray-200 bg-white p-5">
+                <div class="mb-3 flex items-center justify-between">
+                  <span class="flex items-center gap-2 font-semibold text-gray-800"><i class="bi bi-list-ul text-gray-400"></i>Movimientos del Turno</span>
+                  <span class="text-[13px] text-gray-400" id="hd-mov-count"></span>
+                </div>
+                <div id="hd-movimientos" class="max-h-[420px] overflow-y-auto"></div>
+              </div>
+            </div>
+            <!-- Derecha: observaciones -->
+            <div class="space-y-5">
+              <div class="rounded-xl border border-gray-200 bg-white p-5">
+                <div class="mb-3 flex items-center gap-2 font-semibold text-gray-800"><i class="bi bi-chat-left-text text-gray-400"></i>Observaciones</div>
+                <div id="hd-observaciones" class="space-y-3 text-[13.5px]"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- /Sub-panel DETALLE -->
+      </div>
+      <!-- ══ /CAJA: HISTORIAL DE SESIONES ═════════════════════════════════════ -->
+
+      <style>
+        body[data-theme="dark"] #view-caja-historial-sesiones .divide-gray-100 > * + * { border-color:#2e2e2e !important; }
+        body[data-theme="dark"] #view-caja-historial-sesiones .border-gray-100 { border-color:#2e2e2e !important; }
+        body[data-theme="dark"] #view-caja-historial-sesiones .text-gray-900 { color:#f0f0f0 !important; }
+        body[data-theme="dark"] #view-caja-historial-sesiones .text-gray-700,
+        body[data-theme="dark"] #view-caja-historial-sesiones .text-gray-500,
+        body[data-theme="dark"] #view-caja-historial-sesiones .text-gray-400 { color:#9a9a9a !important; }
+        body[data-theme="dark"] #view-caja-historial-sesiones .bg-gray-50,
+        body[data-theme="dark"] #view-caja-historial-sesiones .bg-orange-100 { background:#222222 !important; }
+        body[data-theme="dark"] #view-caja-historial-sesiones .hover\:bg-gray-50:hover { background:#222222 !important; }
+
+        /* Detalle de sesión (página completa) — dark */
+        body[data-theme="dark"] #hs-detalle-panel .bg-white { background:#1a1a1a !important; }
+        body[data-theme="dark"] #hs-detalle-panel .text-gray-800,
+        body[data-theme="dark"] #hs-detalle-panel .text-gray-600 { color:#c8c8c8 !important; }
+        body[data-theme="dark"] #hs-detalle-panel .border-gray-200,
+        body[data-theme="dark"] #hs-detalle-panel .border-gray-100 { border-color:#2e2e2e !important; }
+        body[data-theme="dark"] #hs-detalle-panel [style*="border-bottom"] { border-color:#2a2a2a !important; }
+        body[data-theme="dark"] #hs-detalle-panel .bg-gray-50\/60,
+        body[data-theme="dark"] #hs-detalle-panel .bg-gray-100 { background:#242424 !important; }
+        body[data-theme="dark"] #hs-detalle-panel .bg-orange-50\/40 { background:#2a1e12 !important; }
+        body[data-theme="dark"] #hs-detalle-panel .bg-purple-50\/40 { background:#241a2b !important; }
+      </style>
+
+      <!-- ══ CAJA: CAJAS REGISTRADORAS ════════════════════════════════════════ -->
+      <div class="view" id="view-caja-registradoras">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-cash-stack me-2"></i>Cajas Registradoras</span>
+          <button class="btn-save" onclick="nuevaCajaRegistradora()">
+            <i class="bi bi-plus-lg me-1"></i>Nueva Caja
+          </button>
+        </div>
+        <div class="table-card">
+          <table>
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th>CÓDIGO</th>
+                <th>NOMBRE</th>
+                <th>DESCRIPCIÓN</th>
+                <th style="text-align:right">APERTURA DEFAULT</th>
+                <th style="text-align:center">SESIÓN</th>
+                <th style="text-align:center">ESTADO</th>
+                <th style="text-align:center">ACCIONES</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyCajasRegistradoras">
+              <tr class="loading-row"><td colspan="8">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <!-- ══ /CAJA: CAJAS REGISTRADORAS ═══════════════════════════════════════ -->
 
       <!-- ══ AUDITORÍA ══════════════════════════════════════════════════════════ -->
       <div class="view" id="view-auditoria">
@@ -892,10 +1167,7 @@
             <i class="bi bi-share me-1"></i>Redes Sociales
           </button>
           <button class="conf-tab" data-tab="banners" onclick="confTab('banners')">
-            <i class="bi bi-card-image me-1"></i>Banners
-          </button>
-          <button class="conf-tab" data-tab="carrusel" onclick="confTab('carrusel')">
-            <i class="bi bi-images me-1"></i>Carrusel Hero
+            <i class="bi bi-card-image me-1"></i>Banners / Carrusel
           </button>
         </div>
 
@@ -925,46 +1197,24 @@
           </div>
         </div>
 
-        <!-- Panel: Banners -->
+        <!-- Panel: Banners / Carrusel -->
         <div id="confPanelBanners" style="display:none">
           <div class="conf-section">
             <div class="conf-redes-header">
               <h5 class="conf-section-title" style="margin-bottom:0">
-                <i class="bi bi-card-image me-2"></i>Banners Web
+                <i class="bi bi-card-image me-2"></i>Banners / Carrusel — Página de Inicio
               </h5>
               <button class="btn-save rs-btn-agregar" onclick="bnAbrirNueva()">
                 <i class="bi bi-plus-lg me-1"></i>Agregar Banner
               </button>
             </div>
+            <p style="font-size:13px;color:#888;margin:12px 0 20px">
+              Arrastra las tarjetas para reordenar. Marca un banner como <strong>Principal</strong> para que siempre vaya primero, o <strong>Inactivo</strong> para ocultarlo del sitio sin borrarlo. Agrega el link que abrirá cada imagen al hacer clic. Los banners <strong>activos</strong> son los que rotan en el carrusel de la página de inicio.
+            </p>
             <div class="bn-grid" id="bnGrid">
               <div style="grid-column:1/-1;text-align:center;padding:40px;color:#bbb">
                 Cargando...
               </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Panel: Carrusel Hero -->
-        <div id="confPanelCarrusel" style="display:none">
-          <div class="conf-section">
-            <div class="conf-redes-header">
-              <h5 class="conf-section-title" style="margin-bottom:0">
-                <i class="bi bi-images me-2"></i>Carrusel Hero — Página de Inicio
-              </h5>
-            </div>
-            <p style="font-size:13px;color:#888;margin:12px 0 20px">
-              Arrastra las tarjetas para reordenar. Marca un slide como <strong>Principal</strong> para que siempre vaya primero, o <strong>Inactivo</strong> para ocultarlo del sitio. Agrega el link que abrirá cada imagen al hacer clic.
-            </p>
-            <div class="cr-grid" id="crGrid">
-              <div style="text-align:center;padding:40px;color:#bbb">Cargando...</div>
-            </div>
-            <div class="cr-save-sticky">
-              <button class="btn-cancel" onclick="crCancelar()">
-                <i class="bi bi-x-circle me-2"></i>Cancelar
-              </button>
-              <button class="btn-save" onclick="crGuardarTodo()">
-                <i class="bi bi-check-lg me-2"></i>Guardar cambios
-              </button>
             </div>
           </div>
         </div>
@@ -983,18 +1233,6 @@
         <div id="imp-root"></div>
       </div>
       <!-- ══ /IMPORTAR SOCIOS ══════════════════════════════════════════════════════ -->
-
-      <!-- ══ REPORTES ══════════════════════════════════════════════════════ -->
-      <div class="view" id="view-reportes">
-        <div class="mod-header">
-          <span class="mod-title"><i class="bi bi-graph-up-arrow me-2"></i>Reportes</span>
-        </div>
-        <p style="color:#888;font-size:14px;margin-bottom:20px">
-          Monitor de caja, reportes financieros, de clientes y operativos del gimnasio.
-        </p>
-        <div id="rep-root"></div>
-      </div>
-      <!-- ══ /REPORTES ══════════════════════════════════════════════════════ -->
 
       <!-- Modal: Agregar / Editar Red Social -->
       <div class="modal-overlay" id="modalRedSocial">
@@ -1060,7 +1298,11 @@
             </label>
             <input type="file" id="bn-file" accept=".jpg,.jpeg,.png" style="display:none"
                    onchange="bnOnFileChange(this)">
-            <div class="conf-image-hint" style="text-align:left;margin-top:4px">JPG o PNG · máx. 5MB</div>
+            <div class="conf-image-hint" style="text-align:left;margin-top:4px">
+              JPG o PNG · máx. 5MB · Recomendado: <strong>1920×1080px (proporción 16:9)</strong>.
+              La imagen se recorta desde el centro para llenar el espacio del carrusel —
+              evita poner texto o detalles importantes cerca de los bordes izquierdo/derecho.
+            </div>
           </div>
 
           <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px">
@@ -1074,6 +1316,18 @@
           <div style="margin-bottom:18px" id="bn-fecha-wrap">
             <label class="form-label" for="bn-fecha-fin">Vigente hasta (fecha de fin)</label>
             <input type="datetime-local" id="bn-fecha-fin" class="form-control">
+          </div>
+
+          <div style="margin-bottom:14px">
+            <label class="form-label" for="bn-url">Link al hacer clic (opcional)</label>
+            <input type="text" id="bn-url" class="form-control" placeholder="Ej: #planes  /  #animal  /  https://...">
+          </div>
+
+          <div style="margin-bottom:18px;display:flex;align-items:center;gap:10px">
+            <input type="checkbox" id="bn-activo" checked style="width:17px;height:17px;accent-color:#e94560">
+            <label for="bn-activo" class="form-label" style="margin:0;cursor:pointer">
+              Activo (visible en el carrusel de la página de inicio)
+            </label>
           </div>
 
           <div class="modal-footer">
@@ -3503,6 +3757,305 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
     </div>
   </div>
 
+  <!-- ═══════════════════════════ MODALES CAJA ═══════════════════════════════ -->
+
+  <!-- Nueva/Editar Caja Registradora -->
+  <div class="modal-overlay" id="modalCajaRegistradora">
+    <div class="modal-box" style="width:480px">
+      <div class="modal-title" id="modalCajaRegistradoraTitle">Nueva Caja Registradora</div>
+      <div class="alert-msg" id="alertCajaRegistradora"></div>
+      <input type="hidden" id="cajaRegId">
+      <div class="mb-3">
+        <div class="form-label">Código</div>
+        <input class="form-control" id="cajaRegCodigo" disabled placeholder="Autogenerado (CAJA-001)">
+      </div>
+      <div class="mb-3">
+        <div class="form-label">Nombre *</div>
+        <input class="form-control" id="cajaRegNombre" placeholder="Ej: Recepción Principal">
+      </div>
+      <div class="mb-3">
+        <div class="form-label">Descripción / Ubicación</div>
+        <textarea class="form-control" id="cajaRegDescripcion" rows="2" placeholder="Ej: Mostrador de recepción, turno mañana..."></textarea>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div class="mb-3" style="flex:1">
+          <div class="form-label">Monto Apertura Default (S/)</div>
+          <input class="form-control" type="number" id="cajaRegMontoApertura" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="mb-3" style="flex:1">
+          <div class="form-label">Monto Máximo Efectivo (S/)</div>
+          <input class="form-control" type="number" id="cajaRegMontoMaximo" min="0" step="0.01" placeholder="Sin límite">
+        </div>
+      </div>
+      <div class="mb-3" id="cajaRegEstadoGroup" style="display:none">
+        <div class="form-label">Estado</div>
+        <select class="form-control" id="cajaRegEstado">
+          <option value="1">Activo</option>
+          <option value="0">Inactivo</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal('modalCajaRegistradora')">Cancelar</button>
+        <button class="btn-save" onclick="saveCajaRegistradora()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Todos los movimientos de la sesión actual ("Mi Sesión") -->
+  <div class="modal-overlay" id="modalMovimientos">
+    <div class="modal-box" style="width:520px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div class="modal-title" style="margin-bottom:0">Movimientos del turno</div>
+        <span id="mm-count" style="font-size:13px;color:#888"></span>
+      </div>
+      <div style="font-size:13px;color:#888;margin-bottom:14px" id="mm-sesion-info"></div>
+      <div class="table-card" style="padding:14px">
+        <div id="mm-lista" style="display:flex;flex-direction:column;gap:6px;max-height:60vh;overflow-y:auto;font-size:13px"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal('modalMovimientos')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Apertura de sesión ("Mi Sesión") -->
+  <div class="modal-overlay" id="modalAbrirCaja">
+    <div class="modal-box relative !p-0 flex flex-col !overflow-hidden"
+         style="width:420px;max-width:95vw;max-height:92vh">
+      <!-- Botón cerrar -->
+      <button type="button" onclick="closeModal('modalAbrirCaja')"
+        class="absolute right-3.5 top-3.5 z-10 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
+        <i class="bi bi-x-lg"></i>
+      </button>
+
+      <!-- Contenido con scroll interno -->
+      <div class="flex-1 overflow-y-auto px-6 pt-7 pb-4 sm:px-7">
+        <!-- Ícono circular con degradado -->
+        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-amber-100 to-orange-200 text-xl text-orange-500 shadow-inner">
+          <i class="bi bi-shop-window"></i>
+        </div>
+
+        <h5 class="text-center text-lg font-bold text-slate-800" id="acSaludo">Buenos días</h5>
+        <p class="mt-0.5 text-center text-[13px] text-slate-400">Selecciona tu caja para comenzar el turno</p>
+
+        <!-- Reloj en vivo -->
+        <div class="my-4 rounded-2xl bg-slate-50 py-3.5 text-center">
+          <div class="flex items-start justify-center gap-1 font-bold leading-none text-slate-800">
+            <span class="text-4xl tracking-tight" id="acReloj">--:--</span>
+            <span class="mt-0.5 text-base text-slate-400" id="acRelojSeg">--</span>
+            <span class="mt-0.5 ml-0.5 text-xs font-semibold text-slate-400" id="acRelojAmpm">--</span>
+          </div>
+          <div class="mt-1.5 text-[13px] capitalize text-slate-400" id="acFecha">—</div>
+        </div>
+
+        <div class="alert-msg" id="alertAbrirCaja"></div>
+
+        <div class="space-y-3 text-left">
+          <div>
+            <label class="mb-1 block text-[13px] font-semibold text-slate-600">Caja Registradora <span class="text-red-500">*</span></label>
+            <select class="form-control" id="acCajaSelect"></select>
+          </div>
+          <div>
+            <label class="mb-1 block text-[13px] font-semibold text-slate-600">Monto de Apertura (S/) <span class="text-red-500">*</span></label>
+            <input class="form-control" type="number" id="acMontoApertura" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div>
+            <label class="mb-1 block text-[13px] font-semibold text-slate-600">Observaciones <span class="font-normal text-slate-400">(opcional)</span></label>
+            <textarea class="form-control" id="acObservaciones" rows="2" placeholder="Notas sobre la apertura..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer fijo -->
+      <div class="flex shrink-0 items-center justify-between gap-3 border-t border-slate-100 bg-white px-6 py-3.5 sm:px-7">
+        <button type="button" onclick="closeModal('modalAbrirCaja')"
+          class="text-sm font-semibold text-slate-500 transition hover:text-slate-700">Después</button>
+        <button type="button" onclick="confirmarAperturaCaja()"
+          class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/30 transition hover:from-amber-500 hover:to-orange-600 active:scale-[.98]">
+          <i class="bi bi-door-open"></i>Abrir Caja
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nuevo movimiento manual (Ingreso/Egreso) -->
+  <div class="modal-overlay" id="modalMovimientoCaja">
+    <div class="modal-box" style="width:440px">
+      <div class="modal-title">Nuevo Movimiento</div>
+      <div class="alert-msg" id="alertMovimientoCaja"></div>
+      <div class="mb-3">
+        <div class="form-label">Tipo</div>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn-cancel" id="mcTipoIngreso" style="flex:1" onclick="setTipoMovimiento('INGRESO')">Ingreso</button>
+          <button type="button" class="btn-cancel" id="mcTipoEgreso" style="flex:1" onclick="setTipoMovimiento('EGRESO')">Egreso</button>
+        </div>
+        <input type="hidden" id="mcTipo" value="INGRESO">
+      </div>
+      <div class="mb-3">
+        <div class="form-label">Monto (S/) *</div>
+        <input class="form-control" type="number" id="mcMonto" min="0.01" step="0.01" placeholder="0.00">
+      </div>
+      <div style="display:flex;gap:12px">
+        <div class="mb-3" style="flex:1">
+          <div class="form-label">Categoría *</div>
+          <input class="form-control" id="mcCategoria" list="mcCategoriaOpciones" placeholder="Ej: Limpieza, Cafetería...">
+          <datalist id="mcCategoriaOpciones">
+            <option value="Gimnasio"><option value="Membresía"><option value="Cafetería">
+            <option value="Limpieza"><option value="Mantenimiento"><option value="Otros">
+          </datalist>
+        </div>
+        <div class="mb-3" style="flex:1">
+          <div class="form-label">Método de Pago *</div>
+          <select class="form-control" id="mcMetodoPago">
+            <option value="efectivo">Efectivo</option>
+            <option value="tarjeta">Tarjeta</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="yape">Yape</option>
+            <option value="plin">Plin</option>
+          </select>
+        </div>
+      </div>
+      <div class="mb-3">
+        <div class="form-label">Concepto *</div>
+        <textarea class="form-control" id="mcConcepto" rows="2" placeholder="Descripción detallada del motivo..."></textarea>
+      </div>
+      <div class="mb-3">
+        <div class="form-label">N° Comprobante (opcional)</div>
+        <input class="form-control" id="mcComprobante" placeholder="Referencia externa">
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal('modalMovimientoCaja')">Cancelar</button>
+        <button class="btn-save" onclick="guardarMovimientoCaja()">Registrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cierre de sesión / Arqueo de caja -->
+  <div class="modal-overlay" id="modalCierreCaja">
+    <div class="modal-box" style="width:560px;padding:0">
+      <div class="p-5">
+
+        <!-- Header -->
+        <div class="flex items-start justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-orange-100 text-orange-500 flex items-center justify-center text-lg shrink-0">
+              <i class="bi bi-box-arrow-right"></i>
+            </div>
+            <div>
+              <div class="text-[15px] font-bold text-gray-900">Cerrar Sesión de Caja</div>
+              <div class="text-xs text-gray-500" id="cc-subtitulo">—</div>
+            </div>
+          </div>
+          <button onclick="closeModal('modalCierreCaja')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&#10005;</button>
+        </div>
+
+        <!-- Aviso -->
+        <div class="flex items-center gap-2 bg-amber-50 text-amber-700 text-xs rounded-lg px-3 py-2 mb-4">
+          <i class="bi bi-exclamation-triangle"></i>
+          <span><strong>Atención:</strong> esta acción es irreversible.</span>
+        </div>
+
+        <div class="alert-msg" id="alertCierreCaja"></div>
+
+        <!-- Toggle: realizar arqueo -->
+        <label class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2.5 mb-4 cursor-pointer select-none">
+          <span class="text-sm font-medium text-gray-700">Realizar arqueo de cierre</span>
+          <span class="relative inline-flex items-center">
+            <input type="checkbox" id="cc-toggle-arqueo" checked onchange="toggleArqueoCierre()" class="sr-only peer">
+            <span class="w-10 h-[22px] bg-gray-300 peer-checked:bg-orange-500 rounded-full transition-colors"></span>
+            <span class="absolute left-[3px] top-[3px] w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-[18px]"></span>
+          </span>
+        </label>
+
+        <!-- Contado / Esperado / Diferencia / Cuadrada -->
+        <div class="grid grid-cols-4 gap-2 mb-4">
+          <div class="bg-gray-50 rounded-lg p-2.5 text-center">
+            <div class="text-[10.5px] text-gray-500">Contado</div>
+            <div class="text-[15px] font-bold text-gray-900" id="cc-contado">S/ 0.00</div>
+          </div>
+          <div class="bg-gray-50 rounded-lg p-2.5 text-center">
+            <div class="text-[10.5px] text-gray-500">Esperado</div>
+            <div class="text-[15px] font-bold text-gray-900" id="cc-esperado">S/ 0.00</div>
+          </div>
+          <div class="bg-gray-50 rounded-lg p-2.5 text-center">
+            <div class="text-[10.5px] text-gray-500">Diferencia</div>
+            <div class="text-[15px] font-bold text-gray-900" id="cc-diferencia">S/ 0.00</div>
+          </div>
+          <div class="rounded-lg p-2.5 flex flex-col items-center justify-center gap-0.5" id="cc-cuadrada-box">
+            <i class="bi text-lg" id="cc-cuadrada-icon"></i>
+            <div class="text-[10.5px] font-semibold" id="cc-cuadrada-label"></div>
+          </div>
+        </div>
+
+        <!-- Arqueo físico: billetes y monedas -->
+        <div id="cc-arqueo-section">
+          <div class="mb-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><i class="bi bi-cash-stack text-gray-400"></i>Billetes</span>
+              <span class="text-sm font-semibold text-gray-700" id="cc-billetes-total">S/ 0.00</span>
+            </div>
+            <div id="cc-billetes" class="grid grid-cols-5 gap-2"></div>
+          </div>
+
+          <div class="mb-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><i class="bi bi-coin text-gray-400"></i>Monedas</span>
+              <span class="text-sm font-semibold text-gray-700" id="cc-monedas-total">S/ 0.00</span>
+            </div>
+            <div id="cc-monedas" class="grid grid-cols-6 gap-2"></div>
+          </div>
+        </div>
+
+        <!-- Pagos digitales: informativo, no editable -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+              <i class="bi bi-wallet2 text-gray-400"></i>Pagos Digitales
+              <span class="text-[10px] font-normal text-gray-400">(informativo)</span>
+            </span>
+            <span class="text-sm font-semibold text-gray-700" id="cc-digital-total">S/ 0.00</span>
+          </div>
+          <div id="cc-digital-grid" class="grid grid-cols-4 gap-2"></div>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-label">Observaciones del arqueo <span id="cc-obs-requerida" style="color:#c62828;display:none">(requerido: hay diferencia)</span></div>
+          <textarea id="ccObsArqueo" rows="2" placeholder="Notas sobre diferencias encontradas..."
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400"></textarea>
+        </div>
+        <div class="mb-1">
+          <div class="form-label">Observaciones de cierre (opcional)</div>
+          <textarea id="ccObsCierre" rows="2" placeholder="Observaciones generales del turno..."
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400"></textarea>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-2 px-5 py-3.5 border-t border-gray-100">
+        <div class="text-xs text-gray-500" id="cc-resumen-footer">Efectivo: S/ 0.00 · Digital: S/ 0.00</div>
+        <div class="flex gap-2 shrink-0">
+          <button onclick="closeModal('modalCierreCaja')" class="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200">Cancelar</button>
+          <button onclick="confirmarCierreCaja()" class="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700">Cerrar Sesión</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    body[data-theme="dark"] #modalCierreCaja .bg-gray-50  { background:#222222 !important; }
+    body[data-theme="dark"] #modalCierreCaja .bg-gray-100 { background:#2a2a2a !important; }
+    body[data-theme="dark"] #modalCierreCaja .bg-gray-200 { background:#333333 !important; }
+    body[data-theme="dark"] #modalCierreCaja .text-gray-900 { color:#f0f0f0 !important; }
+    body[data-theme="dark"] #modalCierreCaja .text-gray-700 { color:#d8d8d8 !important; }
+    body[data-theme="dark"] #modalCierreCaja .text-gray-500,
+    body[data-theme="dark"] #modalCierreCaja .text-gray-400 { color:#9a9a9a !important; }
+    body[data-theme="dark"] #modalCierreCaja .border-gray-300,
+    body[data-theme="dark"] #modalCierreCaja .border-gray-100 { border-color:#333333 !important; }
+    body[data-theme="dark"] #modalCierreCaja input,
+    body[data-theme="dark"] #modalCierreCaja textarea { background:#1a1a1a !important; color:#f0f0f0 !important; }
+  </style>
+
+  <!-- ═══════════════════════════ /MODALES CAJA ══════════════════════════════ -->
+
   <!-- ═══════════════════════════════════════════════════════════════════════
        MODAL: Crear membresía — flujo integrado DNI (4 pasos)
        ═══════════════════════════════════════════════════════════════════════ -->
@@ -4524,7 +5077,7 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
   <script src="js/auditoria.js?v=20260623b"></script>
   <script src="js/configuracion.js?v=20260629a"></script>
   <script src="js/importar.js?v=20260630a"></script>
-  <script src="js/reportes.js?v=20260702a"></script>
+  <script src="js/caja.js?v=20260704a"></script>
 </body>
 
 </html>

@@ -1,14 +1,20 @@
 import { Router } from 'express';
 import {
-  getConfiguracion, uploadImagen,
+  getConfiguracion, uploadImagen, getConfiguracionPublica,
   getRedes, createRed, updateRed, reordenarRedes, deleteRed,
   getBanners, createBanner, updateBanner, deleteBanner,
-  reordenarBanners, marcarBannerPrincipal,
+  reordenarBanners, marcarBannerPrincipal, getBannersPublico,
 } from '../controllers/configuracionController.js';
 import { verificarToken } from '../middlewares/verificarToken.js';
 import { uploadFoto } from '../middlewares/upload.js';
 
 const router = Router();
+
+// Públicas — declaradas ANTES de verificarToken: las usan login.html (sin
+// sesión) y volcano_web (sin login) para branding y el carrusel de la home.
+router.get('/publica',         getConfiguracionPublica);
+router.get('/banners/publico', getBannersPublico);
+
 router.use(verificarToken);
 
 router.get('/',                   getConfiguracion);

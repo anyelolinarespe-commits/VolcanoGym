@@ -6,8 +6,6 @@ const CLAVES_IMAGEN = {
   logo_base64:       { label: 'Logo (sidebar)'       },
   icono_base64:      { label: 'Icono / Favicon'       },
   logo_login_base64: { label: 'Logo Login'             },
-  banner_base64:     { label: 'Banner principal'       },
-  portada_base64:    { label: 'Portada del gimnasio'   },
   qr_pago_base64:    { label: 'QR de Pago'             },
 };
 
@@ -19,7 +17,24 @@ const MIME_SOLO_PNG   = new Set(['image/png']);
 // GET /api/configuracion
 export const getConfiguracion = async (req, res) => {
   try {
-    const result = await pool.query(`SELECT clave, valor FROM configuracion_sistema ORDER BY clave`);
+    const result = await pool.query(`SELECT clave, valor FROM configuracion_imagenes ORDER BY clave`);
+    const config = {};
+    for (const row of result.rows) config[row.clave] = row.valor;
+    res.json(config);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Error al obtener configuración' });
+  }
+};
+
+// GET /api/configuracion/publica  (SIN AUTH — usado por login.html y volcano_web)
+// Solo lectura: logos necesarios en páginas sin sesión (branding del login,
+// favicon del sitio público).
+export const getConfiguracionPublica = async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT clave, valor FROM configuracion_imagenes WHERE clave IN ('logo_login_base64','logo_base64')`
+    );
     const config = {};
     for (const row of result.rows) config[row.clave] = row.valor;
     res.json(config);
@@ -46,9 +61,9 @@ export const uploadImagen = async (req, res) => {
   try {
     const base64 = `data:${mime};base64,${req.file.buffer.toString('base64')}`;
     await pool.query(`
-      INSERT INTO configuracion_sistema (clave, valor, actualizado_por, actualizado_at)
+      INSERT INTO configuracion_imagenes (clave, valor, modificado_por, updated_at)
       VALUES ($1, $2, $3, NOW())
-      ON CONFLICT (clave) DO UPDATE SET valor = $2, actualizado_por = $3, actualizado_at = NOW()
+      ON CONFLICT (clave) DO UPDATE SET valor = $2, modificado_por = $3, updated_at = NOW()
     `, [clave, base64, req.usuario.id]);
     registrarAuditoria({
       id_usuario: req.usuario.id, nombre_usuario: req.usuario.nombre || req.usuario.username,
@@ -182,8 +197,25 @@ const _parseFechaFin = (v) => {
 export const getBanners = async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, imagen, fecha_fin, principal, orden FROM banners_config ORDER BY principal DESC, orden ASC, id ASC`
+      `SELECT id, imagen, url, fecha_fin, principal, activo, orden FROM banners_config ORDER BY principal DESC, orden ASC, id ASC`
     );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Error al obtener banners' });
+  }
+};
+
+// GET /api/configuracion/banners/publico  (SIN AUTH — usado por volcano_web)
+// Solo lectura: banners activos y vigentes, para pintar el carrusel de la home.
+export const getBannersPublico = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, imagen, url, principal, orden
+      FROM banners_config
+      WHERE activo = TRUE AND (fecha_fin IS NULL OR fecha_fin > NOW())
+      ORDER BY principal DESC, orden ASC, id ASC
+    `);
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -201,12 +233,14 @@ export const createBanner = async (req, res) => {
   try {
     const imagen = `data:${mime};base64,${req.file.buffer.toString('base64')}`;
     const fechaFin = _parseFechaFin(req.body.fecha_fin);
+    const url = req.body.url?.trim() || null;
+    const activo = req.body.activo === undefined ? true : req.body.activo === 'true' || req.body.activo === true;
     const maxOrden = await pool.query(`SELECT COALESCE(MAX(orden), 0) AS m FROM banners_config`);
     const orden = parseInt(maxOrden.rows[0].m) + 1;
     const result = await pool.query(`
-      INSERT INTO banners_config (imagen, fecha_fin, orden)
-      VALUES ($1, $2, $3) RETURNING id, imagen, fecha_fin, principal, orden
-    `, [imagen, fechaFin, orden]);
+      INSERT INTO banners_config (imagen, url, fecha_fin, activo, orden)
+      VALUES ($1, $2, $3, $4, $5) RETURNING id, imagen, url, fecha_fin, principal, activo, orden
+    `, [imagen, url, fechaFin, activo, orden]);
     registrarAuditoria({
       id_usuario: req.usuario.id, nombre_usuario: req.usuario.nombre || req.usuario.username,
       accion: 'CREAR', modulo: 'Configuración',
@@ -228,6 +262,8 @@ export const updateBanner = async (req, res) => {
     if (!prev.rowCount) return res.status(404).json({ message: 'Banner no encontrado' });
 
     const fechaFin = _parseFechaFin(req.body.fecha_fin);
+    const url = 'url' in req.body ? (req.body.url?.trim() || null) : undefined;
+    const activo = 'activo' in req.body ? (req.body.activo === 'true' || req.body.activo === true) : undefined;
     let imagen = null;
     if (req.file) {
       const mime = req.file.mimetype;
@@ -240,9 +276,11 @@ export const updateBanner = async (req, res) => {
     const result = await pool.query(`
       UPDATE banners_config
       SET imagen    = COALESCE($1, imagen),
-          fecha_fin = $2
-      WHERE id = $3 RETURNING id, imagen, fecha_fin, principal, orden
-    `, [imagen, fechaFin, id]);
+          fecha_fin = $2,
+          url       = COALESCE($3, url),
+          activo    = COALESCE($4, activo)
+      WHERE id = $5 RETURNING id, imagen, url, fecha_fin, principal, activo, orden
+    `, [imagen, fechaFin, url, activo, id]);
 
     registrarAuditoria({
       id_usuario: req.usuario.id, nombre_usuario: req.usuario.nombre || req.usuario.username,

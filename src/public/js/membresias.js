@@ -1051,6 +1051,8 @@ function estadoBadgeMini(estado, saldo, vencidas = 0) {
     if (estado === 'activa')    return '<span class="tag-estado-activa">Activa</span>';
     if (estado === 'vencida')   return '<span class="tag-estado-vencida">Vencida</span>';
     if (estado === 'programada') return '<span class="tag-estado-programada">Programada</span>';
+    if (estado === 'pendiente_validacion') return '<span class="tag-estado-pendiente-val">⏳ Pend. validación</span>';
+    if (estado === 'rechazada') return '<span class="tag-estado-rechazada">✗ Rechazada</span>';
     return `<span class="tag-estado-anulada">${estado}</span>`;
 }
 
@@ -1061,6 +1063,8 @@ function estadoBadgeMini(estado, saldo, vencidas = 0) {
     s.id = 'memb-anular-style';
     s.textContent = `
     .tag-estado-programada { background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700; }
+    .tag-estado-pendiente-val { background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700; }
+    .tag-estado-rechazada { background:#fce4ec;color:#b71c1c;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700; }
     .btn-anular-memb {
         display:inline-flex;align-items:center;gap:5px;
         padding:5px 11px;font-size:12px;font-weight:600;
@@ -3875,7 +3879,9 @@ _¡Gracias por confiar en Volcano Gym! 💪_`;
       activa: '<span class="badge badge-activa">Activa</span>',
       vencida: '<span class="badge badge-vencida">Vencida</span>',
       anulada: '<span class="badge badge-anulada">Anulada</span>',
-      congelada: '<span class="badge badge-congelada">Congelada</span>'
+      congelada: '<span class="badge badge-congelada">Congelada</span>',
+      pendiente_validacion: '<span class="tag-estado-pendiente-val">⏳ Pend. validación</span>',
+      rechazada: '<span class="tag-estado-rechazada">✗ Rechazada</span>'
     };
 
     tbody.innerHTML = membresias.map(m => `

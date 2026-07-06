@@ -3,6 +3,29 @@ if (localStorage.getItem('token')) {
     window.location.replace('/dashboard');
 }
 
+// Aplica el logo de login y el favicon configurados en Configuración >
+// Identidad Visual. Best-effort: si falla o no hay nada configurado, se
+// mantiene el emoji 🌋 (fallback) y el favicon estático del HTML.
+async function _aplicarBrandingLogin() {
+    try {
+        const res = await fetch('/api/configuracion/publica');
+        if (!res.ok) return;
+        const cfg = await res.json();
+
+        if (cfg.logo_login_base64) {
+            const emoji = document.getElementById('brandLogoEmoji');
+            const img   = document.getElementById('brandLogoImg');
+            if (img) { img.src = cfg.logo_login_base64; img.style.display = ''; }
+            if (emoji) emoji.style.display = 'none';
+        }
+        if (cfg.logo_base64) {
+            document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')
+                .forEach(el => { el.href = cfg.logo_base64; });
+        }
+    } catch (_) { /* mantiene el fallback */ }
+}
+_aplicarBrandingLogin();
+
 document.addEventListener('DOMContentLoaded', () => {
     document.body.style.visibility = 'visible';
 

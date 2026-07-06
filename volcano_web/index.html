@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Volcano Gym — Sede Balta · Chiclayo</title>
+    <link rel="icon" type="image/png" href="/logo.png">
+    <link rel="apple-touch-icon" href="/logo.png">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -573,7 +575,7 @@
                 <button class="btn-main" onclick="window.open('https://wa.me/51963247284?text=Hola!%20Quiero%20conocer%20las%20instalaciones%20de%20Volcano%20Gym.','_blank')">CONOCER MÁS</button>
             </div>
             <div class="detail-image">
-                <img src="images (4).jfif" alt="Instalación Volcano Gym">
+                <img src="imagen4.jpg" alt="Instalación Volcano Gym">
             </div>
         </div>
     </section>
@@ -673,31 +675,25 @@
     </footer>
 
     <script>
-        // === HERO SLIDER — CONFIG DINÁMICA (editable desde Dashboard > Configuración > Carrusel) ===
-        const HERO_STORAGE_KEY = 'volcano_hero_slides';
+        // === HERO SLIDER — CONFIG DINÁMICA (editable desde Dashboard > Configuración > Banners/Carrusel) ===
+        // Antes leía localStorage (no sincronizaba con visitantes reales del sitio);
+        // ahora consulta la API pública, que sí refleja lo que el admin configuró.
+        const HERO_API_URL = '/api/configuracion/banners/publico';
         const HERO_DEFAULTS = [
-          { img: 'hero_trex.png',     titulo: 'PRE VENTA',          acento: '2026\nVOLCANO GYM',  sub: '¡Los primeros 50 inscritos reciben precio especial!', btn: 'VER PLANES',  target: 'planes' },
-          { img: 'hero_animales.png', titulo: 'SACA TU',            acento: 'ANIMAL INTERIOR',    sub: '¿Y tú qué animal eres? Lobo, Tigre, Oso...',           btn: 'DESCÚBRELO',  target: 'animal' },
-          { img: 'hero_mundial.png',  titulo: 'EL MUNDIAL SE VIVE', acento: 'EN EL GYM',          sub: 'Entrena, alienta, disfruta. Pantallas gigantes.',       btn: 'INSCRIBIRME', target: 'planes' }
+          { img: 'hero_trex.png',     url: '#planes' },
+          { img: 'hero_animales.png', url: '#animal' },
+          { img: 'hero_mundial.png',  url: '#planes' }
         ];
 
-        function getHeroConfig() {
+        async function getHeroConfig() {
           try {
-            const stored = localStorage.getItem(HERO_STORAGE_KEY);
-            if (stored) {
-              const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                const visible = parsed
-                  .filter(s => s.estado !== 'inactivo')
-                  .sort((a, b) => {
-                    if (a.estado === 'principal') return -1;
-                    if (b.estado === 'principal') return 1;
-                    return (a.orden || 0) - (b.orden || 0);
-                  });
-                return visible.length ? visible : HERO_DEFAULTS;
-              }
+            const res = await fetch(HERO_API_URL);
+            if (!res.ok) throw new Error('status ' + res.status);
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              return data.map(b => ({ img: b.imagen, url: b.url || '' }));
             }
-          } catch(e) {}
+          } catch (e) { console.warn('hero config:', e.message); }
           return HERO_DEFAULTS;
         }
 
@@ -711,15 +707,14 @@
           }
         }
 
-        function loadHeroSlides() {
-          const slides = getHeroConfig();
+        async function loadHeroSlides() {
+          const slides = await getHeroConfig();
           const container = document.getElementById('heroSlider');
           if (!container) return;
           const imgs = slides.map((s, i) => {
-            const src = s.imgBase64 || s.img || '';
-            const url = s.url || s.btnUrl || (s.target ? '#' + s.target : '');
-            const clickAttr = url
-              ? ` onclick="_heroNavigate('${url.replace(/'/g,"\\'")}')" style="cursor:pointer"`
+            const src = s.img || '';
+            const clickAttr = s.url
+              ? ` onclick="_heroNavigate('${s.url.replace(/'/g,"\\'")}')" style="cursor:pointer"`
               : '';
             return `<img src="${src}" class="slide${i===0?' active':''}" alt=""${clickAttr}>`;
           }).join('');
@@ -727,8 +722,6 @@
             `<button class="hero-arrow hero-arrow-left"  onclick="heroPrev()" aria-label="Anterior"><i class="fas fa-chevron-left"></i></button>` +
             `<button class="hero-arrow hero-arrow-right" onclick="heroNext()" aria-label="Siguiente"><i class="fas fa-chevron-right"></i></button>`;
         }
-
-        loadHeroSlides();
 
         // Slider: autoplay + flechas
         let currentSlide = 0;
@@ -754,7 +747,26 @@
             _heroTimer = setInterval(() => heroGoTo(currentSlide + 1), 4500);
         }
 
-        _heroTimer = setInterval(() => heroGoTo(currentSlide + 1), 4500);
+        // loadHeroSlides ahora es async (hace fetch) — el autoplay debe esperar
+        // a que el DOM tenga los .slide insertados antes de arrancar el timer.
+        (async function initHero() {
+            await loadHeroSlides();
+            _heroTimer = setInterval(() => heroGoTo(currentSlide + 1), 4500);
+        })();
+
+        // Favicon dinámico: si el admin configuró un logo en Identidad Visual,
+        // reemplaza el favicon estático. Best-effort, no bloquea nada más.
+        (async function initFavicon() {
+            try {
+                const res = await fetch('/api/configuracion/publica');
+                if (!res.ok) return;
+                const cfg = await res.json();
+                if (cfg.logo_base64) {
+                    document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')
+                        .forEach(el => { el.href = cfg.logo_base64; });
+                }
+            } catch (_) { /* mantiene el favicon estático de /logo.png */ }
+        })();
 
         // === ANIMAL INTERIOR ===
         const animalData = {

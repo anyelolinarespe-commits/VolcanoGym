@@ -1,5 +1,7 @@
 import { pool } from '../config/bd.js';
 import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
+import { registrarVentaEnCaja, anularVentaEnCaja } from '../helpers/caja.js';
+import { buscarOperacionDuplicada, describirOrigenDuplicado } from '../helpers/verificacionPago.js';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
@@ -46,6 +48,25 @@ function genComprobante(prefijo = 'MEM') {
     return `${prefijo}-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }
 
+// ─── Verificación de pagos digitales (Yape/Plin/Transferencia) ──────────────
+// Mismo criterio que Ventas: un pago con algún método digital no se
+// considera confirmado hasta que un operador lo apruebe en Verificación de
+// Pagos — mientras tanto la cuota queda 'pendiente' y la membresía (si es su
+// pago fundacional) queda 'pendiente_validacion'.
+const METODOS_DIGITALES_MEMB = ['yape', 'plin', 'transferencia'];
+const tieneSplitDigital = (detalles) =>
+    Array.isArray(detalles) && detalles.some(d => METODOS_DIGITALES_MEMB.includes(d?.metodo_pago));
+
+/** Valida que cada split digital traiga código de operación + comprobante. Devuelve un mensaje de error o null. */
+function validarSplitsDigitales(detalles) {
+    for (const d of detalles) {
+        if (!METODOS_DIGITALES_MEMB.includes(d.metodo_pago)) continue;
+        if (!d.codigo_seguridad?.trim()) return `El pago con ${d.metodo_pago.toUpperCase()} requiere un código de operación`;
+        if (!d.url_comprobante) return `El pago con ${d.metodo_pago.toUpperCase()} requiere una imagen de comprobante`;
+    }
+    return null;
+}
+
 // ─── GET /api/membresias ─────────────────────────────────────────────────────
 export const getMembresias = async (req, res) => {
     try {
@@ -65,7 +86,7 @@ export const getMembresias = async (req, res) => {
             where.push(`m.estado = $${i++}`);
             params.push(estado);
         } else {
-            where.push(`m.estado NOT IN ('anulada','programada')`);
+            where.push(`m.estado NOT IN ('anulada','programada','rechazada')`);
         }
         if (id_plan    && id_plan !== 'todos') { where.push(`m.id_plan = $${i++}`);     params.push(Number(id_plan)); }
         if (asesor     && asesor  !== 'todos') { where.push(`u.id_usuario = $${i++}`);  params.push(Number(asesor)); }
@@ -288,6 +309,32 @@ export const createMembresia = async (req, res) => {
     try {
         await client.query('BEGIN');
 
+        // ── 0. Validar splits de pago digitales (Yape/Plin/Transferencia) ──
+        // "Todo o nada": si algún método del pago inicial es digital, la cuota
+        // 1 completa queda pendiente de validación (ver _insertarCuotas).
+        const montoInicialTmp = Number(monto_pagado_ahora ?? monto_total);
+        const detallesPagoInicial = Array.isArray(pagos_detalle) && pagos_detalle.length > 0
+            ? pagos_detalle
+            : [{ metodo_pago, monto_parcial: montoInicialTmp, referencia: null, codigo_seguridad: null, url_comprobante: null }];
+
+        const errorSplits = validarSplitsDigitales(detallesPagoInicial);
+        if (errorSplits) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ message: errorSplits });
+        }
+        for (const d of detallesPagoInicial) {
+            if (!METODOS_DIGITALES_MEMB.includes(d.metodo_pago)) continue;
+            const codigo = d.codigo_seguridad.trim();
+            const dup = await buscarOperacionDuplicada(client, d.metodo_pago, codigo);
+            if (dup) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    message: `El código de operación "${codigo}" de ${d.metodo_pago.toUpperCase()} ya fue registrado en ${describirOrigenDuplicado(dup)}`
+                });
+            }
+        }
+        const requiereValidacionInicial = tieneSplitDigital(detallesPagoInicial);
+
         // ── 1. Obtener plan ────────────────────────────────────────────────
         const planRes = await client.query(
             `SELECT * FROM plan_membresia WHERE id_plan=$1 AND activo=TRUE`, [id_plan]
@@ -336,6 +383,14 @@ export const createMembresia = async (req, res) => {
         );
         const esRenovacion = membExist.rows.length > 0;
 
+        // ── 3a. Bloquear si ya hay una matrícula pendiente de validación ───
+        if (esRenovacion && membExist.rows[0].estado === 'pendiente_validacion') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                message: 'El cliente ya tiene una matrícula pendiente de validación de pago. Debe aprobarse o rechazarse antes de registrar otra.'
+            });
+        }
+
         // ── 3b. Bloquear renovación/matrícula si hay deuda vigente ─────────
         if (esRenovacion) {
             const memb = membExist.rows[0];
@@ -352,7 +407,9 @@ export const createMembresia = async (req, res) => {
 
         // ── 4A. NUEVA MATRÍCULA (primer registro) ──────────────────────────
         if (!esRenovacion) {
-            const estadoInicial = fecha_inicio > hoyStr ? 'programada' : 'activa';
+            const estadoInicial = requiereValidacionInicial
+                ? 'pendiente_validacion'
+                : (fecha_inicio > hoyStr ? 'programada' : 'activa');
             const membRes = await client.query(
                 `INSERT INTO membresia
                  (id_cliente, id_plan, id_usuario_reg, fecha_inicio, fecha_fin,
@@ -367,7 +424,7 @@ export const createMembresia = async (req, res) => {
             // Cuota 1 (pagada ahora)
             await _insertarCuotas(client, {
                 id_membresia: membresia.id_membresia,
-                idUsuarioReg, montoPagadoAhora, saldoPendiente,
+                idUsuarioReg, idCajero: req.usuario.id, montoPagadoAhora, saldoPendiente,
                 fecha_inicio, fechaFin, plan, metodo_pago, pagos_detalle
             });
 
@@ -404,7 +461,7 @@ export const createMembresia = async (req, res) => {
                  FROM membresia m
                  JOIN plan_membresia p ON p.id_plan = m.id_plan
                  WHERE m.id_cliente    = $1
-                   AND m.estado       IN ('activa','programada','congelada')
+                   AND m.estado       IN ('activa','programada','congelada','pendiente_validacion')
                    AND m.fecha_inicio  < $2
                    AND m.fecha_fin     > $3`,
                 [id_cliente, fechaFin, fecha_inicio]
@@ -419,7 +476,9 @@ export const createMembresia = async (req, res) => {
                 });
             }
 
-            const estadoNuevo = fecha_inicio > hoyStr ? 'programada' : 'activa';
+            const estadoNuevo = requiereValidacionInicial
+                ? 'pendiente_validacion'
+                : (fecha_inicio > hoyStr ? 'programada' : 'activa');
             const nRes = await client.query(
                 `INSERT INTO membresia
                  (id_cliente, id_plan, id_usuario_reg, fecha_inicio, fecha_fin,
@@ -429,9 +488,34 @@ export const createMembresia = async (req, res) => {
                 [id_cliente, id_plan, idUsuarioReg, fecha_inicio, fechaFin,
                  Number(monto_total), saldoPendiente, observaciones || null, estadoNuevo]
             );
+
+            // Archivar el período vigente (membActual) en el historial de la
+            // NUEVA membresía, para que "Historial de renovaciones" lo muestre.
+            // A diferencia de la rama 4B, aquí la fila anterior no se reutiliza:
+            // se conserva como registro independiente y su período se copia al
+            // historial enlazado a la fila nueva.
+            await client.query(
+                `INSERT INTO historial_membresia
+                 (id_membresia, id_cliente, id_plan, nombre_plan,
+                  fecha_inicio, fecha_fin, tipo_ingreso,
+                  monto_total, saldo_pendiente, estado_al_renovar,
+                  observaciones, id_usuario_reg)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+                [
+                    nRes.rows[0].id_membresia, id_cliente,
+                    membActual.id_plan, membActual.nombre_plan,
+                    membActual.fecha_inicio, membActual.fecha_fin,
+                    membActual.tipo_ingreso,
+                    membActual.monto_total, membActual.saldo_pendiente,
+                    membActual.estado,
+                    membActual.observaciones,
+                    idUsuarioReg
+                ]
+            );
+
             await _insertarCuotas(client, {
                 id_membresia: nRes.rows[0].id_membresia,
-                idUsuarioReg, montoPagadoAhora, saldoPendiente,
+                idUsuarioReg, idCajero: req.usuario.id, montoPagadoAhora, saldoPendiente,
                 fecha_inicio, fechaFin, plan, metodo_pago, pagos_detalle
             });
             await client.query('COMMIT');
@@ -479,7 +563,9 @@ export const createMembresia = async (req, res) => {
         await client.query(`DELETE FROM pago WHERE id_membresia = $1`, [idMembresia]);
 
         // 4B-iii. Actualizar la fila maestra con el nuevo período
-        const estadoRenovacion = fecha_inicio > hoyStr ? 'programada' : 'activa';
+        const estadoRenovacion = requiereValidacionInicial
+            ? 'pendiente_validacion'
+            : (fecha_inicio > hoyStr ? 'programada' : 'activa');
         await client.query(
             `UPDATE membresia SET
                 id_plan          = $1,
@@ -503,7 +589,7 @@ export const createMembresia = async (req, res) => {
         // 4B-iv. Crear nuevas cuotas para el período renovado
         await _insertarCuotas(client, {
             id_membresia: idMembresia,
-            idUsuarioReg, montoPagadoAhora, saldoPendiente,
+            idUsuarioReg, idCajero: req.usuario.id, montoPagadoAhora, saldoPendiente,
             fecha_inicio, fechaFin, plan, metodo_pago, pagos_detalle
         });
 
@@ -540,7 +626,7 @@ export const createMembresia = async (req, res) => {
 
 // ─── helper: insertar cuota 1 (pagada) + cuota pendiente libre ──────────────
 async function _insertarCuotas(client, {
-    id_membresia, idUsuarioReg,
+    id_membresia, idUsuarioReg, idCajero,
     montoPagadoAhora, saldoPendiente, fecha_inicio, fechaFin, plan, metodo_pago,
     pagos_detalle = null
 }) {
@@ -550,13 +636,23 @@ async function _insertarCuotas(client, {
         : metodo_pago;
     const comprobante = genComprobante('REN');
 
-    // Cuota 1 — pagada ahora
+    // Registrar detalle de métodos de pago para C1
+    const detalles = Array.isArray(pagos_detalle) && pagos_detalle.length > 0
+        ? pagos_detalle
+        : [{ metodo_pago: metodo_pago, monto_parcial: montoPagadoAhora, referencia: null, codigo_seguridad: null, url_comprobante: null }];
+
+    // "Todo o nada": si algún método es digital, la cuota 1 completa queda
+    // pendiente de validación — no se marca 'pagado' hasta que se aprueben
+    // todas sus verificaciones (ver aprobarVerificacionMembresia).
+    const requiereValidacion = tieneSplitDigital(detalles);
+
+    // Cuota 1
     const c1Res = await client.query(
         `INSERT INTO pago
          (id_membresia, id_usuario_reg, num_cuota, monto,
           fecha_pago, fecha_programada, fecha_limite,
           metodo_pago, num_comprobante, estado_cuota, es_mixto)
-         VALUES ($1,$2,1,$3,CURRENT_DATE,$4,$5,$6,$7,'pagado',$8)
+         VALUES ($1,$2,1,$3,${requiereValidacion ? 'NULL' : 'CURRENT_DATE'},$4,$5,$6,$7,$8,$9)
          RETURNING id_pago`,
         [
             id_membresia, idUsuarioReg,
@@ -565,15 +661,11 @@ async function _insertarCuotas(client, {
             fecha_inicio,
             metodoPrimario,
             comprobante,
+            requiereValidacion ? 'pendiente' : 'pagado',
             esMixto
         ]
     );
     const idPagoC1 = c1Res.rows[0].id_pago;
-
-    // Registrar detalle de métodos de pago para C1
-    const detalles = Array.isArray(pagos_detalle) && pagos_detalle.length > 0
-        ? pagos_detalle
-        : [{ metodo_pago: metodo_pago, monto_parcial: montoPagadoAhora, referencia: null, codigo_seguridad: null, url_comprobante: null }];
 
     for (const d of detalles) {
         await client.query(
@@ -583,6 +675,35 @@ async function _insertarCuotas(client, {
             [idPagoC1, d.metodo_pago, d.monto_parcial,
              d.referencia || null, d.codigo_seguridad || null, d.url_comprobante || null]
         );
+    }
+
+    // Pago inicial confirmado (no digital): reflejar en la caja del cajero
+    // que cobra. Si requiere validación, el registro ocurre al aprobar.
+    if (!requiereValidacion && idCajero) {
+        for (const d of detalles) {
+            if (METODOS_DIGITALES_MEMB.includes(d.metodo_pago)) continue;
+            await registrarVentaEnCaja(client, {
+                idUsuario:   idCajero,
+                monto:       Number(d.monto_parcial ?? montoPagadoAhora),
+                metodoPago:  d.metodo_pago,
+                concepto:    `Membresía #${id_membresia} — Pago inicial`,
+                numeroVenta: `MEMB-${idPagoC1}`,
+            });
+        }
+    }
+
+    // Si requiere validación: crear las filas de verificacion_pago por cada
+    // split digital. No se inserta abono_cuota — eso representa dinero ya
+    // confirmado, y recién ocurre al aprobar.
+    if (requiereValidacion) {
+        for (const d of detalles) {
+            if (!METODOS_DIGITALES_MEMB.includes(d.metodo_pago)) continue;
+            await client.query(`
+                INSERT INTO verificacion_pago
+                  (id_pago, metodo_pago, numero_operacion, nombre_referencia, monto, ruta_imagen, estado)
+                VALUES ($1,$2,$3,$4,$5,$6,1)
+            `, [idPagoC1, d.metodo_pago, d.codigo_seguridad, d.referencia, d.monto_parcial, d.url_comprobante]);
+        }
     }
 
     // Cuota pendiente — saldo total restante, plazo según configuración del plan
@@ -627,23 +748,19 @@ export const pagarCuota = async (req, res) => {
     const esMixto        = detalles.length > 1;
     const comprobante    = num_comprobante || genComprobante('MEM');
 
-    // Verificar códigos de operación duplicados (solo métodos digitales)
-    const METODOS_DIGITALES = ['yape', 'plin', 'transferencia'];
-    for (const d of detalles) {
-        if (!METODOS_DIGITALES.includes(d.metodo_pago)) continue;
-        const codigo = (d.codigo_seguridad || '').trim();
-        if (!codigo) continue;
+    // Validar splits digitales (código de operación + comprobante obligatorios)
+    // y chequear duplicados contra TODO el sistema (ventas y membresías),
+    // pendientes o aprobados — no solo pagos ya confirmados como antes.
+    const errorSplitsCuota = validarSplitsDigitales(detalles);
+    if (errorSplitsCuota) return res.status(400).json({ message: errorSplitsCuota });
 
-        const dup = await pool.query(
-            `SELECT 1 FROM pago_detalle  WHERE codigo_seguridad = $1
-             UNION ALL
-             SELECT 1 FROM abono_cuota   WHERE num_comprobante  = $1
-             LIMIT 1`,
-            [codigo]
-        );
-        if (dup.rows.length > 0)
+    for (const d of detalles) {
+        if (!METODOS_DIGITALES_MEMB.includes(d.metodo_pago)) continue;
+        const codigo = d.codigo_seguridad.trim();
+        const dup = await buscarOperacionDuplicada(pool, d.metodo_pago, codigo);
+        if (dup)
             return res.status(409).json({
-                message: `El código de operación "${codigo}" ya fue registrado anteriormente. Verifica que no sea un pago duplicado.`
+                message: `El código de operación "${codigo}" de ${d.metodo_pago.toUpperCase()} ya fue registrado en ${describirOrigenDuplicado(dup)}`
             });
     }
 
@@ -686,6 +803,47 @@ export const pagarCuota = async (req, res) => {
             ...d,
             monto_parcial: d.monto_parcial != null ? parseFloat(d.monto_parcial) : montoFinal
         }));
+
+        // Cualquier split digital → todo el pago declarado (completo o
+        // parcial) queda pendiente de validación. No se toca pago.monto ni
+        // estado_cuota, y no se inserta abono_cuota — eso ocurre solo al
+        // aprobar (ver aprobarVerificacionMembresia).
+        if (tieneSplitDigital(splitsFinales)) {
+            for (const d of splitsFinales) {
+                await client.query(
+                    `INSERT INTO pago_detalle
+                     (id_pago, metodo_pago, monto_parcial, referencia, codigo_seguridad, url_comprobante)
+                     VALUES ($1,$2,$3,$4,$5,$6)`,
+                    [id_pago, d.metodo_pago, d.monto_parcial,
+                     d.referencia || null, d.codigo_seguridad || null, d.url_comprobante || null]
+                );
+                if (METODOS_DIGITALES_MEMB.includes(d.metodo_pago)) {
+                    await client.query(`
+                        INSERT INTO verificacion_pago
+                          (id_pago, metodo_pago, numero_operacion, nombre_referencia, monto, ruta_imagen, estado)
+                        VALUES ($1,$2,$3,$4,$5,$6,1)
+                    `, [id_pago, d.metodo_pago, d.codigo_seguridad, d.referencia, d.monto_parcial, d.url_comprobante]);
+                }
+            }
+
+            await client.query('COMMIT');
+
+            registrarAuditoria({
+                id_usuario:     req.usuario.id,
+                nombre_usuario: req.usuario.nombre || req.usuario.username,
+                accion:         'CREAR',
+                modulo:         'Membresías',
+                descripcion:    `Membresía #${id} — Cuota #${id_pago}: pago de S/ ${montoFinal.toFixed(2)} registrado, pendiente de validación (${esMixto ? 'pago mixto' : metodoPrimario})`,
+                ip:             getIP(req),
+                datos_nuevos:   { id_pago, monto_declarado: montoFinal, metodo_pago: metodoPrimario, es_mixto: esMixto, pendiente_validacion: true },
+            });
+
+            return res.json({
+                message:            'Pago registrado, pendiente de validación por un operador',
+                cuotas:             await _getCuotasConAbonos(id),
+                pendiente_validacion: true,
+            });
+        }
 
         if (restante <= 0.01) {
             // ── PAGO COMPLETO: marcar cuota como pagada ─────────────────────
@@ -740,6 +898,21 @@ export const pagarCuota = async (req, res) => {
             [nuevoSaldo, id]
         );
 
+        // Reflejar en la sesión de caja del cajero que cobra: solo los splits
+        // NO digitales (efectivo/tarjeta) — el dinero entra al cajón ahora.
+        // Los digitales no llegan aquí: quedan pendientes de validación y se
+        // registran al aprobarse (ver aprobarVerificacionMembresia).
+        for (const d of splitsFinales) {
+            if (METODOS_DIGITALES_MEMB.includes(d.metodo_pago)) continue;
+            await registrarVentaEnCaja(client, {
+                idUsuario:   req.usuario.id,
+                monto:       Number(d.monto_parcial),
+                metodoPago:  d.metodo_pago,
+                concepto:    `Membresía #${id} — Cuota ${cuota.num_cuota} (abono)`,
+                numeroVenta: `MEMB-${id_pago}`,
+            });
+        }
+
         await client.query('COMMIT');
 
         registrarAuditoria({
@@ -762,6 +935,229 @@ export const pagarCuota = async (req, res) => {
         await client.query('ROLLBACK');
         console.error(err);
         res.status(500).json({ message: err.message || 'Error al registrar pago de cuota' });
+    } finally {
+        client.release();
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  VERIFICACIÓN DE PAGOS DE MEMBRESÍAS
+//  Espejo de getVerificacionPagos/aprobarVerificacion/anularVenta en
+//  ventasController.js, pero sobre `pago`→`membresia` en vez de `venta`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /api/membresias/verificacion/pagos
+export const getVerificacionPagosMembresia = async (req, res) => {
+    try {
+        const { buscar = '', estado = 'todos', page = 1, limit = 15 } = req.query;
+        const offset = (Number(page) - 1) * Number(limit);
+        const params = [];
+        let i = 1;
+
+        let filtroEstado;
+        if (estado === 'pendiente') {
+            filtroEstado = 'vp.estado = 1';
+        } else if (estado === 'pagado') {
+            filtroEstado = 'vp.estado = 2';
+        } else {
+            filtroEstado = 'vp.estado IN (0,1,2)';
+        }
+        const filtros = ['vp.id_pago IS NOT NULL', filtroEstado];
+
+        if (buscar) {
+            filtros.push(`(c.nombre||' '||c.apellido ILIKE $${i} OR c.dni ILIKE $${i} OR p.nombre ILIKE $${i})`);
+            params.push(`%${buscar}%`); i++;
+        }
+        const where = 'WHERE ' + filtros.join(' AND ');
+
+        const result = await pool.query(`
+            SELECT
+                vp.id                   AS id_verificacion,
+                pg.id_pago, pg.id_membresia, pg.num_cuota,
+                vp.metodo_pago,
+                vp.numero_operacion     AS operacion,
+                vp.nombre_referencia    AS referencia,
+                vp.ruta_imagen          AS url_comprobante,
+                vp.monto                AS total,
+                vp.estado                AS estado_verificacion,
+                vp.fecha_registro       AS created_at,
+                m.estado                AS estado_membresia,
+                p.nombre                AS nombre_plan,
+                c.nombre||' '||c.apellido AS cliente,
+                c.dni                    AS dni_cliente,
+                u.nombre||' '||u.apellido AS vendedor,
+                COUNT(*) OVER()          AS total_registros
+            FROM verificacion_pago vp
+            JOIN pago pg           ON pg.id_pago = vp.id_pago
+            JOIN membresia m       ON m.id_membresia = pg.id_membresia
+            JOIN plan_membresia p  ON p.id_plan = m.id_plan
+            JOIN cliente c         ON c.id_cliente = m.id_cliente
+            JOIN usuarios u        ON u.id_usuario = pg.id_usuario_reg
+            ${where}
+            ORDER BY vp.fecha_registro DESC
+            LIMIT $${i++} OFFSET $${i++}
+        `, [...params, Number(limit), offset]);
+
+        const total = Number(result.rows[0]?.total_registros ?? 0);
+        res.json({
+            ok: true,
+            data: result.rows,
+            total,
+            page: Number(page),
+            limit: Number(limit),
+            totalPages: Math.ceil(total / Number(limit)),
+        });
+    } catch (err) {
+        console.error('getVerificacionPagosMembresia:', err.message);
+        res.status(500).json({ ok: false, message: err.message });
+    }
+};
+
+// POST /api/membresias/verificacion/:id_vp/aprobar
+export const aprobarVerificacionMembresia = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { id_vp } = req.params;
+
+        const vpR = await client.query('SELECT * FROM verificacion_pago WHERE id=$1 AND id_pago IS NOT NULL FOR UPDATE', [id_vp]);
+        if (!vpR.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'Verificación no encontrada' }); }
+        const vp = vpR.rows[0];
+        if (vp.estado === 2) { await client.query('ROLLBACK'); return res.status(400).json({ message: 'Este pago ya fue aprobado' }); }
+
+        await client.query(
+            `UPDATE verificacion_pago SET estado=2, id_usuario_revisor=$1, fecha_revision=now() WHERE id=$2`,
+            [req.usuario.id, id_vp]
+        );
+
+        const pendR = await client.query('SELECT COUNT(*) AS cnt FROM verificacion_pago WHERE id_pago=$1 AND estado=1', [vp.id_pago]);
+        const quedanPendientes = Number(pendR.rows[0].cnt);
+
+        let membresiaActivada = false;
+        if (quedanPendientes === 0) {
+            const pagoR = await client.query('SELECT * FROM pago WHERE id_pago=$1 FOR UPDATE', [vp.id_pago]);
+            const pago = pagoR.rows[0];
+
+            await client.query(`UPDATE pago SET estado_cuota='pagado', fecha_pago=CURRENT_DATE WHERE id_pago=$1`, [vp.id_pago]);
+
+            // Registrar TODOS los splits de esta cuota en el historial de abonos
+            // (efectivo/tarjeta ya cobrados + los digitales recién aprobados).
+            const splitsR = await client.query('SELECT * FROM pago_detalle WHERE id_pago=$1', [vp.id_pago]);
+            for (const s of splitsR.rows) {
+                await client.query(`
+                    INSERT INTO abono_cuota (id_pago, id_usuario_reg, monto, metodo_pago, num_comprobante, fecha_pago)
+                    VALUES ($1,$2,$3,$4,$5,CURRENT_DATE)
+                `, [vp.id_pago, pago.id_usuario_reg, s.monto_parcial, s.metodo_pago, s.codigo_seguridad || null]);
+            }
+
+            const saldoRes = await client.query(
+                `SELECT COALESCE(SUM(monto),0) AS saldo FROM pago WHERE id_membresia=$1 AND estado_cuota IN ('pendiente','vencido')`,
+                [pago.id_membresia]
+            );
+            await client.query('UPDATE membresia SET saldo_pendiente=$1 WHERE id_membresia=$2', [saldoRes.rows[0].saldo, pago.id_membresia]);
+
+            const membR = await client.query('SELECT * FROM membresia WHERE id_membresia=$1 FOR UPDATE', [pago.id_membresia]);
+            const membresia = membR.rows[0];
+            if (membresia.estado === 'pendiente_validacion') {
+                const hoyStr = new Date().toISOString().split('T')[0];
+                const fechaInicioStr = String(membresia.fecha_inicio).split('T')[0];
+                const estadoFinal = fechaInicioStr > hoyStr ? 'programada' : 'activa';
+                await client.query('UPDATE membresia SET estado=$1 WHERE id_membresia=$2', [estadoFinal, membresia.id_membresia]);
+                membresiaActivada = true;
+            }
+
+            // Reflejar en la sesión de caja abierta del vendedor original.
+            for (const s of splitsR.rows) {
+                await registrarVentaEnCaja(client, {
+                    idUsuario:  pago.id_usuario_reg,
+                    monto:      Number(s.monto_parcial),
+                    metodoPago: s.metodo_pago,
+                    concepto:   `Membresía #${pago.id_membresia} — Cuota ${pago.num_cuota}`,
+                    numeroVenta: `MEMB-${pago.id_pago}`,
+                });
+            }
+        }
+
+        await client.query('COMMIT');
+
+        registrarAuditoria({
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Verificación de Pagos',
+            descripcion:      `Pago de membresía aprobado (verificación #${id_vp})${quedanPendientes === 0 ? ' — cuota cerrada' : ''}${membresiaActivada ? ' — membresía activada' : ''}`,
+            ip:               getIP(req),
+            datos_anteriores: { estado_verificacion: 'pendiente' },
+            datos_nuevos:     { estado_verificacion: 'aprobado', cuota_cerrada: quedanPendientes === 0, membresia_activada: membresiaActivada },
+        });
+
+        res.json({
+            message: quedanPendientes === 0
+                ? 'Pago aprobado. Cuota registrada como pagada.'
+                : `Pago aprobado. Quedan ${quedanPendientes} método(s) pendiente(s) de verificar.`,
+            cuota_cerrada:      quedanPendientes === 0,
+            membresia_activada: membresiaActivada,
+        });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        res.status(500).json({ message: err.message });
+    } finally {
+        client.release();
+    }
+};
+
+// POST /api/membresias/verificacion/:id_vp/rechazar
+export const rechazarVerificacionMembresia = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { id_vp } = req.params;
+        const { motivo } = req.body;
+
+        const vpR = await client.query('SELECT * FROM verificacion_pago WHERE id=$1 AND id_pago IS NOT NULL FOR UPDATE', [id_vp]);
+        if (!vpR.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'Verificación no encontrada' }); }
+        const vp = vpR.rows[0];
+        if (vp.estado !== 1) { await client.query('ROLLBACK'); return res.status(400).json({ message: 'Esta verificación ya fue revisada' }); }
+
+        await client.query(
+            `UPDATE verificacion_pago SET estado=0, id_usuario_revisor=$1, fecha_revision=now(), motivo_rechazo=$2 WHERE id=$3`,
+            [req.usuario.id, motivo || 'Rechazado desde verificación de pagos', id_vp]
+        );
+
+        const pagoR = await client.query('SELECT * FROM pago WHERE id_pago=$1', [vp.id_pago]);
+        const pago = pagoR.rows[0];
+
+        // Si era el pago fundacional (cuota 1) de una membresía aún no
+        // validada → queda como rechazada (alerta de fraude). Si era una
+        // cuota de una membresía ya activa, solo se rechaza ese intento de
+        // pago — la membresía no se toca.
+        const membR = await client.query('SELECT * FROM membresia WHERE id_membresia=$1 FOR UPDATE', [pago.id_membresia]);
+        const membresia = membR.rows[0];
+        let membresiaRechazada = false;
+        if (membresia.estado === 'pendiente_validacion' && pago.num_cuota === 1) {
+            await client.query(`UPDATE membresia SET estado='rechazada' WHERE id_membresia=$1`, [pago.id_membresia]);
+            membresiaRechazada = true;
+        }
+
+        await client.query('COMMIT');
+
+        registrarAuditoria({
+            id_usuario:       req.usuario.id,
+            nombre_usuario:   req.usuario.nombre || req.usuario.username,
+            accion:           'EDITAR',
+            modulo:           'Verificación de Pagos',
+            descripcion:      `Pago de membresía rechazado (verificación #${id_vp})${membresiaRechazada ? ' — membresía marcada como rechazada (posible fraude)' : ''} — Motivo: ${motivo || 'sin especificar'}`,
+            ip:               getIP(req),
+            datos_anteriores: { estado_verificacion: 'pendiente' },
+            datos_nuevos:     { estado_verificacion: 'rechazado', membresia_rechazada: membresiaRechazada },
+        });
+
+        res.json({ message: 'Pago rechazado correctamente', membresia_rechazada: membresiaRechazada });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        res.status(500).json({ message: err.message });
     } finally {
         client.release();
     }
@@ -902,6 +1298,14 @@ export const deleteMembresia = async (req, res) => {
         if (!existe.rows.length) {
             await client.query('ROLLBACK');
             return res.status(404).json({ message: 'Membresía no encontrada' });
+        }
+
+        // Anular en caja los movimientos generados por los pagos de esta
+        // membresía (nro_comprobante = MEMB-<id_pago>) antes de borrar los
+        // pagos, para no dejar dinero fantasma en el arqueo de las sesiones.
+        const pagosR = await client.query(`SELECT id_pago FROM pago WHERE id_membresia = $1`, [id]);
+        for (const p of pagosR.rows) {
+            await anularVentaEnCaja(client, `MEMB-${p.id_pago}`);
         }
 
         // Eliminar pagos/cuotas asociadas primero (FK)
@@ -1158,22 +1562,41 @@ export const crearMembresia = async (req, res) => {
     // Datos del pago
     monto_pagado,
     metodo_pago,
+    codigo_seguridad,
+    url_comprobante,
     observacion_pago
   } = req.body;
- 
+
   const id_usuario_reg = req.usuario.id;
- 
+
   // Validaciones básicas
   if (!id_plan || !fecha_inicio || !monto_pagado || !metodo_pago) {
     return res.status(400).json({ ok: false, mensaje: 'Faltan datos obligatorios del plan o pago.' });
   }
- 
+
+  // Pago digital: mismo criterio que el resto del módulo — requiere código de
+  // operación + comprobante, y queda pendiente de validación (ver PASO 5).
+  const requiereValidacionWiz = METODOS_DIGITALES_MEMB.includes(metodo_pago);
+  if (requiereValidacionWiz) {
+    if (!codigo_seguridad?.trim() || !url_comprobante) {
+      return res.status(400).json({ ok: false, mensaje: `El pago con ${metodo_pago.toUpperCase()} requiere código de operación y comprobante.` });
+    }
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
+    if (requiereValidacionWiz) {
+      const codigo = codigo_seguridad.trim();
+      const dup = await buscarOperacionDuplicada(client, metodo_pago, codigo);
+      if (dup) {
+        throw new Error(`El código de operación "${codigo}" de ${metodo_pago.toUpperCase()} ya fue registrado en ${describirOrigenDuplicado(dup)}`);
+      }
+    }
+
     let id_cliente_final;
- 
+
     // ── PASO 1: Resolver cliente ──────────────────────────────────────────────
     if (cliente_existente_id) {
       // Cliente ya registrado — verificar que existe y no tiene deuda vigente
@@ -1268,7 +1691,7 @@ export const crearMembresia = async (req, res) => {
 
     // ── PASO 4: Crear la membresía ────────────────────────────────────────────
     const hoyWiz = new Date().toISOString().split('T')[0];
-    const estadoWiz = fecha_inicio > hoyWiz ? 'programada' : 'activa';
+    const estadoWiz = requiereValidacionWiz ? 'pendiente_validacion' : (fecha_inicio > hoyWiz ? 'programada' : 'activa');
     const membRes = await client.query(
       `INSERT INTO membresia
          (id_cliente, id_plan, id_usuario_reg, fecha_inicio, fecha_fin,
@@ -1281,19 +1704,39 @@ export const crearMembresia = async (req, res) => {
     const id_membresia = membRes.rows[0].id_membresia;
 
     // ── PASO 5: Registrar el pago ─────────────────────────────────────────────
-    await client.query(
+    const numComprobanteWiz = `MEM-${Date.now()}`;
+    const pagoRes = await client.query(
       `INSERT INTO pago
          (id_membresia, id_usuario_reg, num_cuota, monto,
           fecha_pago, fecha_programada, fecha_limite,
           metodo_pago, num_comprobante, estado_cuota)
-       VALUES ($1,$2,1,$3,CURRENT_DATE,$4,$4,$5,$6,'pagado')`,
+       VALUES ($1,$2,1,$3,${requiereValidacionWiz ? 'NULL' : 'CURRENT_DATE'},$4,$4,$5,$6,$7)
+       RETURNING id_pago`,
       [
         id_membresia, id_usuario_reg, montoNum,
         fecha_inicio, metodo_pago,
-        `MEM-${Date.now()}`
+        numComprobanteWiz,
+        requiereValidacionWiz ? 'pendiente' : 'pagado'
       ]
     );
- 
+
+    if (requiereValidacionWiz) {
+      await client.query(`
+        INSERT INTO verificacion_pago
+          (id_pago, metodo_pago, numero_operacion, nombre_referencia, monto, ruta_imagen, estado)
+        VALUES ($1,$2,$3,$4,$5,$6,1)
+      `, [pagoRes.rows[0].id_pago, metodo_pago, codigo_seguridad.trim(), null, montoNum, url_comprobante]);
+    } else {
+      // Pago inicial confirmado (no digital): reflejar en la caja del cajero.
+      await registrarVentaEnCaja(client, {
+        idUsuario:   req.usuario.id,
+        monto:       montoNum,
+        metodoPago:  metodo_pago,
+        concepto:    `Membresía #${id_membresia} — Pago inicial`,
+        numeroVenta: `MEMB-${pagoRes.rows[0].id_pago}`,
+      });
+    }
+
     await client.query('COMMIT');
 
     registrarAuditoria({
@@ -1320,7 +1763,7 @@ export const crearMembresia = async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Error crearMembresia:', error.message);
     const esValidacion = [
-      'DNI inválido', 'Ya existe', 'obligatorio', 'no encontrado', 'inactivo'
+      'DNI inválido', 'Ya existe', 'obligatorio', 'no encontrado', 'inactivo', 'ya fue registrado'
     ].some(m => error.message.includes(m));
     return res.status(esValidacion ? 400 : 500).json({
       ok: false,

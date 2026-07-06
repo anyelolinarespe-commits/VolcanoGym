@@ -1,5 +1,7 @@
 import { pool } from '../config/bd.js';
 import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
+import { registrarVentaEnCaja, anularVentaEnCaja } from '../helpers/caja.js';
+import { buscarOperacionDuplicada, describirOrigenDuplicado } from '../helpers/verificacionPago.js';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import path from 'path';
@@ -33,16 +35,6 @@ async function stockReservado(client, id_pp, excluirIdVenta = null) {
 // está en uso por otra venta pendiente de verificar o ya aprobada, no debe
 // dejarse ingresar de nuevo (antes solo se detectaba al aprobar, chocando con
 // la restricción uq_vp_operacion_aprobada de la BD).
-async function buscarOperacionDuplicada(client, metodo_pago, numero_operacion) {
-  const { rows } = await client.query(`
-    SELECT v.numero_venta
-    FROM verificacion_pago vp
-    JOIN venta v ON v.id = vp.id_venta
-    WHERE vp.metodo_pago = $1 AND vp.numero_operacion = $2 AND vp.estado IN (1,2)
-    LIMIT 1
-  `, [metodo_pago, numero_operacion]);
-  return rows[0] || null;
-}
 
 // Descuenta stock físico y registra el movimiento 'venta'. Usar dentro de una tx.
 async function descontarStockVenta(client, { id_pp, cantidad, numeroVenta, idUsuario }) {
@@ -402,7 +394,7 @@ export const createVenta = async (req, res) => {
         if (dup) {
           await client.query('ROLLBACK');
           return res.status(409).json({
-            message: `El N° de operación "${pago_codigo_operacion.trim()}" de ${metodo_pago.toUpperCase()} ya fue registrado en la venta ${dup.numero_venta}`
+            message: `El N° de operación "${pago_codigo_operacion.trim()}" de ${metodo_pago.toUpperCase()} ya fue registrado en ${describirOrigenDuplicado(dup)}`
           });
         }
       }
@@ -427,7 +419,7 @@ export const createVenta = async (req, res) => {
           if (dup) {
             await client.query('ROLLBACK');
             return res.status(409).json({
-              message: `El N° de operación "${codigo}" de ${p.metodo_pago.toUpperCase()} ya fue registrado en la venta ${dup.numero_venta}`
+              message: `El N° de operación "${codigo}" de ${p.metodo_pago.toUpperCase()} ya fue registrado en ${describirOrigenDuplicado(dup)}`
             });
           }
         }
@@ -592,6 +584,20 @@ export const createVenta = async (req, res) => {
     // stock se descontará al aprobar el pago (ver aprobarVenta/aprobarVerificacion).
     if (estadoVenta === 'registrada') {
       await descontarStockDeVenta(client, id_venta, numeroVenta, req.usuario.id);
+
+      // Reflejar la venta en la sesión de caja abierta del vendedor (si tiene
+      // una abierta). Sigue la misma regla que el stock: en una venta mixta
+      // con algún pago digital pendiente, nada se registra aún — se registra
+      // todo junto cuando la última verificación se aprueba (ver aprobarVerificacion).
+      const splitsCaja = esMixto
+        ? pagos_mixtos.map(p => ({ metodo_pago: p.metodo_pago, monto: parseFloat(p.monto) }))
+        : [{ metodo_pago: metodoPagoVenta, monto: total }];
+      for (const s of splitsCaja) {
+        await registrarVentaEnCaja(client, {
+          idUsuario: req.usuario.id, monto: s.monto, metodoPago: s.metodo_pago,
+          concepto: `Venta ${numeroVenta}`, numeroVenta,
+        });
+      }
     }
 
     await client.query('COMMIT');
@@ -647,6 +653,13 @@ export const aprobarVenta = async (req, res) => {
 
     // Pago confirmado → descontar el stock reservado y registrar el movimiento.
     await descontarStockDeVenta(client, id, venta.numero_venta, req.usuario.id);
+
+    // Reflejar la venta en la sesión de caja abierta del vendedor original
+    // (no del usuario que aprueba la verificación).
+    await registrarVentaEnCaja(client, {
+      idUsuario: venta.id_usuario_reg, monto: Number(venta.total), metodoPago: venta.metodo_pago,
+      concepto: `Venta ${venta.numero_venta}`, numeroVenta: venta.numero_venta,
+    });
 
     await client.query('COMMIT');
 
@@ -713,8 +726,30 @@ export const aprobarVerificacion = async (req, res) => {
       `, [req.usuario.id, vp.id_venta]);
 
       // Última verificación aprobada → venta confirmada: descontar stock reservado.
-      const numR = await client.query('SELECT numero_venta FROM venta WHERE id=$1', [vp.id_venta]);
-      await descontarStockDeVenta(client, vp.id_venta, numR.rows[0]?.numero_venta, req.usuario.id);
+      const ventaR = await client.query('SELECT numero_venta, id_usuario_reg FROM venta WHERE id=$1', [vp.id_venta]);
+      const { numero_venta: numVentaConfirmada, id_usuario_reg: idVendedor } = ventaR.rows[0];
+      await descontarStockDeVenta(client, vp.id_venta, numVentaConfirmada, req.usuario.id);
+
+      // Venta confirmada por completo → registrar en la sesión de caja del
+      // vendedor original TODOS los métodos de pago: si fue mixta, cada split
+      // de cuota_venta_detalle (efectivo/tarjeta ya cobrados + los digitales
+      // recién aprobados); si fue un pago digital simple, el único método de
+      // esa verificación.
+      const splitsR = await client.query(`
+        SELECT cvd.metodo_pago, cvd.monto_parcial
+        FROM cuota_venta_detalle cvd
+        JOIN cuota_venta cv ON cv.id_cuota_venta = cvd.id_cuota_venta
+        WHERE cv.id_venta = $1
+      `, [vp.id_venta]);
+      const splitsCaja = splitsR.rows.length
+        ? splitsR.rows.map(s => ({ metodo_pago: s.metodo_pago, monto: Number(s.monto_parcial) }))
+        : [{ metodo_pago: vp.metodo_pago, monto: Number(vp.monto) }];
+      for (const s of splitsCaja) {
+        await registrarVentaEnCaja(client, {
+          idUsuario: idVendedor, monto: s.monto, metodoPago: s.metodo_pago,
+          concepto: `Venta ${numVentaConfirmada}`, numeroVenta: numVentaConfirmada,
+        });
+      }
     }
 
     await client.query('COMMIT');
@@ -896,6 +931,9 @@ export const anularVenta = async (req, res) => {
       SET estado=0, id_usuario_revisor=$1, fecha_revision=now(), motivo_rechazo='Rechazado desde verificación de pagos'
       WHERE id_venta=$2 AND estado=1
     `, [req.usuario.id, id]);
+
+    // Si la venta ya había reflejado movimientos en alguna sesión de caja, anularlos.
+    await anularVentaEnCaja(client, venta.numero_venta);
 
     await client.query('COMMIT');
 

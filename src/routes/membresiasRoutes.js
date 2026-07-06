@@ -17,7 +17,10 @@ import {
     crearMembresia,
     listarMembresias,
     detalleMembresia,
-    enviarBoletaEmail
+    enviarBoletaEmail,
+    getVerificacionPagosMembresia,
+    aprobarVerificacionMembresia,
+    rechazarVerificacionMembresia
 } from '../controllers/membresiasController.js';
 
 const router = express.Router();
@@ -37,6 +40,11 @@ router.get('/dni/:dni', consultarDNI);
 
 // GET /api/membresias/cliente/:id
 router.get('/cliente/:id', getMembresiasByCliente);
+
+// ── Verificación de pagos de membresías ───────────────────────────────────────
+router.get('/verificacion/pagos',            getVerificacionPagosMembresia);
+router.post('/verificacion/:id_vp/aprobar',  aprobarVerificacionMembresia);
+router.post('/verificacion/:id_vp/rechazar', rechazarVerificacionMembresia);
 
 // ── Raíz ─────────────────────────────────────────────────────────────────────
 

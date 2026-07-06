@@ -1927,3 +1927,12 @@ body[data-theme="dark"] .bn-card-actions .rs-btn:hover { background: #2c2c2c; }
 body[data-theme="dark"] .bn-card-actions .rs-btn-del { color: #ef9a9a; border-color: rgba(239,154,154,.4); }
 body[data-theme="dark"] .bn-btn-principal-on { background: #3a2f0a !important; border-color: #f9a825 !important; color: #ffd54f !important; }
 body[data-theme="dark"] .bn-btn-principal-on:hover { background: #4a3c0d !important; }
+
+/* Modal de apertura de caja (rediseño Tailwind) en modo oscuro */
+body[data-theme="dark"] #modalAbrirCaja #acSaludo { color: #f0f0f0 !important; }
+body[data-theme="dark"] #modalAbrirCaja .bg-slate-50 { background: #222 !important; }
+body[data-theme="dark"] #modalAbrirCaja #acReloj,
+body[data-theme="dark"] #modalAbrirCaja label { color: #e8e8e8 !important; }
+body[data-theme="dark"] #modalAbrirCaja .border-slate-100 { border-color: #2e2e2e !important; }
+body[data-theme="dark"] #modalAbrirCaja .bg-white { background: #1a1a1a !important; }
+body[data-theme="dark"] #modalAbrirCaja button.text-slate-400:hover { background: #2c2c2c !important; }

@@ -43,12 +43,14 @@ const MODULOS_CONFIG = {
   'inventario':     { icon: 'bi-clipboard-data', label: 'Inventario',     seccion: 'Tienda',           color: '#1565c0' },
   'ventas':               { icon: 'bi-receipt',        label: 'Ventas',                 seccion: 'Tienda',           color: '#0f9d58' },
   'verificacion-pagos':   { icon: 'bi-check2-circle',  label: 'Verificación de Pagos',  seccion: 'Tienda',           color: '#1565c0' },
+  'caja-mi-sesion':          { icon: 'bi-cash-coin',     label: 'Mi Sesión',          seccion: 'Caja', color: '#f57c00' },
+  'caja-historial-sesiones': { icon: 'bi-clock-history', label: 'Historial Sesiones', seccion: 'Caja', color: '#8d6e63' },
+  'caja-registradoras':      { icon: 'bi-cash-stack',    label: 'Cajas Registradoras', seccion: 'Caja', color: '#5e35b1' },
   'perfiles':             { icon: 'bi-shield-check',   label: 'Perfiles',               seccion: 'Administración',   color: '#e94560' },
   'usuarios':       { icon: 'bi-people',         label: 'Usuarios',       seccion: 'Administración',   color: '#0f3460' },
   'auditoria':      { icon: 'bi-journal-text',   label: 'Auditoría',      seccion: 'Administración',   color: '#6a1b9a' },
   'configuracion':  { icon: 'bi-gear',           label: 'Configuración',  seccion: 'Administración',   color: '#546e7a' },
-  'importar-socios': { icon: 'bi-file-earmark-arrow-up', label: 'Importar Socios', seccion: 'Herramientas', color: '#e65100' },
-  'reportes':        { icon: 'bi-graph-up-arrow',        label: 'Reportes',        seccion: 'Herramientas', color: '#00897b' },
+  'importar-socios': { icon: 'bi-file-earmark-arrow-up', label: 'Importar Socios', seccion: 'Administración', color: '#e65100' },
 };
 
 // Helper: normaliza la ruta para comparaciones (acepta guiones o guiones bajos)
@@ -602,6 +604,7 @@ function buildHomeCards() {
     { ruta: 'presentaciones', color: '#00897b', icon: 'bi-box2',           label: 'Presentaciones', countId: 'countPresentaciones' },
     { ruta: 'productos',      color: '#ff7043', icon: 'bi-box-seam',       label: 'Productos',      countId: 'countProductos'      },
     { ruta: 'ventas',         color: '#0f9d58', icon: 'bi-receipt',         label: 'Ventas',         countId: 'countVentas'         },
+    { ruta: 'caja-registradoras', color: '#5e35b1', icon: 'bi-cash-stack', label: 'Cajas',          countId: 'countCajas'          },
     { ruta: 'perfiles',       color: '#e94560', icon: 'bi-shield-check',   label: 'Perfiles',       countId: 'countPerfiles'       },
     { ruta: 'usuarios',       color: '#0f3460', icon: 'bi-people',         label: 'Usuarios',       countId: 'countUsuarios'       },
   ];
@@ -682,10 +685,12 @@ function goTo(view, fromHistory = false) {
   if (view === 'asistencias')  { filtroAsistHoy(); _preloadClientesAsist(); cargarAsistenciasStats(); }
   if (view === 'ventas')               loadVentas();
   if (view === 'verificacion-pagos')   vpCargar(1);
+  if (view === 'caja-mi-sesion')          loadMiSesion();
+  if (view === 'caja-historial-sesiones') loadHistorialSesiones(1);
+  if (view === 'caja-registradoras')      loadCajasRegistradoras();
   if (view === 'auditoria')          { cargarUsuariosAuditoria(); cargarModulosAuditoria(); loadAuditoria(1); }
   if (view === 'configuracion')      { confInit(); }
   if (view === 'importar-socios')    { initImportarSocios(); }
-  if (view === 'reportes')           { initReportes(); }
 }
 
 window.addEventListener('popstate', e => {
@@ -743,152 +748,6 @@ function _renderPagBar(afterElId, pag, loadFn) {
                 </button>
             </div>
         </div>`;
-}
-
-// ── BALANCE DE INGRESOS ──────────────────────────────────────────────────────
-let _balanceChart = null;
-
-function _fmtSoles(v) {
-  return 'S/ ' + Number(v).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-
-async function cargarBalance() {
-  const meses = document.getElementById('balancePeriodo')?.value || 12;
-  try {
-    const data = await api('GET', `/api/reportes/balance?meses=${meses}`);
-    document.getElementById('homeBalance').style.display = '';
-
-    const { kpis } = data;
-    document.getElementById('bkpiTotal').textContent   = _fmtSoles(kpis.total_mes);
-    document.getElementById('bkpiMemb').textContent    = _fmtSoles(kpis.membresias_mes);
-    document.getElementById('bkpiVentas').textContent  = _fmtSoles(kpis.ventas_mes);
-    document.getElementById('bkpiDeuda').textContent   = _fmtSoles(kpis.deuda_total);
-
-    const varEl = document.getElementById('bkpiVariacion');
-    if (kpis.variacion_pct !== null) {
-      const v = kpis.variacion_pct;
-      varEl.textContent = (v >= 0 ? '▲ +' : '▼ ') + v.toFixed(1) + '% vs mes anterior';
-      varEl.className   = 'bkpi-badge ' + (v >= 0 ? 'up' : 'down');
-    } else {
-      varEl.textContent = 'Sin datos mes anterior';
-      varEl.className   = 'bkpi-badge neutral';
-    }
-
-    const labels = data.mensual.map(r => {
-      const [y, m] = r.mes.split('-');
-      return MESES_ES[parseInt(m, 10) - 1] + " '" + y.slice(2);
-    });
-    const memb   = data.mensual.map(r => r.membresias);
-    const ventas = data.mensual.map(r => r.ventas);
-    const total  = data.mensual.map(r => r.total);
-
-    const isDark = document.body.dataset.theme === 'dark';
-    const gridColor  = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-    const tickColor  = isDark ? '#666' : '#999';
-    const tooltipBg  = isDark ? '#1e1e1e' : '#fff';
-    const tooltipBdr = isDark ? '#333'    : '#e0e4ef';
-
-    const ctx = document.getElementById('balanceChart').getContext('2d');
-    if (_balanceChart) { _balanceChart.destroy(); _balanceChart = null; }
-
-    _balanceChart = new Chart(ctx, {
-      data: {
-        labels,
-        datasets: [
-          {
-            type: 'bar',
-            label: 'Membresías',
-            data: memb,
-            backgroundColor: 'rgba(15,52,96,0.80)',
-            borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 4, bottomRight: 4 },
-            stack: 'ing',
-            order: 2,
-          },
-          {
-            type: 'bar',
-            label: 'Ventas',
-            data: ventas,
-            backgroundColor: 'rgba(15,157,88,0.80)',
-            borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
-            stack: 'ing',
-            order: 2,
-          },
-          {
-            type: 'line',
-            label: 'Total',
-            data: total,
-            borderColor: '#e94560',
-            backgroundColor: 'rgba(233,69,96,0.06)',
-            borderWidth: 2.5,
-            pointBackgroundColor: '#e94560',
-            pointBorderColor: isDark ? '#1a1a1a' : '#fff',
-            pointBorderWidth: 2,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            fill: true,
-            tension: 0.35,
-            stack: 'total_line',
-            order: 1,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: {
-            position: 'top',
-            align: 'end',
-            labels: {
-              boxWidth: 12, boxHeight: 12,
-              borderRadius: 3, useBorderRadius: true,
-              color: isDark ? '#aaa' : '#555',
-              font: { size: 12 },
-              padding: 16,
-            },
-          },
-          tooltip: {
-            backgroundColor: tooltipBg,
-            titleColor: isDark ? '#f0f0f0' : '#1a1a2e',
-            bodyColor:  isDark ? '#ccc' : '#444',
-            borderColor: tooltipBdr,
-            borderWidth: 1,
-            padding: 12,
-            callbacks: {
-              label: c => ` ${c.dataset.label}: ${_fmtSoles(c.parsed.y)}`,
-              footer: items => {
-                const tot = items.find(i => i.dataset.label === 'Total');
-                return tot ? '' : 'Total: ' + _fmtSoles(items.reduce((s, i) => s + i.parsed.y, 0));
-              },
-            },
-          },
-        },
-        scales: {
-          x: {
-            stacked: true,
-            grid: { display: false },
-            ticks: { color: tickColor, font: { size: 11 } },
-            border: { color: gridColor },
-          },
-          y: {
-            stacked: true,
-            grid: { color: gridColor },
-            ticks: {
-              color: tickColor,
-              font: { size: 11 },
-              callback: v => v >= 1000 ? 'S/ ' + (v / 1000).toFixed(0) + 'k' : 'S/ ' + v,
-            },
-            border: { color: 'transparent' },
-          },
-        },
-      },
-    });
-  } catch (e) {
-    console.warn('Error cargando balance:', e.message);
-  }
 }
 
 // ── Etiquetas automáticas para tarjetas en móvil ─────────────────────────────
@@ -954,13 +813,13 @@ document.addEventListener('DOMContentLoaded', () => {
     inventario:     async () => { const d           = await api('GET', '/api/inventario');         const el = document.getElementById('countInventario');     if (el) el.textContent = d.kpis.stock_critico; },
     asistencias:    async () => { const s           = await api('GET', '/api/asistencias/stats'); const el = document.getElementById('countAsistencias');    if (el) el.textContent = s.hoy; },
     ventas:         async () => { const v           = await api('GET', '/api/ventas?limit=1');    const el = document.getElementById('countVentas');         if (el) el.textContent = v.total; },
+    'caja-registradoras': async () => { const cajas = await api('GET', '/api/caja/registradoras'); const el = document.getElementById('countCajas'); if (el) el.textContent = cajas.filter(c => c.estado === 1).length; },
   };
 
   // Lanzar todas las cargas de stats permitidas EN PARALELO (antes era en serie)
   const tareas = Object.entries(accesos)
     .filter(([ruta]) => MIS_OPCIONES.some(o => normRuta(o.ruta) === ruta))
     .map(([ruta, fn]) => fn().catch(e => console.warn(`Error cargando ${ruta}:`, e.message)));
-  tareas.push(cargarBalance().catch(e => console.warn('Balance:', e.message)));
   await Promise.allSettled(tareas);
 
   // Poblar filtro planes en membresías (depende de dataPlanes, ya cargado arriba)

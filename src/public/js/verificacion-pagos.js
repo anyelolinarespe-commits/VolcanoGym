@@ -357,6 +357,201 @@ function vpVerComprobante(url) {
     document.body.appendChild(overlay);
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  TABS: VENTAS / MEMBRESÍAS
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _vpTabActual = 'ventas';
+let _vpmCargado  = false;
+
+function vpSwitchTab(tab) {
+    _vpTabActual = tab;
+    document.getElementById('vp-tab-ventas').style.display      = tab === 'ventas' ? '' : 'none';
+    document.getElementById('vp-tab-membresias').style.display  = tab === 'membresias' ? '' : 'none';
+
+    const btnV = document.getElementById('vpTabBtnVentas');
+    const btnM = document.getElementById('vpTabBtnMembresias');
+    btnV.style.background = tab === 'ventas'      ? '#1565c0' : '';
+    btnV.style.color      = tab === 'ventas'      ? '#fff'    : '';
+    btnM.style.background = tab === 'membresias'  ? '#1565c0' : '';
+    btnM.style.color      = tab === 'membresias'  ? '#fff'    : '';
+
+    if (tab === 'membresias' && !_vpmCargado) {
+        _vpmCargado = true;
+        vpmCargar(1);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MÓDULO: VERIFICACIÓN DE PAGOS DE MEMBRESÍAS
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _vpmPage        = 1;
+let _vpmSearchTimer = null;
+
+function vpmBuscarTimer() {
+    clearTimeout(_vpmSearchTimer);
+    _vpmSearchTimer = setTimeout(() => vpmCargar(1), 400);
+}
+
+async function vpmCargar(page = 1) {
+    _vpmPage = page;
+    const buscar = document.getElementById('vpmBuscar')?.value.trim() || '';
+    const estado = document.getElementById('vpmEstado')?.value || 'todos';
+    const tbody  = document.getElementById('vpmTbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = `<tr><td colspan="10" class="cargando">Cargando...</td></tr>`;
+
+    try {
+        const params = new URLSearchParams({ buscar, estado, page, limit: 15 });
+        const data   = await api('GET', `/api/membresias/verificacion/pagos?${params}`);
+
+        vpmRenderResumen(data.data);
+        vpmRenderTabla(data.data);
+        vpmRenderPaginacion(data.total, data.page, data.limit);
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="10" style="color:#c62828;padding:20px;text-align:center">Error: ${err.message}</td></tr>`;
+    }
+}
+
+function vpmRenderResumen(rows) {
+    const el = document.getElementById('vpmResumen');
+    if (!el) return;
+
+    const pendientes = rows.filter(r => r.estado_verificacion == 1);
+    const aprobados  = rows.filter(r => r.estado_verificacion == 2);
+    const montoPend  = pendientes.reduce((s, r) => s + parseFloat(r.total || 0), 0);
+    const montoAprov = aprobados.reduce((s, r) => s + parseFloat(r.total || 0), 0);
+
+    const pill = (icon, label, val, color) =>
+        `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:10px;min-width:160px">
+           <i class="bi ${icon}" style="font-size:20px;color:${color}"></i>
+           <div>
+             <div style="font-size:11px;color:#888;font-weight:600;text-transform:uppercase">${label}</div>
+             <div style="font-size:16px;font-weight:700;color:${color}">${val}</div>
+           </div>
+         </div>`;
+
+    el.innerHTML =
+        pill('bi-clock-history',      'Pendientes',      `${pendientes.length}`,          pendientes.length > 0 ? '#e65100' : '#2e7d32') +
+        pill('bi-check-circle',       'Aprobados',       `${aprobados.length}`,           '#2e7d32') +
+        pill('bi-exclamation-circle', 'Monto pendiente', `S/ ${montoPend.toFixed(2)}`,     montoPend > 0 ? '#e65100' : '#2e7d32') +
+        pill('bi-cash-stack',         'Monto aprobado',  `S/ ${montoAprov.toFixed(2)}`,    '#26a69a');
+}
+
+function vpmRenderTabla(rows) {
+    const tbody = document.getElementById('vpmTbody');
+    if (!tbody) return;
+
+    if (!rows || rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;color:#aaa">No se encontraron pagos de membresía pendientes de verificación.</td></tr>`;
+        return;
+    }
+
+    const fmtF = f => {
+        if (!f) return '—';
+        const d = new Date(f);
+        return isNaN(d) ? '—' : d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    };
+    const fmtS = n => `S/ ${parseFloat(n || 0).toFixed(2)}`;
+    const metodoBadgeColor = m => ({ yape: '#6a1b9a', plin: '#00838f', transferencia: '#1565c0' }[m] || '#555');
+
+    tbody.innerHTML = rows.map(r => {
+        const color = metodoBadgeColor(r.metodo_pago);
+        const estadoBadge = r.estado_verificacion == 1
+            ? `<span style="background:#fff3e0;color:#e65100;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700">⏳ PENDIENTE</span>`
+            : r.estado_verificacion == 0
+                ? `<span style="background:#fce4ec;color:#b71c1c;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700">✗ RECHAZADO</span>`
+                : `<span style="background:#e8f5e9;color:#2e7d32;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700">✓ APROBADO</span>`;
+
+        const comprobante = r.url_comprobante
+            ? `<button onclick="vpVerComprobante('${r.url_comprobante.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')"
+                style="background:#e3f2fd;border:1px solid ${color}55;border-radius:7px;padding:4px 9px;cursor:pointer;font-size:11px;color:#1565c0;font-weight:600"><i class="bi bi-image"></i></button>`
+            : '<span style="color:#bbb;font-size:11px">—</span>';
+
+        const acciones = r.estado_verificacion == 1
+            ? `<div style="display:flex;gap:4px;justify-content:center">
+                <button onclick="vpmAprobar(${r.id_verificacion},'${(r.cliente || '').replace(/'/g,"\\'")}')"
+                    style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:7px;padding:4px 9px;cursor:pointer;font-size:11px;color:#2e7d32;font-weight:700">
+                    <i class="bi bi-check-lg"></i>
+                </button>
+                <button onclick="vpmRechazar(${r.id_verificacion},'${(r.cliente || '').replace(/'/g,"\\'")}')"
+                    style="background:#ffebee;border:1px solid #ef9a9a;border-radius:7px;padding:4px 8px;cursor:pointer;font-size:11px;color:#c62828;font-weight:700">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+               </div>`
+            : `<span style="font-size:11px;color:#aaa">—</span>`;
+
+        return `<tr style="border-bottom:1px solid #f0f0f0;${r.estado_verificacion == 1 ? 'background:#fffbf5' : ''}">
+          <td style="padding:10px 8px;font-weight:600">${r.cliente || '<span style="color:#aaa">—</span>'}</td>
+          <td style="padding:10px 8px">${r.dni_cliente || '—'}</td>
+          <td style="padding:10px 8px">${r.nombre_plan || '—'}<div style="font-size:11px;color:#888">Cuota #${r.num_cuota}</div></td>
+          <td style="padding:10px 8px;text-align:right;font-weight:700">${fmtS(r.total)}</td>
+          <td style="padding:10px 8px;text-align:center"><span style="background:${color}18;color:${color};border:1px solid ${color}44;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700">${(r.metodo_pago || '').toUpperCase()}</span></td>
+          <td style="padding:10px 8px;font-size:11px;font-weight:600">${r.operacion || '—'}</td>
+          <td style="padding:10px 8px;text-align:center">${comprobante}</td>
+          <td style="padding:10px 8px;font-size:12px;white-space:nowrap">${fmtF(r.created_at)}</td>
+          <td style="padding:10px 8px">${estadoBadge}</td>
+          <td style="padding:10px 8px;text-align:center">${acciones}</td>
+        </tr>`;
+    }).join('');
+}
+
+function vpmRenderPaginacion(total, page, limit) {
+    const el = document.getElementById('vpmPaginacion');
+    if (!el) return;
+    const totalPages = Math.ceil(total / limit);
+    if (totalPages <= 1) { el.innerHTML = ''; return; }
+
+    let html = '';
+    for (let p = 1; p <= totalPages; p++) {
+        html += `<button onclick="vpmCargar(${p})"
+            style="padding:5px 11px;border-radius:6px;border:1px solid #ddd;cursor:pointer;
+                   background:${p === page ? '#1565c0' : '#fff'};
+                   color:${p === page ? '#fff' : '#333'};font-weight:${p === page ? '700' : '400'}">
+            ${p}
+        </button>`;
+    }
+    el.innerHTML = `<span style="font-size:12px;color:#888;margin-right:8px">Página ${page} de ${totalPages} · ${total} registros</span>${html}`;
+}
+
+async function vpmAprobar(idVerificacion, nombreCliente) {
+    const ok = await vpConfirm({
+        tipo: 'success',
+        titulo: 'Aprobar pago de membresía',
+        mensaje: `¿Confirmar el pago de <strong>${nombreCliente}</strong>?`,
+        detalle: 'Si era el pago fundacional de la membresía, el socio quedará activado automáticamente y el movimiento se reflejará en la caja abierta del recepcionista que lo registró.',
+        textoAceptar: 'Aprobar',
+    });
+    if (!ok) return;
+    try {
+        const res = await api('POST', `/api/membresias/verificacion/${idVerificacion}/aprobar`);
+        showToast(res.message || 'Pago aprobado', 'success');
+        vpmCargar(_vpmPage);
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    }
+}
+
+async function vpmRechazar(idVerificacion, nombreCliente) {
+    const ok = await vpConfirm({
+        tipo: 'danger',
+        titulo: 'Rechazar pago de membresía',
+        mensaje: `¿Rechazar el pago de <strong>${nombreCliente}</strong>?`,
+        detalle: 'Si era el pago fundacional, la membresía quedará marcada como rechazada (alerta de fraude) y no se activará.',
+        textoAceptar: 'Rechazar',
+    });
+    if (!ok) return;
+    try {
+        const res = await api('POST', `/api/membresias/verificacion/${idVerificacion}/rechazar`);
+        showToast(res.message || 'Pago rechazado', 'warning');
+        vpmCargar(_vpmPage);
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    }
+}
+
 // ── INICIALIZAR ───────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
