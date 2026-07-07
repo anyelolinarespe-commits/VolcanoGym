@@ -901,6 +901,79 @@
       </div>
       <!-- ══ /REPORTES ════════════════════════════════════════════════════════ -->
 
+      <!-- ══ NOTIFICACIONES ══════════════════════════════════════════════════ -->
+      <div class="view" id="view-notificaciones">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-bell-fill me-2"></i>Notificaciones</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn-cancel" onclick="notifAbrirTipos()">
+              <i class="bi bi-list-check me-1"></i>Gestionar tipos
+            </button>
+            <button class="btn-save" onclick="notifGenerarAhora()">
+              <i class="bi bi-arrow-repeat me-1"></i>Generar ahora
+            </button>
+          </div>
+        </div>
+        <p style="color:#888;font-size:14px;margin-bottom:16px">
+          Alertas generadas automáticamente cada mañana según la regla de cada tipo.
+          Haz clic en <strong>Enviar</strong> para abrir WhatsApp con el mensaje ya redactado.
+        </p>
+
+        <div class="conf-tabs">
+          <button class="conf-tab notif-tab conf-tab-active" data-tab="pendientes" onclick="notifTab('pendientes')">Pendientes</button>
+          <button class="conf-tab notif-tab" data-tab="enviadas" onclick="notifTab('enviadas')">Enviadas</button>
+          <button class="conf-tab notif-tab" data-tab="descartadas" onclick="notifTab('descartadas')">Descartadas</button>
+        </div>
+
+        <div id="notif-lista" class="space-y-3" style="margin-top:16px">
+          <div class="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-400">Cargando...</div>
+        </div>
+      </div>
+      <!-- ══ /NOTIFICACIONES ═════════════════════════════════════════════════ -->
+
+      <!-- Modal: Gestionar tipos de notificación -->
+      <div class="modal-overlay" id="modalTiposNotif">
+        <div class="modal-box" style="width:680px;max-height:82vh;overflow-y:auto">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div class="modal-title" style="margin-bottom:0">Tipos de notificación</div>
+            <button class="btn-save" style="padding:8px 14px;font-size:13px" onclick="notifNuevoTipo()">
+              <i class="bi bi-plus-lg me-1"></i>Nuevo tipo
+            </button>
+          </div>
+          <div class="alert-msg" id="alertTiposNotif"></div>
+          <div id="tipos-notif-lista" style="display:flex;flex-direction:column;gap:14px;margin-top:14px"></div>
+          <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeModal('modalTiposNotif')">Cerrar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Enviar notificación manual -->
+      <div class="modal-overlay" id="modalEnviarManual">
+        <div class="modal-box" style="width:460px">
+          <div class="modal-title">Enviar: <span id="enviarManualTipoNombre"></span></div>
+          <div class="alert-msg" id="alertEnviarManual"></div>
+          <input type="hidden" id="enviarManualTipoId">
+          <div class="mb-3">
+            <div class="form-label">Destinatarios</div>
+            <select class="form-control" id="enviarManualDestino" onchange="notifToggleDestino()">
+              <option value="todos">Todos los clientes activos</option>
+              <option value="filtro">Clientes con deuda</option>
+              <option value="cliente">Un cliente específico</option>
+            </select>
+          </div>
+          <div class="mb-3" id="enviarManualClienteWrap" style="display:none;position:relative">
+            <div class="form-label">Buscar cliente</div>
+            <input class="form-control" id="enviarManualBuscarCliente" placeholder="Nombre o DNI..." oninput="notifBuscarClienteManual()" autocomplete="off">
+            <div id="enviarManualSugerencias"></div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeModal('modalEnviarManual')">Cancelar</button>
+            <button class="btn-save" onclick="notifConfirmarEnvioManual()">Generar</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ══ VENTAS ══════════════════════════════════════════════════════════ -->
       <!-- ══ VERIFICACIÓN DE PAGOS ══════════════════════════════════════════ -->
       <div class="view" id="view-verificacion-pagos">
@@ -5352,6 +5425,7 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
   <script src="js/importar.js?v=20260630a"></script>
   <script src="js/caja.js?v=20260704a"></script>
   <script src="js/reportes.js?v=20260706a"></script>
+  <script src="js/notificaciones.js?v=20260707a"></script>
 </body>
 
 </html>

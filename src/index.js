@@ -30,6 +30,9 @@ import clienteAuthRoutes  from './routes/clienteAuthRoutes.js';
 import miCuentaRoutes     from './routes/miCuentaRoutes.js';
 import cajaRoutes         from './routes/cajaRoutes.js';
 import reportesRoutes     from './routes/reportesRoutes.js';
+import notificacionesRoutes from './routes/notificacionesRoutes.js';
+import cron from 'node-cron';
+import { ejecutarGeneracionDiaria, purgarNotificacionesViejas } from './jobs/notificacionesJob.js';
 
 dotenv.config();
 
@@ -75,6 +78,7 @@ app.use('/api/cliente-auth', clienteAuthRoutes);
 app.use('/api/mi-cuenta',    miCuentaRoutes);
 app.use('/api/caja',         cajaRoutes);
 app.use('/api/reportes',     reportesRoutes);
+app.use('/api/notificaciones', notificacionesRoutes);
 
 // Upload de capturas de comprobantes de pago
 app.post('/api/uploads/comprobante',
@@ -98,6 +102,18 @@ app.use('/dashboard', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(__dirname + '/public/dashboard.html');
 });
+
+// Cron: genera alertas pendientes de Notificaciones todos los días a las 7am
+// (hora de Lima). Solo genera filas — el envío sigue siendo manual (botón
+// WhatsApp en el dashboard).
+cron.schedule('0 7 * * *', () => {
+  ejecutarGeneracionDiaria().catch(err => console.error('Error en job de notificaciones:', err));
+}, { timezone: 'America/Lima' });
+
+// Purga mensual (día 1 a las 3am) de notificaciones ya resueltas con más de 6 meses.
+cron.schedule('0 3 1 * *', () => {
+  purgarNotificacionesViejas().catch(err => console.error('Error en purga de notificaciones:', err));
+}, { timezone: 'America/Lima' });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

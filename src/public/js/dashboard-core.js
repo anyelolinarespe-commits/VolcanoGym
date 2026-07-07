@@ -38,6 +38,7 @@ const MODULOS_CONFIG = {
   'planes':         { icon: 'bi-grid-3x3-gap',   label: 'Planes',         seccion: 'Gestión',          color: '#7c4dff' },
   'asistencias':    { icon: 'bi-calendar-check', label: 'Asistencias',    seccion: 'Gestión',          color: '#26a69a' },
   'reportes':       { icon: 'bi-bar-chart-line', label: 'Reportes',       seccion: 'Gestión',          color: '#c62828' },
+  'notificaciones': { icon: 'bi-bell-fill',      label: 'Notificaciones', seccion: 'Gestión',          color: '#f57c00' },
   'categorias':     { icon: 'bi-tag',            label: 'Categorías',     seccion: 'Tienda',           color: '#26a69a' },
   'presentaciones': { icon: 'bi-box2',           label: 'Presentaciones', seccion: 'Tienda',           color: '#00897b' },
   'productos':      { icon: 'bi-box-seam',       label: 'Productos',      seccion: 'Tienda',           color: '#ff7043' },
@@ -685,6 +686,7 @@ function goTo(view, fromHistory = false) {
   if (view === 'inventario')     loadInventario();
   if (view === 'asistencias')  { filtroAsistHoy(); _preloadClientesAsist(); cargarAsistenciasStats(); }
   if (view === 'reportes')     { reportesInit(); }
+  if (view === 'notificaciones') { notificacionesInit(); }
   if (view === 'ventas')               loadVentas();
   if (view === 'verificacion-pagos')   vpCargar(1);
   if (view === 'caja-mi-sesion')          loadMiSesion();
