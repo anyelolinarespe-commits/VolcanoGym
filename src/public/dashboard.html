@@ -628,6 +628,279 @@
       </div>
       <!-- ══ /ASISTENCIAS ═════════════════════════════════════════════════════ -->
 
+      <!-- ══ REPORTES ═════════════════════════════════════════════════════════ -->
+      <div class="view" id="view-reportes">
+        <div class="mod-header">
+          <span class="mod-title"><i class="bi bi-bar-chart-line me-2"></i>Reportes</span>
+        </div>
+
+        <!-- Tabs -->
+        <div class="conf-tabs">
+          <button class="conf-tab rep-tab conf-tab-active" data-tab="indicadores" onclick="reporteTab('indicadores')">
+            <i class="bi bi-speedometer2 me-1"></i>Indicadores
+          </button>
+          <button class="conf-tab rep-tab" data-tab="clientes" onclick="reporteTab('clientes')">
+            <i class="bi bi-person-badge me-1"></i>Clientes
+          </button>
+          <button class="conf-tab rep-tab" data-tab="membresias" onclick="reporteTab('membresias')">
+            <i class="bi bi-card-checklist me-1"></i>Membresías
+          </button>
+          <button class="conf-tab rep-tab" data-tab="asistencias" onclick="reporteTab('asistencias')">
+            <i class="bi bi-calendar-check me-1"></i>Asistencias
+          </button>
+          <button class="conf-tab rep-tab" data-tab="caja" onclick="reporteTab('caja')">
+            <i class="bi bi-cash-stack me-1"></i>Caja
+          </button>
+          <button class="conf-tab rep-tab" data-tab="ventas" onclick="reporteTab('ventas')">
+            <i class="bi bi-cart-check me-1"></i>Ventas
+          </button>
+        </div>
+
+        <!-- Panel: Indicadores -->
+        <div id="repPanelIndicadores">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <select id="rep-periodo" onchange="_repCambiarPeriodo()"
+              class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700">
+              <option value="hoy">Hoy</option>
+              <option value="semana" selected>Esta semana</option>
+              <option value="mes">Este mes</option>
+            </select>
+            <button onclick="repExportarPDF()"
+              class="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700">
+              <i class="bi bi-file-earmark-pdf"></i>Exportar PDF
+            </button>
+          </div>
+
+          <div id="rep-pdf-area">
+            <!-- Tarjetas KPI -->
+            <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4 mb-5">
+              <div class="rounded-xl border border-gray-200 bg-white p-4">
+                <div class="flex items-center justify-between text-gray-400"><span class="text-xs font-medium uppercase tracking-wide">Clientes Activos</span><i class="bi bi-people-fill text-green-500"></i></div>
+                <div class="mt-1 text-xl font-bold text-gray-900" id="rep-kpi-clientes-activos">—</div>
+              </div>
+              <div class="rounded-xl border border-gray-200 bg-white p-4">
+                <div class="flex items-center justify-between text-gray-400"><span class="text-xs font-medium uppercase tracking-wide">Ingresos</span><i class="bi bi-cash-coin text-green-600"></i></div>
+                <div class="mt-1 text-xl font-bold text-gray-900" id="rep-kpi-ingresos">—</div>
+              </div>
+              <div class="rounded-xl border border-orange-200 bg-orange-50/40 p-4">
+                <div class="flex items-center justify-between text-orange-400"><span class="text-xs font-medium uppercase tracking-wide">Gastos</span><i class="bi bi-receipt text-orange-500"></i></div>
+                <div class="mt-1 text-xl font-bold text-gray-900" id="rep-kpi-gastos">—</div>
+              </div>
+              <div class="rounded-xl border border-purple-200 bg-purple-50/40 p-4">
+                <div class="flex items-center justify-between text-purple-400"><span class="text-xs font-medium uppercase tracking-wide">Ganancias Netas</span><i class="bi bi-graph-up-arrow text-purple-500"></i></div>
+                <div class="mt-1 text-xl font-bold text-gray-900" id="rep-kpi-ganancia">—</div>
+              </div>
+              <div class="rounded-xl border border-gray-200 bg-white p-4">
+                <div class="flex items-center justify-between text-gray-400"><span class="text-xs font-medium uppercase tracking-wide">Pagos Pendientes</span><i class="bi bi-clock-history text-amber-500"></i></div>
+                <div class="mt-1 text-xl font-bold text-gray-900" id="rep-kpi-pendientes">—</div>
+              </div>
+              <div class="rounded-xl border border-gray-200 bg-white p-4">
+                <div class="flex items-center justify-between text-gray-400"><span class="text-xs font-medium uppercase tracking-wide">Asistencias Hoy</span><i class="bi bi-calendar2-check text-blue-500"></i></div>
+                <div class="mt-1 text-xl font-bold text-gray-900" id="rep-kpi-asist-hoy">—</div>
+              </div>
+              <div class="rounded-xl border border-gray-200 bg-white p-4">
+                <div class="flex items-center justify-between text-gray-400"><span class="text-xs font-medium uppercase tracking-wide">Inscritos</span><i class="bi bi-person-plus-fill text-teal-500"></i></div>
+                <div class="mt-1 text-xl font-bold text-gray-900" id="rep-kpi-inscritos">—</div>
+              </div>
+              <div class="rounded-xl border border-gray-200 bg-white p-4">
+                <div class="flex items-center justify-between text-gray-400"><span class="text-xs font-medium uppercase tracking-wide">Renovaciones</span><i class="bi bi-arrow-repeat text-indigo-500"></i></div>
+                <div class="mt-1 text-xl font-bold text-gray-900" id="rep-kpi-renovaciones">—</div>
+              </div>
+              <div class="rounded-xl border border-red-200 bg-red-50/40 p-4">
+                <div class="flex items-center justify-between text-red-400"><span class="text-xs font-medium uppercase tracking-wide">Clientes en Riesgo</span><i class="bi bi-exclamation-triangle-fill text-red-500"></i></div>
+                <div class="mt-1 text-xl font-bold text-gray-900" id="rep-kpi-riesgo">—</div>
+              </div>
+            </div>
+
+            <!-- Gráficos -->
+            <div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
+              <div class="rounded-xl border border-gray-200 bg-white p-5 lg:col-span-2">
+                <div class="mb-3 font-semibold text-gray-800">Asistencias de los últimos 7 días</div>
+                <div style="height:280px"><canvas id="repChartAsistencias"></canvas></div>
+              </div>
+              <div class="rounded-xl border border-gray-200 bg-white p-5">
+                <div class="mb-3 font-semibold text-gray-800">Balance del período</div>
+                <div style="height:220px"><canvas id="repChartBalance"></canvas></div>
+                <div class="mt-3 space-y-1 text-sm">
+                  <div class="flex justify-between"><span class="text-gray-500">Ingresos</span><strong class="text-green-600" id="rep-bal-ingresos">S/ 0.00</strong></div>
+                  <div class="flex justify-between"><span class="text-gray-500">Gastos</span><strong class="text-orange-600" id="rep-bal-gastos">S/ 0.00</strong></div>
+                  <div class="flex justify-between border-t border-gray-100 pt-1"><span class="font-semibold text-gray-700">Neto</span><strong id="rep-bal-neto">S/ 0.00</strong></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel: Clientes -->
+        <div id="repPanelClientes" style="display:none">
+          <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6 mb-5" id="rep-clientes-kpis"></div>
+          <div class="rounded-xl border border-gray-200 bg-white p-5">
+            <div class="mb-3 flex items-center gap-2 font-semibold text-gray-800">
+              <i class="bi bi-exclamation-triangle-fill text-red-500"></i>Clientes en Riesgo (sin asistir hace 14+ días)
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-gray-100 text-left text-xs font-medium text-gray-400">
+                    <th class="px-3 py-2">Cliente</th>
+                    <th class="px-3 py-2">DNI</th>
+                    <th class="px-3 py-2">Celular</th>
+                    <th class="px-3 py-2">Última asistencia</th>
+                    <th class="px-3 py-2">Días sin venir</th>
+                    <th class="px-3 py-2">Severidad</th>
+                  </tr>
+                </thead>
+                <tbody id="rep-tbody-riesgo" class="divide-y divide-gray-100">
+                  <tr><td colspan="6" class="p-6 text-center text-sm text-gray-400">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel: Membresías -->
+        <div id="repPanelMembresias" style="display:none">
+          <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6 mb-5" id="rep-membresias-kpis"></div>
+          <div class="rounded-xl border border-gray-200 bg-white p-5">
+            <div class="mb-3 flex items-center gap-2 font-semibold text-gray-800">
+              <i class="bi bi-arrow-repeat text-indigo-500"></i>Renovaciones del período
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-gray-100 text-left text-xs font-medium text-gray-400">
+                    <th class="px-3 py-2">Cliente</th>
+                    <th class="px-3 py-2">Plan</th>
+                    <th class="px-3 py-2">Fecha renovación</th>
+                    <th class="px-3 py-2">Monto</th>
+                  </tr>
+                </thead>
+                <tbody id="rep-tbody-renovaciones" class="divide-y divide-gray-100">
+                  <tr><td colspan="4" class="p-6 text-center text-sm text-gray-400">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel: Asistencias -->
+        <div id="repPanelAsistencias" style="display:none">
+          <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5 mb-5" id="rep-asistencias-kpis"></div>
+          <div class="rounded-xl border border-gray-200 bg-white p-5">
+            <div class="mb-3 font-semibold text-gray-800">Asistencias de los últimos 7 días</div>
+            <div style="height:280px"><canvas id="repChartAsistencias2"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Panel: Caja -->
+        <div id="repPanelCaja" style="display:none">
+          <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6 mb-5" id="rep-caja-kpis"></div>
+
+          <div class="grid grid-cols-1 gap-5 lg:grid-cols-2 mb-5">
+            <div class="rounded-xl border border-gray-200 bg-white p-5">
+              <div class="mb-3 flex items-center gap-2 font-semibold text-gray-800">
+                <i class="bi bi-tags-fill text-blue-500"></i>Movimientos por categoría
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="border-b border-gray-100 text-left text-xs font-medium text-gray-400">
+                      <th class="px-3 py-2">Categoría</th>
+                      <th class="px-3 py-2">Tipo</th>
+                      <th class="px-3 py-2">Cant.</th>
+                      <th class="px-3 py-2">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rep-tbody-caja-categorias" class="divide-y divide-gray-100">
+                    <tr><td colspan="4" class="p-6 text-center text-sm text-gray-400">Cargando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-gray-200 bg-white p-5">
+              <div class="mb-3 flex items-center gap-2 font-semibold text-gray-800">
+                <i class="bi bi-credit-card-fill text-teal-500"></i>Movimientos por método de pago
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="border-b border-gray-100 text-left text-xs font-medium text-gray-400">
+                      <th class="px-3 py-2">Método</th>
+                      <th class="px-3 py-2">Cant.</th>
+                      <th class="px-3 py-2">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rep-tbody-caja-metodos" class="divide-y divide-gray-100">
+                    <tr><td colspan="3" class="p-6 text-center text-sm text-gray-400">Cargando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-gray-200 bg-white p-5">
+            <div class="mb-3 flex items-center gap-2 font-semibold text-gray-800">
+              <i class="bi bi-clipboard2-check-fill text-red-500"></i>Diferencias de arqueo (control interno)
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-gray-100 text-left text-xs font-medium text-gray-400">
+                    <th class="px-3 py-2">Sesión</th>
+                    <th class="px-3 py-2">Fecha cierre</th>
+                    <th class="px-3 py-2">Esperado</th>
+                    <th class="px-3 py-2">Contado</th>
+                    <th class="px-3 py-2">Diferencia</th>
+                  </tr>
+                </thead>
+                <tbody id="rep-tbody-arqueos" class="divide-y divide-gray-100">
+                  <tr><td colspan="5" class="p-6 text-center text-sm text-gray-400">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel: Ventas -->
+        <div id="repPanelVentas" style="display:none">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-3 mb-5" id="rep-ventas-kpis"></div>
+
+          <div class="grid grid-cols-1 gap-5 lg:grid-cols-3 mb-5">
+            <div class="rounded-xl border border-gray-200 bg-white p-5 lg:col-span-2">
+              <div class="mb-3 font-semibold text-gray-800">Ventas de los últimos 7 días</div>
+              <div style="height:280px"><canvas id="repChartVentasDiarias"></canvas></div>
+            </div>
+            <div class="rounded-xl border border-gray-200 bg-white p-5">
+              <div class="mb-3 font-semibold text-gray-800">Ventas por método de pago</div>
+              <div id="rep-ventas-metodos" class="divide-y divide-gray-100"></div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-gray-200 bg-white p-5">
+            <div class="mb-3 flex items-center gap-2 font-semibold text-gray-800">
+              <i class="bi bi-trophy-fill text-amber-500"></i>Top 10 productos más vendidos
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-gray-100 text-left text-xs font-medium text-gray-400">
+                    <th class="px-3 py-2">#</th>
+                    <th class="px-3 py-2">Producto</th>
+                    <th class="px-3 py-2">Cantidad vendida</th>
+                    <th class="px-3 py-2">Total vendido</th>
+                  </tr>
+                </thead>
+                <tbody id="rep-tbody-top-productos" class="divide-y divide-gray-100">
+                  <tr><td colspan="4" class="p-6 text-center text-sm text-gray-400">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- ══ /REPORTES ════════════════════════════════════════════════════════ -->
+
       <!-- ══ VENTAS ══════════════════════════════════════════════════════════ -->
       <!-- ══ VERIFICACIÓN DE PAGOS ══════════════════════════════════════════ -->
       <div class="view" id="view-verificacion-pagos">
@@ -5078,6 +5351,7 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
   <script src="js/configuracion.js?v=20260629a"></script>
   <script src="js/importar.js?v=20260630a"></script>
   <script src="js/caja.js?v=20260704a"></script>
+  <script src="js/reportes.js?v=20260706a"></script>
 </body>
 
 </html>

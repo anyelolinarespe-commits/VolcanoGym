@@ -29,6 +29,7 @@ import importarRoutes     from './routes/importarRoutes.js';
 import clienteAuthRoutes  from './routes/clienteAuthRoutes.js';
 import miCuentaRoutes     from './routes/miCuentaRoutes.js';
 import cajaRoutes         from './routes/cajaRoutes.js';
+import reportesRoutes     from './routes/reportesRoutes.js';
 
 dotenv.config();
 
@@ -73,6 +74,7 @@ app.use('/api/importar',     importarRoutes);
 app.use('/api/cliente-auth', clienteAuthRoutes);
 app.use('/api/mi-cuenta',    miCuentaRoutes);
 app.use('/api/caja',         cajaRoutes);
+app.use('/api/reportes',     reportesRoutes);
 
 // Upload de capturas de comprobantes de pago
 app.post('/api/uploads/comprobante',
