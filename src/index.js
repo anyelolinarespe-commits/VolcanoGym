@@ -50,6 +50,9 @@ app.use(express.static(__dirname + '/public', {
 }));
 
 // Sitio web público (landing) servido en /volcano desde la carpeta volcano_web
+app.get('/volcano',          (req, res) => res.sendFile(path.join(__dirname, '../volcano_web/index.html')));
+app.get('/volcano/planes',   (req, res) => res.sendFile(path.join(__dirname, '../volcano_web/planes.html')));
+app.get('/volcano/catalogo', (req, res) => res.sendFile(path.join(__dirname, '../volcano_web/catalogo.html')));
 app.use('/volcano', express.static(path.join(__dirname, '../volcano_web'), {
   setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
 }));

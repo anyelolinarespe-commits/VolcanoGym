@@ -12,8 +12,10 @@ export const getMiPerfil = async (req, res) => {
                    (SELECT json_build_object(
                        'id_membresia', m.id_membresia,
                        'estado', m.estado,
+                       'fecha_inicio', m.fecha_inicio,
                        'fecha_fin', m.fecha_fin,
                        'dias_restantes', GREATEST(0, (m.fecha_fin - CURRENT_DATE)::int),
+                       'duracion_dias', GREATEST(1, (m.fecha_fin - m.fecha_inicio)::int),
                        'saldo_pendiente', m.saldo_pendiente,
                        'nombre_plan', pm.nombre
                    )
@@ -355,6 +357,83 @@ async function descargarPDF() {
     } catch (e) {
         console.error('getMiComprobanteHTML:', e);
         return res.status(500).send('Error al generar el comprobante.');
+    }
+};
+
+// ── GET /api/mi-cuenta/membresias/cuotas/:id/comprobante ────────────────────
+// Datos del "Comprobante de Servicio" de una CUOTA de membresía (tabla `pago`),
+// no de una venta. Devuelve el mismo objeto `datos` que arma el dashboard en
+// abrirBoletaCuota() (src/public/js/membresias.js), para que Mis Membresías
+// pueda renderizar EXACTAMENTE el mismo comprobante (mismo layout/lógica),
+// en vez de reusar el endpoint de recibos de ventas (tabla `venta`).
+export const getMiComprobanteCuotaDatos = async (req, res) => {
+    const id_cliente = req.cliente.id_cliente;
+    const { id } = req.params;
+    try {
+        const { rows } = await pool.query(`
+            SELECT pa.id_pago, pa.num_cuota, pa.monto, pa.fecha_pago, pa.fecha_programada,
+                   pa.metodo_pago, pa.num_comprobante, pa.estado_cuota,
+                   m.id_membresia, m.fecha_inicio, m.fecha_fin,
+                   pm.nombre AS nombre_plan, pm.duracion_meses, pm.duracion_unidad,
+                   c.nombre, c.apellido, c.dni, c.celular,
+                   (
+                       SELECT COALESCE(JSON_AGG(
+                           JSON_BUILD_OBJECT(
+                               'monto', ab.monto,
+                               'metodo_pago', ab.metodo_pago,
+                               'num_comprobante', ab.num_comprobante,
+                               'fecha_pago', ab.fecha_pago
+                           ) ORDER BY ab.created_at ASC
+                       ), '[]'::json)
+                       FROM abono_cuota ab
+                       WHERE ab.id_pago = pa.id_pago
+                   ) AS abonos
+            FROM pago pa
+            JOIN membresia m       ON m.id_membresia = pa.id_membresia
+            JOIN plan_membresia pm ON pm.id_plan = m.id_plan
+            JOIN cliente c         ON c.id_cliente = m.id_cliente
+            WHERE pa.id_pago = $1 AND m.id_cliente = $2
+        `, [id, id_cliente]);
+
+        if (!rows.length) return res.status(404).json({ message: 'Comprobante no encontrado.' });
+        const p = rows[0];
+
+        if (p.estado_cuota !== 'pagado') {
+            return res.status(404).json({ message: 'Esta cuota aún no tiene un pago registrado.' });
+        }
+
+        const abonos = Array.isArray(p.abonos) ? p.abonos : [];
+        const montoPagado = abonos.length
+            ? abonos.reduce((s, a) => s + parseFloat(a.monto || 0), 0)
+            : parseFloat(p.monto || 0);
+
+        return res.json({
+            id_membresia:    p.id_membresia,
+            id_cliente,
+            num_comprobante: p.num_comprobante || `C${String(p.num_cuota).padStart(2, '0')}-${String(p.id_pago).padStart(4, '0')}`,
+            fecha_pago:      p.fecha_pago || abonos[0]?.fecha_pago || null,
+            nombre:          p.nombre,
+            apellido:        p.apellido,
+            dni:             p.dni || '—',
+            celular:         p.celular || '—',
+            plan:            p.nombre_plan || '—',
+            duracion_meses:  p.duracion_meses,
+            duracion_unidad: p.duracion_unidad || 'meses',
+            fecha_inicio:    p.fecha_inicio,
+            fecha_fin:       p.fecha_fin,
+            monto_total:     montoPagado,
+            monto_pagado:    montoPagado,
+            metodo_pago:     p.metodo_pago || abonos[0]?.metodo_pago || '—',
+            cuotas: [{
+                id_pago: p.id_pago, num_cuota: p.num_cuota, monto: p.monto,
+                estado_cuota: p.estado_cuota, fecha_programada: p.fecha_programada,
+                fecha_pago: p.fecha_pago, metodo_pago: p.metodo_pago, abonos
+            }],
+            observaciones: ''
+        });
+    } catch (e) {
+        console.error('getMiComprobanteCuotaDatos:', e);
+        return res.status(500).json({ message: 'Error al generar el comprobante.' });
     }
 };
 

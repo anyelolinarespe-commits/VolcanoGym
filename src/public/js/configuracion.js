@@ -23,9 +23,11 @@ const TIPOS_REDES = {
 
 // ── Slots de imagen ───────────────────────────────────────────────────────────
 const CONF_IMAGENES = [
-  { clave: 'logo_base64',       id: 'confImg_logo',      label: 'Logo (barra lateral e icono)', accept: '.jpg,.jpeg,.png', hint: 'JPG o PNG · también se usa como icono/favicon', preview: 'wide',   default: '/logo.png'  },
-  { clave: 'logo_login_base64', id: 'confImg_logoLogin', label: 'Logo de Login',             accept: '.jpg,.jpeg,.png', hint: 'JPG o PNG · aparece en la pantalla de acceso',  preview: 'wide',   default: null         },
-  { clave: 'qr_pago_base64',    id: 'confImg_qr',        label: 'QR de Pago (Yape / Plin)', accept: '.jpg,.jpeg,.png', hint: 'JPG o PNG · código QR para cobros digitales',    preview: 'square', default: null         },
+  { clave: 'logo_base64',        id: 'confImg_logo',       label: 'Logo (barra lateral e icono)', accept: '.jpg,.jpeg,.png', hint: 'JPG o PNG · también se usa como icono/favicon', preview: 'wide',   default: '/logo.png'  },
+  { clave: 'logo_login_base64',  id: 'confImg_logoLogin',  label: 'Logo de Login',             accept: '.jpg,.jpeg,.png', hint: 'JPG o PNG · aparece en la pantalla de acceso',  preview: 'wide',   default: null         },
+  { clave: 'logo_navbar_base64', id: 'confImg_logoNavbar', label: 'Logo del Navbar (sitio web)', accept: '.jpg,.jpeg,.png', hint: 'JPG o PNG · barra superior de volcano_web (fondo oscuro, usar versión clara)', preview: 'wide', default: '/volcano/logo1barblanco.png' },
+  { clave: 'logo_navbar_claro_base64', id: 'confImg_logoNavbarClaro', label: 'Logo Navbar (fondo claro)', accept: '.jpg,.jpeg,.png', hint: 'JPG o PNG · usado en Mi Cuenta (fondo blanco), usar versión con color', preview: 'wide', default: '/volcano/logo1bar.png' },
+  { clave: 'qr_pago_base64',     id: 'confImg_qr',         label: 'QR de Pago (Yape / Plin)', accept: '.jpg,.jpeg,.png', hint: 'JPG o PNG · código QR para cobros digitales',    preview: 'square', default: null         },
 ];
 
 // ── Init ──────────────────────────────────────────────────────────────────────

@@ -22,15 +22,13 @@ export const getPlanes = async (req, res) => {
 };
 
 // ─── GET /api/planes/activos ─────────────────────────────────────────────────
+// Pública (sin token) — consumida por volcano_web/planes.html. Solo expone
+// campos de cara al público, sin datos internos de financiamiento (intereses).
 export const getPlanesActivos = async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT id_plan, nombre, tipo_cliente, duracion_meses, duracion_unidad, precio, precio_renovacion,
-                   permite_fraccion, dias_limite_fraccion,
-                   max_cuotas, dias_entre_cuotas, monto_minimo_cuota,
-                   aplica_interes, tasa_interes, tipo_interes,
-                   max_asistencias_semana,
-                   descripcion
+            SELECT id_plan, nombre, tipo_cliente, duracion_meses, duracion_unidad,
+                   precio, precio_renovacion, descripcion
             FROM plan_membresia
             WHERE activo = TRUE
             ORDER BY tipo_cliente, duracion_meses

@@ -6,7 +6,7 @@
     <title>Volcano Gym — Sede Balta · Chiclayo</title>
     <link rel="icon" type="image/png" href="/logo.png">
     <link rel="apple-touch-icon" href="/logo.png">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="/volcano/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
 
@@ -439,30 +439,30 @@
 
     <!-- MENÚ SUPERIOR -->
     <header class="navbar">
-        <div class="logo">VOLCANO <span>GYM</span></div>
+        <a href="/volcano" class="logo"><img src="/volcano/logo1barblanco.png" alt="Volcano Gym" class="logo-img"></a>
 
         <input type="checkbox" id="menu-bar" class="pc-only">
         <label for="menu-bar" class="menu-icon pc-only"><i class="fas fa-bars"></i></label>
 
         <nav class="nav-links pc-only">
-            <a href="index.html" class="active">Inicio</a>
-            <a href="planes.html">Planes</a>
-            <a href="catalogo.html">Catálogo</a>
+            <a href="/volcano" class="active">Inicio</a>
+            <a href="/volcano/planes">Planes</a>
+            <a href="/volcano/catalogo">Catálogo</a>
             <a href="/cliente" style="background:#f60000;color:#fff;padding:7px 16px;border-radius:20px;font-weight:800">Mi Cuenta</a>
         </nav>
     </header>
 
     <!-- BARRA DE NAVEGACIÓN INFERIOR (MÓVIL) -->
     <nav class="bottom-nav mobile-only">
-        <a href="index.html" class="bottom-nav-item active">
+        <a href="/volcano" class="bottom-nav-item active">
             <i class="fas fa-home"></i>
             <span>Inicio</span>
         </a>
-        <a href="planes.html" class="bottom-nav-item">
+        <a href="/volcano/planes" class="bottom-nav-item">
             <i class="fas fa-dumbbell"></i>
             <span>Planes</span>
         </a>
-        <a href="catalogo.html" class="bottom-nav-item">
+        <a href="/volcano/catalogo" class="bottom-nav-item">
             <i class="fas fa-store"></i>
             <span>Catálogo</span>
         </a>
@@ -484,7 +484,7 @@
         <div class="yellow-action-bar">
             <div class="yellow-content">
                 <p>MUSCULACIÓN · FUNCIONAL · BAILE · NUTRICIÓN</p>
-                <button class="btn-ver-mas" onclick="window.location.href='planes.html'">VER PLANES</button>
+                <button class="btn-ver-mas" onclick="window.location.href='/volcano/planes'">VER PLANES</button>
             </div>
             <div class="yellow-tagline">LLEGA LA REVOLUCIÓN <strong>DEL GYM</strong></div>
         </div>
@@ -575,7 +575,7 @@
                 <button class="btn-main" onclick="window.open('https://wa.me/51963247284?text=Hola!%20Quiero%20conocer%20las%20instalaciones%20de%20Volcano%20Gym.','_blank')">CONOCER MÁS</button>
             </div>
             <div class="detail-image">
-                <img src="imagen4.jpg" alt="Instalación Volcano Gym">
+                <img src="/volcano/imagen4.jpg" alt="Instalación Volcano Gym">
             </div>
         </div>
     </section>
@@ -680,9 +680,9 @@
         // ahora consulta la API pública, que sí refleja lo que el admin configuró.
         const HERO_API_URL = '/api/configuracion/banners/publico';
         const HERO_DEFAULTS = [
-          { img: 'hero_trex.png',     url: '#planes' },
-          { img: 'hero_animales.png', url: '#animal' },
-          { img: 'hero_mundial.png',  url: '#planes' }
+          { img: '/volcano/hero_trex.png',     url: '#planes' },
+          { img: '/volcano/hero_animales.png', url: '#animal' },
+          { img: '/volcano/hero_mundial.png',  url: '#planes' }
         ];
 
         async function getHeroConfig() {
@@ -765,7 +765,10 @@
                     document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')
                         .forEach(el => { el.href = cfg.logo_base64; });
                 }
-            } catch (_) { /* mantiene el favicon estático de /logo.png */ }
+                if (cfg.logo_navbar_base64) {
+                    document.querySelectorAll('.logo-img').forEach(el => { el.src = cfg.logo_navbar_base64; });
+                }
+            } catch (_) { /* mantiene el favicon y el logo del navbar estáticos */ }
         })();
 
         // === ANIMAL INTERIOR ===

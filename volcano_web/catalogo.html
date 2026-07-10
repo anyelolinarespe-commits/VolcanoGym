@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Catálogo — Volcano Gym Sede Balta</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/png" href="/logo.png">
+    <link rel="apple-touch-icon" href="/logo.png">
+    <link rel="stylesheet" href="/volcano/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         @media (min-width: 769px) { .mobile-only { display: none !important; } }
@@ -310,26 +312,26 @@
 
     <!-- NAVBAR -->
     <header class="navbar">
-        <div class="logo">VOLCANO <span>GYM</span></div>
+        <a href="/volcano" class="logo"><img src="/volcano/logo1barblanco.png" alt="Volcano Gym" class="logo-img"></a>
         <input type="checkbox" id="menu-bar" class="pc-only">
         <label for="menu-bar" class="menu-icon pc-only"><i class="fas fa-bars"></i></label>
         <nav class="nav-links pc-only">
-            <a href="index.html">Inicio</a>
-            <a href="planes.html">Planes</a>
-            <a href="catalogo.html" class="active">Catálogo</a>
+            <a href="/volcano">Inicio</a>
+            <a href="/volcano/planes">Planes</a>
+            <a href="/volcano/catalogo" class="active">Catálogo</a>
             <a href="/cliente" style="background:#f60000;color:#fff;padding:7px 16px;border-radius:20px;font-weight:800">Mi Cuenta</a>
         </nav>
     </header>
 
     <!-- BOTTOM NAV (móvil) -->
     <nav class="bottom-nav mobile-only">
-        <a href="index.html" class="bottom-nav-item">
+        <a href="/volcano" class="bottom-nav-item">
             <i class="fas fa-home"></i><span>Inicio</span>
         </a>
-        <a href="planes.html" class="bottom-nav-item">
+        <a href="/volcano/planes" class="bottom-nav-item">
             <i class="fas fa-dumbbell"></i><span>Planes</span>
         </a>
-        <a href="catalogo.html" class="bottom-nav-item active">
+        <a href="/volcano/catalogo" class="bottom-nav-item active">
             <i class="fas fa-store"></i><span>Catálogo</span>
         </a>
         <a href="/cliente" class="bottom-nav-item">
@@ -389,9 +391,9 @@
             </div>
             <div class="footer-col">
                 <h4>Navegación</h4>
-                <a href="index.html">Inicio</a>
-                <a href="planes.html">Planes</a>
-                <a href="catalogo.html">Catálogo</a>
+                <a href="/volcano">Inicio</a>
+                <a href="/volcano/planes">Planes</a>
+                <a href="/volcano/catalogo">Catálogo</a>
             </div>
         </div>
         <div class="footer-bottom">
@@ -451,6 +453,23 @@
             }
         }
         applyContacto();
+
+        // Favicon dinámico: si el admin configuró un logo en Identidad Visual,
+        // reemplaza el favicon estático. Best-effort, no bloquea nada más.
+        (async function initFavicon() {
+            try {
+                const res = await fetch('/api/configuracion/publica');
+                if (!res.ok) return;
+                const cfg = await res.json();
+                if (cfg.logo_base64) {
+                    document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')
+                        .forEach(el => { el.href = cfg.logo_base64; });
+                }
+                if (cfg.logo_navbar_base64) {
+                    document.querySelectorAll('.logo-img').forEach(el => { el.src = cfg.logo_navbar_base64; });
+                }
+            } catch (_) { /* mantiene el favicon y el logo del navbar estáticos */ }
+        })();
 
         // ── Catálogo ──────────────────────────────────────────────────────────────
         let _todosProductos = [];

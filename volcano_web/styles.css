@@ -3,13 +3,15 @@
 
 .navbar {
     background: #000; display: flex; justify-content: space-between;
-    align-items: center; padding: 15px 5%; position: sticky; top: 0; z-index: 1000;
+    align-items: center; padding: 22px 5%; position: sticky; top: 0; z-index: 1000;
 }
-.logo { color: #fff; font-weight: 800; font-size: 1.5rem; }
+.logo { display: flex; align-items: center; color: #fff; font-weight: 800; font-size: 1.5rem; text-decoration: none; }
 .logo span { color: var(--yellow); }
+.logo-img { height: 42px; width: auto; display: block; }
 
-.nav-links { display: flex; gap: 20px; align-items: center; }
-.nav-links a { color: #a8a8a8; text-decoration: none; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; }
+.nav-links { display: flex; gap: 28px; align-items: center; }
+.nav-links a { color: #e8e8e8; text-decoration: none; font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; transition: color 0.2s; }
+.nav-links a:hover, .nav-links a.active { color: var(--yellow); }
 
 .dropdown { position: relative; }
 .dropdown-content {

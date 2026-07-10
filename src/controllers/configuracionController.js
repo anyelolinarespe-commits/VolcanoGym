@@ -3,10 +3,12 @@ import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 
 // Imágenes permitidas
 const CLAVES_IMAGEN = {
-  logo_base64:       { label: 'Logo (sidebar)'       },
-  icono_base64:      { label: 'Icono / Favicon'       },
-  logo_login_base64: { label: 'Logo Login'             },
-  qr_pago_base64:    { label: 'QR de Pago'             },
+  logo_base64:         { label: 'Logo (sidebar)'          },
+  icono_base64:        { label: 'Icono / Favicon'          },
+  logo_login_base64:   { label: 'Logo Login'                },
+  qr_pago_base64:      { label: 'QR de Pago'                },
+  logo_navbar_base64:  { label: 'Logo Navbar (sitio web)'   },
+  logo_navbar_claro_base64: { label: 'Logo Navbar (fondo claro)' },
 };
 
 const MIME_PERMITIDOS = new Set(['image/jpeg', 'image/jpg', 'image/png']);
@@ -33,7 +35,7 @@ export const getConfiguracion = async (req, res) => {
 export const getConfiguracionPublica = async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT clave, valor FROM configuracion_imagenes WHERE clave IN ('logo_login_base64','logo_base64')`
+      `SELECT clave, valor FROM configuracion_imagenes WHERE clave IN ('logo_login_base64','logo_base64','logo_navbar_base64','logo_navbar_claro_base64')`
     );
     const config = {};
     for (const row of result.rows) config[row.clave] = row.valor;
