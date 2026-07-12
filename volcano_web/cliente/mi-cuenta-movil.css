@@ -1,0 +1,268 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   MI CUENTA — ESTILOS BASE + MÓVIL
+   Tema claro (fondo gris claro, tarjetas blancas con sombra, acento rojo).
+   Este archivo define TODO el diseño base y móvil. El layout de escritorio
+   (sidebar + grids) vive aparte en mi-cuenta-pc.css, cargado solo en ≥1024px.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#eef1f5; --surface:#ffffff; --surface-2:#f7f9fc;
+  --border:#e3e8ef; --text:#1f2937; --text-2:#6b7280; --text-3:#9aa4b2;
+  --brand:#f60000; --brand-soft:#fef2f2;
+  --green:#16a34a; --green-soft:#dcfce7;
+  --red:#dc2626; --red-soft:#fee2e2;
+  --amber:#d97706; --amber-soft:#fef3c7;
+  --blue:#2563eb; --blue-soft:#dbeafe;
+  --shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;padding-bottom:70px}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+
+/* ── TOPBAR ── */
+.topbar{position:sticky;top:0;z-index:200;background:var(--surface);display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--border)}
+.topbar .logo{display:flex;align-items:center}
+.topbar .logo-img{height:32px;width:auto;display:block}
+.topbar .user-info{display:flex;align-items:center;gap:10px}
+.topbar .user-name{font-size:0.82rem;color:var(--text-2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar .btn-logout{background:none;border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text-2);font-size:0.75rem;display:flex;align-items:center;gap:5px;transition:all .2s}
+.topbar .btn-logout:hover{border-color:var(--brand);color:var(--brand)}
+.topbar .saludo{color:var(--text);font-size:0.95rem;font-weight:700}
+.topbar .btn-qr{align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-2)}
+.topbar .btn-qr:hover{border-color:var(--brand);color:var(--brand)}
+
+/* ── SIDEBAR (desktop) / BOTTOM NAV (móvil) ── */
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:62px;background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:300}
+.bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;color:var(--text-2);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;transition:color .15s;padding:8px 0}
+.bnav-item i{font-size:18px}
+.bnav-item.active{color:var(--brand)}
+
+/* ── SECTIONS ── */
+.section{display:none;padding:18px}
+.section.active{display:block}
+.section-title{font-size:1rem;font-weight:800;color:var(--text);margin-bottom:16px}
+
+/* ── CARDS ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.card-title{font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-3);margin-bottom:12px}
+/* Solo los encabezados con ícono circular pasan a flex (no romper los centrados) */
+.card-title:has(.hdr-icon),.pw-form h4:has(.hdr-icon){display:flex;align-items:center;gap:9px}
+/* Encabezado con badge de estado alineado a la derecha (ej. Acceso Express) */
+.card-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.card-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+
+/* ── MEMBERSHIP STATUS ── */
+.memb-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.5px}
+.memb-badge.activa{background:var(--green-soft);color:var(--green)}
+.memb-badge.vencida{background:var(--red-soft);color:var(--red)}
+.memb-badge.programada{background:var(--amber-soft);color:var(--amber)}
+.memb-badge.congelada{background:var(--blue-soft);color:var(--blue)}
+.memb-badge.sin-membresia{background:var(--surface-2);color:var(--text-2);border:1px solid var(--border)}
+
+.dias-ring{width:80px;height:80px;border-radius:50%;border:4px solid var(--brand);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0}
+.dias-ring .num{font-size:1.4rem;font-weight:900;color:var(--text);line-height:1}
+.dias-ring .lbl{font-size:0.52rem;color:var(--text-2);text-transform:uppercase;letter-spacing:0.5px}
+
+/* Barra de progreso de días (membresía activa) */
+.progress-track{height:8px;border-radius:20px;background:var(--border);overflow:hidden;margin-top:8px}
+.progress-fill{height:100%;border-radius:20px;background:var(--brand)}
+
+.deuda-alert{background:var(--red-soft);border:1px solid #fecaca;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.deuda-alert i{color:var(--red);font-size:1.2rem;flex-shrink:0}
+.deuda-alert p{font-size:0.8rem;color:#b91c1c}
+.deuda-alert strong{display:block;color:var(--red);font-size:0.9rem}
+
+/* ── STAT GRID ── */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;box-shadow:var(--shadow)}
+.stat-box .s-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.stat-box .s-val{font-size:1.5rem;font-weight:900;color:var(--text);line-height:1.1}
+.stat-box .s-lbl{font-size:0.62rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.6px;font-weight:800}
+.stat-box .s-unit{font-size:0.72rem;color:var(--text-2);margin-left:5px}
+.stat-box .s-ico{font-size:0.75rem;color:var(--brand);opacity:.75;flex-shrink:0}
+.stat-box.red .s-val{color:var(--brand)}
+.stat-box.green .s-val{color:var(--green)}
+
+/* Tarjeta "Racha actual": llama + número lado a lado */
+.racha-row{display:flex;align-items:center;gap:12px}
+.racha-ico{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:38px;height:38px;border-radius:50%;flex-shrink:0;
+  background:var(--brand-soft);color:var(--brand);font-size:1.05rem;
+}
+.racha-num{font-size:1.35rem;font-weight:900;color:var(--text);line-height:1.15}
+.racha-sub{font-size:0.72rem;color:var(--text-2);margin-top:1px}
+
+/* ── LISTS ── */
+.list-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.list-item:last-child{border-bottom:none}
+.list-item .icon{width:36px;height:36px;border-radius:10px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:0.9rem;flex-shrink:0}
+.list-item .icon.green{color:var(--green)}
+.list-item .icon.red{color:var(--red)}
+.list-item .icon.blue{color:var(--blue)}
+.list-item .icon.orange{color:var(--amber)}
+.list-item .meta{flex:1;min-width:0}
+.list-item .meta .title{font-size:0.85rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-item .meta .sub{font-size:0.72rem;color:var(--text-2);margin-top:2px}
+.list-item .val{font-size:0.82rem;font-weight:700;color:var(--text-2);text-align:right;white-space:nowrap}
+.list-item .val.green{color:var(--green)}
+.list-item .val.red{color:var(--red)}
+.list-item .pill{font-size:0.62rem;font-weight:800;text-transform:uppercase;padding:3px 9px;border-radius:20px;background:var(--surface-2);color:var(--text-2);border:1px solid var(--border)}
+
+/* ── IMC ── */
+.imc-gauge{position:relative;height:14px;border-radius:20px;background:linear-gradient(90deg,#3b82f6 0%,#22c55e 25%,#eab308 55%,#f97316 75%,#ef4444 100%);margin:10px 0 6px}
+.imc-needle{position:absolute;top:-3px;width:4px;height:20px;background:#111827;border-radius:2px;transform:translateX(-50%);box-shadow:0 0 4px rgba(0,0,0,.35);transition:left .5s ease}
+.imc-labels{display:flex;justify-content:space-between;font-size:0.6rem;color:var(--text-2);padding:0 2px}
+.imc-val-big{font-size:2.5rem;font-weight:900;color:var(--text);line-height:1}
+.imc-cat{font-size:0.78rem;font-weight:700;padding:4px 10px;border-radius:20px;display:inline-block;margin-top:6px}
+.imc-cat.bajo{background:var(--blue-soft);color:var(--blue)}
+.imc-cat.normal{background:var(--green-soft);color:var(--green)}
+.imc-cat.sobre{background:var(--amber-soft);color:var(--amber)}
+.imc-cat.obeso{background:var(--red-soft);color:var(--red)}
+.imc-mejora{font-size:0.78rem;color:var(--text-2);margin-top:8px;line-height:1.5}
+
+/* ── PESO FORM ── */
+.peso-form{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.peso-form h4{font-size:0.78rem;font-weight:800;text-transform:uppercase;color:var(--text-3);letter-spacing:0.5px;margin-bottom:12px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.form-row label,.form-single label{display:block;font-size:0.68rem;color:var(--text-2);font-weight:700;text-transform:uppercase;margin-bottom:5px}
+.form-row input,.form-single input,.form-row textarea,.form-single textarea{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:0.88rem;outline:none}
+.form-row input::placeholder,.form-single input::placeholder,.form-row textarea::placeholder{color:var(--text-3)}
+.form-row input:focus,.form-single input:focus,.form-single textarea:focus{border-color:var(--brand)}
+.form-row textarea,.form-single textarea{resize:vertical;min-height:60px;font-family:inherit}
+.form-single{margin-bottom:10px}
+/* Campos no editables (nombre, DNI): se ven como dato, no como input activo */
+input[readonly]{background:var(--surface-2);color:var(--text-2);cursor:default}
+input[readonly]:focus{border-color:var(--border)}
+
+/* ── PESO HISTORY ── */
+.peso-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.peso-row:last-child{border-bottom:none}
+.peso-row .fecha{font-size:0.72rem;color:var(--text-2);min-width:70px}
+.peso-row .kg{font-size:1rem;font-weight:800;color:var(--text)}
+.peso-row .imc-chip{font-size:0.65rem;padding:3px 8px;border-radius:10px;font-weight:700}
+.peso-row .trend{margin-left:auto;font-size:0.75rem;font-weight:700}
+.peso-row .notas{font-size:0.68rem;color:var(--text-2);flex:1}
+.peso-row .del-btn{background:none;border:none;color:var(--text-3);font-size:0.8rem;padding:4px;transition:color .2s}
+.peso-row .del-btn:hover{color:var(--red)}
+
+/* ── CUOTAS ── */
+.cuota-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px}
+.cuota-row:last-child{margin-bottom:0}
+.cuota-badge{font-size:0.62rem;font-weight:800;padding:3px 8px;border-radius:10px;text-transform:uppercase}
+.cuota-badge.pagado{background:var(--green-soft);color:var(--green)}
+.cuota-badge.pendiente{background:var(--amber-soft);color:var(--amber)}
+.cuota-badge.vencido{background:var(--red-soft);color:var(--red)}
+
+/* ── QR ── */
+.qr-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding:10px 0}
+.qr-wrap #qrCanvas,.qr-wrap #qrCanvasInicio{border-radius:12px;overflow:hidden}
+.qr-wrap .qr-code-txt{font-size:0.72rem;color:var(--text-2);font-family:monospace;word-break:break-all;text-align:center;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:6px 10px}
+
+/* ── PROFILE ── */
+.profile-photo{width:72px;height:72px;border-radius:50%;background:var(--surface-2);border:2px solid var(--border);object-fit:cover;flex-shrink:0}
+.profile-photo-placeholder{width:72px;height:72px;border-radius:50%;background:var(--surface-2);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.8rem;color:var(--text-3);flex-shrink:0}
+
+/* ── BUTTONS ── */
+.btn{width:100%;background:var(--brand);color:#fff;border:none;border-radius:10px;padding:13px;font-size:0.9rem;font-weight:700;transition:background .2s}
+.btn:hover{background:#c40000}
+.btn:disabled{background:var(--text-3);color:#fff;cursor:not-allowed}
+.btn-outline{background:none;border:1px solid var(--border);color:var(--text-2);border-radius:10px;padding:10px 16px;font-size:0.82rem;font-weight:700;transition:all .2s}
+.btn-outline:hover{border-color:var(--text-3);color:var(--text)}
+.btn-sm{padding:8px 14px;font-size:0.78rem;border-radius:8px}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 18px;border-radius:10px;font-size:0.82rem;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
+.toast.ok{background:var(--green);color:#fff}
+.toast.err{background:var(--red);color:#fff}
+
+/* ── EMPTY STATE ── */
+.empty{text-align:center;padding:40px 20px;color:var(--text-3)}
+.empty i{font-size:2.5rem;display:block;margin-bottom:10px}
+.empty p{font-size:0.82rem}
+
+/* ── ACORDEÓN ASISTENCIAS ── */
+.asist-anio-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;user-select:none;transition:background .15s}
+.asist-anio-hdr:hover{background:#eef2f7}
+.asist-anio-hdr .anio-lbl{font-size:0.88rem;font-weight:900;color:var(--text);letter-spacing:1px}
+.asist-anio-hdr .mes-chev{color:var(--text-2);font-size:0.75rem;transition:transform .2s}
+.asist-anio-hdr.open .mes-chev{transform:rotate(180deg)}
+.asist-anio-body{display:none;padding-left:10px;margin-bottom:10px}
+.asist-anio-body.open{display:block}
+.asist-mes-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:9px;margin-bottom:5px;cursor:pointer;user-select:none;transition:background .15s}
+.asist-mes-hdr:hover{background:var(--surface-2)}
+.asist-mes-hdr .mes-lbl{font-size:0.7rem;font-weight:800;text-transform:capitalize;color:var(--text-2)}
+.asist-mes-hdr .mes-badge{font-size:0.62rem;background:var(--surface-2);color:var(--text-2);border-radius:20px;padding:2px 8px;font-weight:700}
+.asist-mes-hdr .mes-chev{color:var(--text-3);font-size:0.7rem;transition:transform .2s}
+.asist-mes-hdr.open .mes-chev{transform:rotate(180deg)}
+.asist-mes-body{display:none;margin-bottom:4px}
+.asist-mes-body.open{display:block}
+
+/* ── CALENDARIO ── */
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.cal-header .cal-mes{font-size:0.9rem;font-weight:800;color:var(--text);text-transform:capitalize}
+.cal-header button{background:var(--surface);border:1px solid var(--border);color:var(--text-2);width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:0.9rem;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.cal-header button:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
+.cal-header button:disabled{opacity:.4}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-dow{text-align:center;font-size:0.6rem;font-weight:800;color:var(--text-3);text-transform:uppercase;padding:4px 0}
+.cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:0.72rem;font-weight:600;color:var(--text-2);cursor:default;position:relative;background:var(--surface-2)}
+.cal-day.other-month{color:var(--text-3);background:transparent}
+.cal-day.today{outline:2px solid var(--brand);outline-offset:-2px;color:var(--text)}
+.cal-day.asist-ok{background:var(--green-soft);color:var(--green);font-weight:800}
+.cal-day.asist-ok.today{outline-color:var(--green)}
+.cal-day.asist-inv{background:var(--red-soft);color:var(--red);font-weight:800}
+.cal-day.asist-inv.today{outline-color:var(--red)}
+.cal-legend{display:flex;gap:14px;font-size:0.65rem;color:var(--text-2);margin-top:10px;flex-wrap:wrap}
+.cal-legend span{display:flex;align-items:center;gap:5px}
+.cal-legend i{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+.cal-legend .dot-ok{background:var(--green-soft);border:1px solid #86efac}
+.cal-legend .dot-inv{background:var(--red-soft);border:1px solid #fca5a5}
+.cal-legend .dot-hoy{width:10px;height:10px;border-radius:3px;outline:2px solid var(--brand);outline-offset:1px}
+.cal-stats{display:flex;gap:10px;margin-top:12px;border-top:1px solid var(--border);padding-top:12px}
+.cal-stat{flex:1;text-align:center}
+.cal-stat .cs-num{font-size:1.4rem;font-weight:900;color:var(--text);line-height:1}
+.cal-stat .cs-lbl{font-size:0.6rem;color:var(--text-3);text-transform:uppercase;margin-top:2px}
+.cal-stat.green .cs-num{color:var(--green)}
+.cal-stat.red .cs-num{color:var(--brand)}
+
+/* ── LOADING ── */
+.loading{text-align:center;padding:30px;color:var(--text-3)}
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--brand);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── CHANGE PW FORM ── */
+.pw-form{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;margin-top:14px;box-shadow:var(--shadow)}
+.pw-form h4{font-size:0.78rem;font-weight:800;text-transform:uppercase;color:var(--text-3);margin-bottom:12px}
+.pw-form .input-wrap{position:relative}
+.pw-form .input-wrap input{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 40px 10px 12px;color:var(--text);font-size:0.88rem;outline:none}
+.pw-form .input-wrap input::placeholder{color:var(--text-3)}
+.pw-form .input-wrap input:focus{border-color:var(--brand)}
+.pw-form .toggle-pw{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-3);cursor:pointer}
+
+/* Ícono circular de los encabezados de tarjeta (Información personal / Seguridad) */
+.hdr-icon{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border-radius:50%;flex-shrink:0;
+  background:var(--brand-soft);color:var(--brand);font-size:0.72rem;
+}
+
+/* Nota informativa bajo el formulario de contraseña */
+.pw-hint{
+  display:flex;align-items:flex-start;gap:9px;margin-top:16px;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:10px;
+  padding:12px 14px;font-size:0.76rem;color:var(--text-2);line-height:1.5;
+}
+.pw-hint i{color:var(--text-3);margin-top:2px;flex-shrink:0}
+
+/* Elementos que solo aparecen en desktop (los muestra mi-cuenta-pc.css) */
+.desktop-only{display:none}
+
+/* ── RESPONSIVE MÓVIL AMPLIO (≥600px, sigue siendo layout apilado) ── */
+@media(min-width:600px){
+  .stat-grid{grid-template-columns:repeat(4,1fr)}
+  /* Clase de opt-in (no :not() con IDs) para no ganarle por especificidad
+     al override de escritorio en mi-cuenta-pc.css. */
+  .section-narrow{max-width:680px;margin:0 auto}
+}

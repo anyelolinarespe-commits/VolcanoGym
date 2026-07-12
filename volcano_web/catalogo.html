@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo — Volcano Gym Sede Balta</title>
+    <link rel="icon" type="image/png" href="/logo.png">
+    <link rel="apple-touch-icon" href="/logo.png">
+    <link rel="stylesheet" href="/volcano/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @media (min-width: 769px) { .mobile-only { display: none !important; } }
+        @media (max-width: 768px) { .pc-only { display: none !important; } body { padding-bottom: 70px; } }
+
+        /* BOTTOM NAV */
+        .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 65px; background: #fff; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 -2px 10px rgba(0,0,0,.15); z-index: 9999; border-top: 1px solid #e0e0e0; }
+        .bottom-nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; color: #555; font-size: 11px; font-weight: bold; flex: 1; transition: color .2s; }
+        .bottom-nav-item i { font-size: 20px; margin-bottom: 4px; }
+        .bottom-nav-item.active { color: #f60000; }
+
+        /* WHATSAPP */
+        .wsp-mobile { position: fixed; top: 15px; right: 15px; background: #25d366; color: #fff; width: 45px; height: 45px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 24px; box-shadow: 0 4px 8px rgba(0,0,0,.3); z-index: 100000; text-decoration: none; }
+        .wsp-pc { position: fixed; bottom: 25px; right: 25px; background: #25d366; color: #fff; width: 60px; height: 60px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 32px; box-shadow: 0 4px 10px rgba(0,0,0,.3); z-index: 9999; text-decoration: none; transition: transform .2s; }
+        .wsp-pc:hover { transform: scale(1.1); }
+
+        body { background: #080808; }
+
+        /* ── HERO HEADER ── */
+        .cat-hero {
+            background: linear-gradient(180deg, #0d0000 0%, #080808 100%);
+            border-bottom: 3px solid #f60000;
+            padding: 60px 20px 50px;
+            text-align: center;
+        }
+        .cat-hero .hero-eyebrow {
+            display: inline-block;
+            background: #f60000;
+            color: #fff;
+            font-size: 0.65rem;
+            font-weight: 800;
+            letter-spacing: 4px;
+            padding: 5px 16px;
+            text-transform: uppercase;
+            margin-bottom: 18px;
+        }
+        .cat-hero h1 {
+            color: #fff;
+            font-size: clamp(2rem, 6vw, 3.5rem);
+            font-weight: 900;
+            line-height: 1.05;
+            margin-bottom: 14px;
+            text-transform: uppercase;
+        }
+        .cat-hero h1 span { color: #f60000; }
+        .cat-hero p {
+            color: #888;
+            font-size: clamp(0.9rem, 2vw, 1rem);
+            max-width: 480px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* ── FILTROS DE CATEGORÍA ── */
+        .cat-filters {
+            max-width: 1140px;
+            margin: 0 auto;
+            padding: 30px 20px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .cat-filter-btn {
+            padding: 8px 18px;
+            border-radius: 20px;
+            border: 1px solid #2a2a2a;
+            background: #111;
+            color: #888;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all .2s;
+        }
+        .cat-filter-btn:hover { border-color: #444; color: #ccc; }
+        .cat-filter-btn.active { background: #f60000; border-color: #f60000; color: #fff; }
+
+        /* ── BARRA DE BÚSQUEDA ── */
+        .cat-search-wrap {
+            max-width: 1140px;
+            margin: 20px auto 0;
+            padding: 0 20px;
+        }
+        .cat-search {
+            width: 100%;
+            max-width: 380px;
+            background: #111;
+            border: 1px solid #2a2a2a;
+            border-radius: 24px;
+            padding: 10px 18px 10px 40px;
+            color: #e0e0e0;
+            font-size: 0.88rem;
+            font-family: 'Montserrat', sans-serif;
+            outline: none;
+            transition: border-color .2s;
+        }
+        .cat-search::placeholder { color: #444; }
+        .cat-search:focus { border-color: #555; }
+        .cat-search-wrap { position: relative; }
+        .cat-search-icon { position: absolute; left: 34px; top: 50%; transform: translateY(-50%); color: #444; font-size: 0.85rem; pointer-events: none; }
+
+        /* ── GRID DE PRODUCTOS ── */
+        .cat-grid-wrap {
+            max-width: 1140px;
+            margin: 0 auto;
+            padding: 30px 20px 80px;
+        }
+        .cat-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+        @media (max-width: 1024px) { .cat-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 768px)  { .cat-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; } }
+        @media (max-width: 480px)  { .cat-grid { grid-template-columns: 1fr 1fr; gap: 12px; } }
+
+        /* ── PRODUCTO CARD ── */
+        .pcat {
+            background: #111;
+            border: 1px solid #1e1e1e;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: transform .25s, border-color .2s;
+        }
+        .pcat:hover { transform: translateY(-4px); border-color: #333; }
+        .pcat-img-wrap {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            background: #1a1a1a;
+            overflow: hidden;
+        }
+        .pcat-img {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            transition: transform .3s;
+        }
+        .pcat:hover .pcat-img { transform: scale(1.04); }
+        .pcat-img-placeholder {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            color: #2a2a2a; font-size: 2.5rem;
+        }
+        .pcat-badge {
+            position: absolute;
+            top: 10px; left: 10px;
+            background: #f60000;
+            color: #fff;
+            font-size: 0.65rem;
+            font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+        }
+        .pcat-body {
+            padding: 14px 14px 16px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .pcat-cat {
+            color: #f60000;
+            font-size: 0.65rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .pcat-name {
+            color: #e8e8e8;
+            font-size: 0.9rem;
+            font-weight: 700;
+            line-height: 1.3;
+        }
+        @media (max-width: 480px) { .pcat-name { font-size: 0.82rem; } }
+        .pcat-price-row {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-top: 4px;
+        }
+        .pcat-price {
+            color: #fff;
+            font-size: 1.25rem;
+            font-weight: 800;
+        }
+        @media (max-width: 480px) { .pcat-price { font-size: 1.1rem; } }
+        .pcat-price-old {
+            color: #444;
+            font-size: 0.8rem;
+            text-decoration: line-through;
+        }
+        .pcat-wa-btn {
+            margin-top: auto;
+            padding-top: 12px;
+            display: flex;
+        }
+        .pcat-wa {
+            flex: 1;
+            background: #25d366;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 9px 12px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            font-family: 'Montserrat', sans-serif;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            text-decoration: none;
+            transition: background .2s;
+        }
+        .pcat-wa:hover { background: #128c47; }
+        @media (max-width: 480px) { .pcat-wa { font-size: 0.72rem; padding: 8px 8px; } }
+
+        /* ── MODAL DETALLE PRODUCTO ── */
+        .pcat { cursor: pointer; }
+        .pdet-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,.8);
+            z-index: 100000; display: flex; align-items: center; justify-content: center;
+            padding: 20px; animation: pdetFade .15s ease;
+        }
+        @keyframes pdetFade { from { opacity: 0; } to { opacity: 1; } }
+        .pdet-box {
+            background: #111; border: 1px solid #222; border-radius: 16px;
+            max-width: 860px; width: 100%; max-height: 90vh; overflow-y: auto;
+            display: grid; grid-template-columns: 1fr 1fr; position: relative;
+        }
+        @media (max-width: 720px) { .pdet-box { grid-template-columns: 1fr; } }
+        .pdet-close {
+            position: absolute; top: 12px; right: 12px; z-index: 2;
+            width: 36px; height: 36px; border-radius: 50%; border: none;
+            background: rgba(0,0,0,.6); color: #fff; font-size: 1.1rem; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .pdet-close:hover { background: #f60000; }
+        .pdet-img-wrap { background: #1a1a1a; aspect-ratio: 1/1; }
+        .pdet-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .pdet-img-wrap .pcat-img-placeholder { font-size: 4rem; }
+        .pdet-info { padding: 28px 26px; display: flex; flex-direction: column; }
+        .pdet-cat { color: #f60000; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+        .pdet-name { color: #fff; font-size: 1.4rem; font-weight: 800; margin: 6px 0 10px; }
+        .pdet-desc { color: #999; font-size: 0.85rem; line-height: 1.6; margin-bottom: 16px; }
+        .pdet-price { color: #fff; font-size: 1.7rem; font-weight: 800; margin-bottom: 4px; }
+        .pdet-stock { font-size: 0.78rem; margin-bottom: 16px; }
+        .pdet-stock.in  { color: #4caf50; }
+        .pdet-stock.out { color: #777; }
+        .pdet-variantes-label { color: #888; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .pdet-variantes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+        .pdet-var-btn {
+            padding: 8px 14px; border-radius: 8px; border: 1px solid #2a2a2a;
+            background: #1a1a1a; color: #bbb; font-size: 0.78rem; font-weight: 700;
+            cursor: pointer; transition: all .15s;
+        }
+        .pdet-var-btn:hover { border-color: #555; }
+        .pdet-var-btn.active { background: #f60000; border-color: #f60000; color: #fff; }
+        .pdet-var-btn:disabled { opacity: .4; cursor: not-allowed; text-decoration: line-through; }
+        .pdet-wa {
+            margin-top: auto; background: #25d366; color: #fff; border: none;
+            border-radius: 10px; padding: 13px; font-size: 0.9rem; font-weight: 700;
+            font-family: 'Montserrat', sans-serif; cursor: pointer; display: flex;
+            align-items: center; justify-content: center; gap: 8px; text-decoration: none;
+            transition: background .2s;
+        }
+        .pdet-wa:hover { background: #128c47; }
+
+        /* ── ESTADO DE CARGA / VACÍO ── */
+        .cat-state {
+            text-align: center;
+            padding: 80px 20px;
+            color: #333;
+        }
+        .cat-state i { font-size: 3rem; margin-bottom: 16px; display: block; }
+        .cat-state p { font-size: 1rem; }
+        .cat-state.loading { color: #555; }
+        .cat-state.error { color: #8b2020; }
+
+        /* ── FOOTER ── */
+        .main-footer { background: #0a0a0a; color: #676767; padding: 40px 0 20px; border-top: 1px solid #222; }
+        .footer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 30px; max-width: 1200px; margin: 0 auto; padding: 0 20px 30px; }
+        .footer-col h4 { color: #e0e0e0; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+        .footer-col a { color: #676767; text-decoration: none; display: block; margin-bottom: 10px; font-size: 0.9rem; transition: color 0.2s; }
+        .footer-col a:hover { color: var(--yellow); }
+        .footer-col p { font-size: 0.88rem; line-height: 1.7; }
+        .footer-socials { display: flex; gap: 14px; margin-top: 6px; }
+        .footer-socials a { color: #676767; font-size: 1.3rem; transition: color 0.2s; margin-bottom: 0 !important; }
+        .footer-socials a:hover { color: var(--yellow); }
+        .footer-bottom { border-top: 1px solid #161616; text-align: center; padding: 16px 20px 0; font-size: 0.8rem; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+        .footer-slogan { color: #444; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <!-- WhatsApp flotante -->
+    <a href="#" class="wsp-mobile mobile-only" id="waFloatMob"><i class="fab fa-whatsapp"></i></a>
+    <a href="#" class="wsp-pc pc-only"          id="waFloatPc"><i class="fab fa-whatsapp"></i></a>
+
+    <!-- NAVBAR -->
+    <header class="navbar">
+        <a href="/volcano" class="logo"><img src="/volcano/logo1barblanco.png" alt="Volcano Gym" class="logo-img"></a>
+        <input type="checkbox" id="menu-bar" class="pc-only">
+        <label for="menu-bar" class="menu-icon pc-only"><i class="fas fa-bars"></i></label>
+        <nav class="nav-links pc-only">
+            <a href="/volcano">Inicio</a>
+            <a href="/volcano/planes">Planes</a>
+            <a href="/volcano/catalogo" class="active">Catálogo</a>
+            <a href="/cliente" style="background:#f60000;color:#fff;padding:7px 16px;border-radius:20px;font-weight:800">Mi Cuenta</a>
+        </nav>
+    </header>
+
+    <!-- BOTTOM NAV (móvil) -->
+    <nav class="bottom-nav mobile-only">
+        <a href="/volcano" class="bottom-nav-item">
+            <i class="fas fa-home"></i><span>Inicio</span>
+        </a>
+        <a href="/volcano/planes" class="bottom-nav-item">
+            <i class="fas fa-dumbbell"></i><span>Planes</span>
+        </a>
+        <a href="/volcano/catalogo" class="bottom-nav-item active">
+            <i class="fas fa-store"></i><span>Catálogo</span>
+        </a>
+        <a href="/cliente" class="bottom-nav-item">
+            <i class="fas fa-user"></i><span>Mi Cuenta</span>
+        </a>
+    </nav>
+
+    <!-- HERO HEADER -->
+    <div class="cat-hero">
+        <span class="hero-eyebrow">Volcano Gym — Tienda</span>
+        <h1>NUESTRO <span>CATÁLOGO</span></h1>
+        <p>Suplementos, ropa y accesorios deportivos disponibles en sede.</p>
+    </div>
+
+    <!-- FILTROS -->
+    <div class="cat-filters" id="catFilters">
+        <button class="cat-filter-btn active" data-cat="todos" onclick="filtrarCategoria('todos', this)">Todos</button>
+    </div>
+
+    <!-- BÚSQUEDA -->
+    <div class="cat-search-wrap">
+        <i class="fas fa-search cat-search-icon"></i>
+        <input type="search" class="cat-search" id="catSearch" placeholder="Buscar producto..." oninput="buscarProducto(this.value)">
+    </div>
+
+    <!-- GRID -->
+    <div class="cat-grid-wrap">
+        <div id="catGrid">
+            <div class="cat-state loading">
+                <i class="fas fa-dumbbell fa-spin"></i>
+                <p>Cargando productos…</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="main-footer">
+        <div class="footer-grid">
+            <div class="footer-col">
+                <div class="logo" style="font-size:1.4rem; margin-bottom:12px;">VOLCANO <span>GYM</span></div>
+                <p>Sede Balta — Gimnasio y centro de fitness en Chiclayo.</p>
+                <div class="footer-socials" id="footer-socials" style="margin-top:16px;">
+                    <!-- renderizado dinámico desde localStorage volcano_contacto.redes -->
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4>Sede Balta</h4>
+                <p><i class="fas fa-map-marker-alt" style="color:var(--yellow);margin-right:6px"></i>Av. José Balta 2340, Chiclayo</p>
+                <p style="margin-top:8px"><i class="fas fa-phone" style="color:var(--yellow);margin-right:6px"></i><a class="footer-tel" href="tel:+51994681954" style="color:inherit;text-decoration:none">+51 994 681 954</a></p>
+                <p style="margin-top:8px"><i class="fas fa-envelope" style="color:var(--yellow);margin-right:6px"></i><a class="footer-email" href="mailto:Volcanogym21@gmail.com" style="color:inherit;text-decoration:none">Volcanogym21@gmail.com</a></p>
+            </div>
+            <div class="footer-col">
+                <h4>Horarios</h4>
+                <p>Lun – Vie: 7:00 AM – 5:00 PM</p>
+                <p>Sábado: 9:00 AM – 11:00 AM</p>
+                <p style="margin-top:8px;color:#555">Domingo: Cerrado</p>
+            </div>
+            <div class="footer-col">
+                <h4>Navegación</h4>
+                <a href="/volcano">Inicio</a>
+                <a href="/volcano/planes">Planes</a>
+                <a href="/volcano/catalogo">Catálogo</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>© 2026 Volcano Gym — Todos los derechos reservados.</p>
+            <span class="footer-slogan">"Tu mejor versión dentro y fuera de la cancha"</span>
+        </div>
+    </footer>
+
+    <script>
+        // En desarrollo (port 3001) apuntar al backend Spring Boot; en producción usar rutas relativas
+        const API_BASE = (location.port === '3001') ? 'http://localhost:8080' : '';
+        const CONTACTO_KEY = 'volcano_contacto';
+        const CONTACTO_DEFAULT = { whatsapp: '51994681954', email: 'Volcanogym21@gmail.com', telefono: '994 681 954' };
+
+        function getContacto() {
+            try { return Object.assign({}, CONTACTO_DEFAULT, JSON.parse(localStorage.getItem(CONTACTO_KEY) || '{}')); }
+            catch(e) { return CONTACTO_DEFAULT; }
+        }
+
+        const FA_ICONS = {
+            facebook: 'fab fa-facebook',   instagram: 'fab fa-instagram',
+            whatsapp: 'fab fa-whatsapp',   tiktok:    'fab fa-tiktok',
+            youtube:  'fab fa-youtube',    telegram:  'fab fa-telegram',
+            twitter:  'fab fa-x-twitter',  email:     'fas fa-envelope',
+            telefono: 'fas fa-phone',      web:       'fas fa-globe',
+        };
+        function _faHref(tipo, url) {
+            if (!url) return '#';
+            if (tipo === 'whatsapp') return `https://wa.me/${url.replace(/\D/g,'')}`;
+            if (tipo === 'telefono') return `tel:${url}`;
+            if (tipo === 'email')    return `mailto:${url}`;
+            return url;
+        }
+
+        function applyContacto() {
+            const C = getContacto();
+            const waNum = (C.whatsapp || '').replace(/\D/g,'');
+            const waBase = `https://wa.me/${waNum}`;
+            const waMsg  = `https://wa.me/${waNum}?text=${encodeURIComponent('Hola! Me gustaría recibir más información sobre el gimnasio.')}`;
+            document.querySelectorAll('.wsp-mobile, .wsp-pc').forEach(a => a.href = waMsg);
+            const footerEmail = document.querySelector('.footer-email');
+            if (footerEmail) { footerEmail.href = 'mailto:' + C.email; footerEmail.textContent = C.email; }
+            const footerTel = document.querySelector('.footer-tel');
+            if (footerTel) { footerTel.href = 'tel:+' + waNum; }
+            const socials = document.getElementById('footer-socials');
+            if (socials) {
+                const redes = Array.isArray(C.redes) ? C.redes : [];
+                if (redes.length) {
+                    socials.innerHTML = redes.map(r =>
+                        `<a href="${_faHref(r.tipo, r.url)}" target="_blank" rel="noopener" aria-label="${r.nombre}" title="${r.nombre}">
+                            <i class="${FA_ICONS[r.tipo] || 'fas fa-link'}"></i>
+                         </a>`
+                    ).join('');
+                } else if (C.whatsapp) {
+                    socials.innerHTML = `<a href="${waBase}" target="_blank" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>`;
+                }
+            }
+        }
+        applyContacto();
+
+        // Favicon dinámico: si el admin configuró un logo en Identidad Visual,
+        // reemplaza el favicon estático. Best-effort, no bloquea nada más.
+        (async function initFavicon() {
+            try {
+                const res = await fetch('/api/configuracion/publica');
+                if (!res.ok) return;
+                const cfg = await res.json();
+                if (cfg.logo_base64) {
+                    document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')
+                        .forEach(el => { el.href = cfg.logo_base64; });
+                }
+                if (cfg.logo_navbar_base64) {
+                    document.querySelectorAll('.logo-img').forEach(el => { el.src = cfg.logo_navbar_base64; });
+                }
+            } catch (_) { /* mantiene el favicon y el logo del navbar estáticos */ }
+        })();
+
+        // ── Catálogo ──────────────────────────────────────────────────────────────
+        let _todosProductos = [];
+        let _categoriaActiva = 'todos';
+        let _busqueda = '';
+
+        function _waProducto(nombre) {
+            const C = getContacto();
+            const waNum = (C.whatsapp || '51994681954').replace(/\D/g,'');
+            const msg = `Hola! Me interesa el producto: *${nombre}*. ¿Tienen disponibilidad?`;
+            return `https://wa.me/${waNum}?text=${encodeURIComponent(msg)}`;
+        }
+
+        function _fmtPrecio(p) {
+            if (p == null || p === '') return null;
+            const n = parseFloat(p);
+            return isNaN(n) ? null : 'S/ ' + n.toFixed(2).replace(/\.00$/, '');
+        }
+
+        function _cardHtml(p, fotoUrl) {
+            const precio    = _fmtPrecio(p.precio);
+            const precioOld = _fmtPrecio(p.precioOriginal ?? p.precio_original);
+            const descuento = (precioOld && precio && precioOld !== precio);
+            const badge = descuento ? `<span class="pcat-badge">OFERTA</span>` : '';
+            const imgHtml = fotoUrl
+                ? `<img class="pcat-img" src="${fotoUrl}" alt="${p.nombre}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=pcat-img-placeholder><i class=\\'fas fa-box\\'></i></div>'">`
+                : `<div class="pcat-img-placeholder"><i class="fas fa-box"></i></div>`;
+            const precioOldHtml = descuento ? `<span class="pcat-price-old">${precioOld}</span>` : '';
+            return `
+            <div class="pcat" onclick="abrirDetalleProducto(${p.id_producto})">
+                <div class="pcat-img-wrap">
+                    ${imgHtml}
+                    ${badge}
+                </div>
+                <div class="pcat-body">
+                    <div class="pcat-cat">${p.categoria || p.categoriaNombre || 'General'}</div>
+                    <div class="pcat-name">${p.nombre}</div>
+                    <div class="pcat-price-row">
+                        ${precio ? `<span class="pcat-price">${precio}</span>` : ''}
+                        ${precioOldHtml}
+                    </div>
+                    <div class="pcat-wa-btn">
+                        <a class="pcat-wa" href="${_waProducto(p.nombre)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">
+                            <i class="fab fa-whatsapp"></i> Consultar
+                        </a>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // ── DETALLE DE PRODUCTO (modal con selector de presentaciones) ──
+        let _pdetProducto = null;
+        let _pdetVarIdx = 0;
+
+        function abrirDetalleProducto(idProducto) {
+            const p = _todosProductos.find(x => x.id_producto === idProducto);
+            if (!p) return;
+            _pdetProducto = p;
+            const variantes = Array.isArray(p.presentaciones) ? p.presentaciones : [];
+            _pdetVarIdx = Math.max(0, variantes.findIndex(v => v.es_principal));
+
+            const overlay = document.createElement('div');
+            overlay.className = 'pdet-overlay';
+            overlay.id = 'pdetOverlay';
+            overlay.onclick = (e) => { if (e.target === overlay) cerrarDetalleProducto(); };
+            overlay.innerHTML = `
+                <div class="pdet-box">
+                    <button class="pdet-close" onclick="cerrarDetalleProducto()"><i class="fas fa-times"></i></button>
+                    <div class="pdet-img-wrap" id="pdetImgWrap"></div>
+                    <div class="pdet-info">
+                        <div class="pdet-cat">${p.categoria || p.categoriaNombre || 'General'}</div>
+                        <div class="pdet-name">${p.nombre}</div>
+                        <div class="pdet-desc">${p.descripcion || ''}</div>
+                        <div class="pdet-price" id="pdetPrecio"></div>
+                        <div class="pdet-stock" id="pdetStock"></div>
+                        ${variantes.length ? `
+                            <div class="pdet-variantes-label">Presentaciones</div>
+                            <div class="pdet-variantes" id="pdetVariantes">
+                                ${variantes.map((v, i) => `
+                                    <button class="pdet-var-btn" data-idx="${i}"
+                                        ${v.stock_actual <= 0 ? 'disabled' : ''}
+                                        onclick="_pdetSeleccionarVariante(${i})">
+                                        ${v.presentacion}${v.stock_actual <= 0 ? ' (Agotado)' : ''}
+                                    </button>`).join('')}
+                            </div>` : ''}
+                        <a class="pdet-wa" id="pdetWaBtn" target="_blank" rel="noopener">
+                            <i class="fab fa-whatsapp"></i> Consultar por WhatsApp
+                        </a>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+            document.body.style.overflow = 'hidden';
+            _pdetRenderVariante();
+            history.pushState({ pdet: idProducto }, '');
+        }
+
+        function _pdetSeleccionarVariante(idx) {
+            _pdetVarIdx = idx;
+            _pdetRenderVariante();
+        }
+
+        function _pdetRenderVariante() {
+            const p = _pdetProducto;
+            const variantes = Array.isArray(p.presentaciones) ? p.presentaciones : [];
+            const v = variantes[_pdetVarIdx];
+
+            const fotoUrl = (v && v.foto_url) || p.foto_variante_principal || p._fotoUrl;
+            const imgWrap = document.getElementById('pdetImgWrap');
+            imgWrap.innerHTML = fotoUrl
+                ? `<img src="${fotoUrl}" alt="${p.nombre}" onerror="this.parentElement.innerHTML='<div class=pcat-img-placeholder><i class=\\'fas fa-box\\'></i></div>'">`
+                : `<div class="pcat-img-placeholder"><i class="fas fa-box"></i></div>`;
+
+            const precio = _fmtPrecio(v ? v.precio_venta : p.precio);
+            document.getElementById('pdetPrecio').textContent = precio || '';
+
+            const stockEl = document.getElementById('pdetStock');
+            if (v) {
+                const hayStock = v.stock_actual > 0;
+                stockEl.textContent = hayStock ? `✓ Disponible (${v.stock_actual} en stock)` : 'Sin stock por ahora';
+                stockEl.className = 'pdet-stock ' + (hayStock ? 'in' : 'out');
+            } else {
+                stockEl.textContent = '';
+            }
+
+            document.querySelectorAll('#pdetVariantes .pdet-var-btn').forEach((btn, i) => {
+                btn.classList.toggle('active', i === _pdetVarIdx);
+            });
+
+            const nombreConVariante = v ? `${p.nombre} (${v.presentacion})` : p.nombre;
+            document.getElementById('pdetWaBtn').href = _waProducto(nombreConVariante);
+        }
+
+        function cerrarDetalleProducto(fromPopstate) {
+            const overlay = document.getElementById('pdetOverlay');
+            if (overlay) overlay.remove();
+            document.body.style.overflow = '';
+            _pdetProducto = null;
+            if (!fromPopstate && history.state && history.state.pdet) history.back();
+        }
+
+        window.addEventListener('popstate', () => {
+            if (document.getElementById('pdetOverlay')) cerrarDetalleProducto(true);
+        });
+
+        function _renderGrid() {
+            const q = _busqueda.toLowerCase().trim();
+            const lista = _todosProductos.filter(p => {
+                const matchCat = _categoriaActiva === 'todos' || (p.categoria || p.categoriaNombre || 'General') === _categoriaActiva;
+                const matchQ   = !q || p.nombre.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q);
+                return matchCat && matchQ;
+            });
+            const grid = document.getElementById('catGrid');
+            if (!lista.length) {
+                grid.innerHTML = `<div class="cat-state"><i class="fas fa-search"></i><p>Sin resultados para esa búsqueda.</p></div>`;
+                return;
+            }
+            grid.innerHTML = `<div class="cat-grid">${lista.map(p => _cardHtml(p, p._fotoUrl)).join('')}</div>`;
+        }
+
+        function filtrarCategoria(cat, btn) {
+            _categoriaActiva = cat;
+            document.querySelectorAll('.cat-filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            _renderGrid();
+        }
+
+        function buscarProducto(val) {
+            _busqueda = val;
+            _renderGrid();
+        }
+
+        function _buildFilters(productos) {
+            const cats = [...new Set(productos.map(p => p.categoria || p.categoriaNombre || 'General'))].sort();
+            const wrap = document.getElementById('catFilters');
+            const todosBtn = wrap.querySelector('[data-cat="todos"]');
+            cats.forEach(cat => {
+                const btn = document.createElement('button');
+                btn.className = 'cat-filter-btn';
+                btn.dataset.cat = cat;
+                btn.textContent = cat;
+                btn.onclick = () => filtrarCategoria(cat, btn);
+                wrap.appendChild(btn);
+            });
+        }
+
+        async function _fetchFoto(id) {
+            try {
+                const res = await fetch(`${API_BASE}/api/productos/${id}/fotos`);
+                if (!res.ok) return null;
+                const fotos = await res.json();
+                if (Array.isArray(fotos) && fotos.length) {
+                    const f = fotos[0];
+                    if (f.url_foto) return f.url_foto;
+                    if (f.url)      return f.url.startsWith('http') ? f.url : API_BASE + f.url;
+                }
+            } catch {}
+            return null;
+        }
+
+        async function cargarCatalogo() {
+            try {
+                const res = await fetch(`${API_BASE}/api/productos?estado=1&limit=100`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                let data = await res.json();
+                const lista = Array.isArray(data) ? data : (data.data ?? data.content ?? data.productos ?? []);
+                if (!lista.length) {
+                    document.getElementById('catGrid').innerHTML =
+                        `<div class="cat-state"><i class="fas fa-box-open"></i><p>No hay productos disponibles por ahora.</p></div>`;
+                    return;
+                }
+                // Mapear campos reales de la API a los nombres usados por el render
+                lista.forEach(p => {
+                    p.precio = p.precio_venta_principal;
+                    p.precioOriginal = p.precio_original ?? null;
+                });
+
+                // Cargar fotos en paralelo (máx. 8 a la vez para no saturar)
+                const BATCH = 8;
+                for (let i = 0; i < lista.length; i += BATCH) {
+                    const batch = lista.slice(i, i + BATCH);
+                    await Promise.all(batch.map(async p => {
+                        p._fotoUrl = p.foto_variante_principal || await _fetchFoto(p.id_producto);
+                    }));
+                }
+                _todosProductos = lista;
+                _buildFilters(lista);
+                _renderGrid();
+            } catch(e) {
+                document.getElementById('catGrid').innerHTML =
+                    `<div class="cat-state error"><i class="fas fa-exclamation-circle"></i><p>No se pudo cargar el catálogo.<br><small>${e.message}</small></p></div>`;
+            }
+        }
+
+        cargarCatalogo();
+    </script>
+</body>
+</html>

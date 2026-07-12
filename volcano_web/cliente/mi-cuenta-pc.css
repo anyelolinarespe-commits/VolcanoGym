@@ -1,0 +1,133 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   MI CUENTA — ESTILOS DE ESCRITORIO (≥1024px)
+   Sidebar + grids. Se enlaza con media="(min-width:1024px)" desde
+   mi-cuenta.html, así que no necesita el wrapper @media aquí.
+   La base + móvil vive en mi-cuenta-movil.css.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+body{padding-bottom:0}
+.desktop-only{display:block}
+.btn-qr.desktop-only{display:flex}
+/* La marca vive en el sidebar, no en la barra superior */
+.topbar .logo{display:none}
+
+/* ── SIDEBAR (el bottom-nav móvil se reestiliza como barra lateral) ── */
+.bottom-nav{
+  top:0;bottom:0;right:auto;left:0;width:185px;height:auto;
+  flex-direction:column;align-items:stretch;justify-content:flex-start;
+  border-top:none;border-right:1px solid var(--border);
+  padding:0 0 16px;gap:2px;overflow-y:auto;
+}
+.sidebar-logo-img{height:30px;width:auto;display:block;margin:22px 16px 24px;object-fit:contain}
+.bnav-item{
+  flex:none;flex-direction:row;justify-content:flex-start;align-items:center;
+  gap:11px;padding:11px 14px;margin:0 10px;border-radius:10px;
+  font-size:0.84rem;font-weight:600;letter-spacing:0;text-transform:none;
+  color:var(--text-2);text-align:left;
+}
+.bnav-item i{font-size:15px;width:18px;text-align:center;flex-shrink:0}
+.bnav-item:hover{background:var(--surface-2);color:var(--text)}
+.bnav-item.active{background:var(--brand-soft);color:var(--brand);font-weight:700}
+
+/* ── TOPBAR ── */
+.topbar{left:185px;padding:0 28px;height:56px;position:sticky}
+.topbar-titulo{font-size:1rem;font-weight:700;color:var(--text)}
+.topbar .saludo{font-size:0.88rem;font-weight:400;color:var(--text-2);margin-left:auto;margin-right:16px}
+.topbar .saludo span{font-weight:700;color:var(--text)}
+.topbar .user-name{max-width:none}
+
+/* ── CONTENIDO ── */
+.section{margin-left:185px;padding:22px 28px;max-width:none}
+/* El nombre de la vista ya se muestra en la barra superior */
+.section-title{display:none}
+/* El saludo también vive arriba: la bienvenida con foto es solo para móvil */
+.inicio-bienvenida{display:none}
+
+/* ══════════════════ INICIO ══════════════════ */
+#sec-inicio .inicio-grid{
+  display:grid;grid-template-columns:minmax(0,1fr) 340px;
+  gap:20px;align-items:start;
+}
+#sec-inicio .inicio-main{min-width:0}
+#sec-inicio .inicio-side{display:flex;flex-direction:column;gap:16px}
+#sec-inicio .inicio-side .card{margin-bottom:0}
+
+/* Tarjeta de membresía activa: acento rojo a la izquierda y encabezado de marca */
+#cardMembResumen{border-left:4px solid var(--brand);padding:20px 22px}
+#cardMembResumen > .card-title{color:var(--brand)}
+
+/* 4 tarjetas de estadísticas en una fila, texto alineado a la izquierda */
+#sec-inicio .stat-grid{grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px !important}
+#sec-inicio .stat-box{text-align:left;padding:16px 18px}
+#sec-inicio .stat-box .s-val{font-size:1.7rem}
+
+/* Acceso Express: QR grande centrado */
+#sec-inicio .inicio-side .qr-wrap{padding:4px 0 0}
+#sec-inicio .inicio-side .qr-code-txt{width:100%;letter-spacing:1px;padding:9px 10px}
+
+/* ══════════════════ MIS MEMBRESÍAS ══════════════════ */
+#contenidoMemb{max-width:960px}
+
+/* ══════════════════ ASISTENCIAS ══════════════════
+   El selector lleva ".active" (no solo el ID) porque un ID pelado gana en
+   especificidad a ".section{display:none}" y forzaría el grid — y por tanto
+   la visibilidad — incluso con la sección inactiva. */
+#sec-asistencias.active{
+  display:grid;grid-template-columns:minmax(0,1fr) 340px;
+  gap:20px;align-items:start;max-width:1180px;
+}
+#sec-asistencias .section-title,#sec-asistencias .loading{grid-column:1 / -1}
+#calCard,#contenidoAsist{margin:0}
+#calCard{padding:20px 22px}
+#calCard .cal-day{font-size:0.8rem}
+
+/* ══════════════════ PESO & IMC ══════════════════ */
+#sec-peso{max-width:1180px}
+#sec-peso #cardImc{padding:20px 22px}
+#sec-peso .peso-grid{
+  display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);
+  gap:18px;align-items:start;
+}
+#sec-peso .peso-grid .peso-form,
+#sec-peso .peso-grid .card{margin-bottom:0}
+
+/* ══════════════════ MIS COMPRAS ══════════════════ */
+#contenidoCompras{max-width:960px}
+
+/* ══════════════════ MI PERFIL ══════════════════ */
+#sec-perfil{max-width:1180px}
+#sec-perfil .perfil-grid{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:20px;align-items:start;
+}
+#sec-perfil .perfil-grid > *{margin:0}
+#sec-perfil .perfil-grid .card,
+#sec-perfil .perfil-grid .pw-form{padding:22px 24px}
+
+/* Encabezados de columna (Información personal / Seguridad) */
+#sec-perfil .perfil-grid .card-title,
+#sec-perfil .perfil-grid h4{
+  font-size:0.7rem;letter-spacing:0.8px;color:var(--text-2);margin-bottom:18px;
+}
+
+/* Campos: etiqueta arriba en texto normal, input relleno claro */
+#sec-perfil .form-row{gap:14px;margin-bottom:14px}
+#sec-perfil .form-row label,
+#sec-perfil .form-single label{
+  font-size:0.72rem;font-weight:600;text-transform:none;
+  color:var(--text);margin-bottom:6px;letter-spacing:0;
+}
+#sec-perfil .form-row input,
+#sec-perfil .form-single input{
+  background:var(--surface-2);padding:11px 14px;border-radius:10px;font-size:0.9rem;
+}
+#sec-perfil .pw-form .input-wrap{margin-bottom:14px}
+#sec-perfil .pw-form .input-wrap input{
+  background:var(--surface-2);padding:11px 40px 11px 14px;border-radius:10px;font-size:0.9rem;
+}
+
+/* Guardar cambios: alineado a la derecha. Actualizar contraseña: ancho completo */
+#sec-perfil #contenidoPerfil > .btn{
+  width:auto;display:block;margin-left:auto;padding:11px 22px;border-radius:10px;
+}
+#sec-perfil .pw-form > .btn{width:100%;padding:12px;border-radius:10px;font-size:0.88rem}

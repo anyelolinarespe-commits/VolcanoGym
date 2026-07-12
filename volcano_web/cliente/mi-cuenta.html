@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mi Cuenta — Volcano Gym</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="apple-touch-icon" href="/logo.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<link rel="stylesheet" href="mi-cuenta-movil.css">
+<link rel="stylesheet" href="mi-cuenta-pc.css" media="(min-width:1024px)">
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <a href="/volcano" class="logo"><img src="/volcano/logo1bar.png" alt="Volcano Gym" class="logo-img"></a>
+  <!-- Título de la vista actual (solo PC); lo actualiza navTo() -->
+  <div class="topbar-titulo desktop-only" id="topbarTitulo">Dashboard</div>
+  <div class="saludo desktop-only">¡Hola de nuevo, <span id="topSaludoNombre">—</span>!</div>
+  <div class="user-info">
+    <button class="btn-qr desktop-only" onclick="navTo('perfil', document.querySelector('.bnav-item[data-nav=perfil]'))" title="Ver mi código QR">
+      <i class="fas fa-qrcode"></i>
+    </button>
+    <span class="user-name" id="topNombre">—</span>
+    <button class="btn-logout" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Salir</button>
+  </div>
+</div>
+
+<!-- SECTIONS -->
+<!-- ═══ INICIO ═══ -->
+<div class="section section-narrow active" id="sec-inicio">
+  <div class="loading" id="loadInicio"><div class="spinner"></div></div>
+  <div id="contenidoInicio" style="display:none">
+    <div class="inicio-grid">
+      <!-- Columna principal -->
+      <div class="inicio-main">
+
+        <!-- Bienvenida (solo móvil: en PC el saludo vive en la barra superior) -->
+        <div class="inicio-bienvenida" style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+          <div id="inicioPfp"></div>
+          <div>
+            <div style="color:var(--text-3);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.5px">Bienvenido/a</div>
+            <div style="font-size:1.15rem;font-weight:800;color:var(--text)" id="inicioBienvenida">—</div>
+            <div style="margin-top:4px" id="inicioBadge"></div>
+          </div>
+        </div>
+
+        <!-- Alerta deuda -->
+        <div class="deuda-alert" id="alertDeuda" style="display:none">
+          <i class="fas fa-exclamation-triangle"></i>
+          <p><strong id="alertDeudaMonto"></strong><span id="alertDeudaMsg"></span></p>
+        </div>
+
+        <!-- Membresía activa resumen -->
+        <div class="card" id="cardMembResumen">
+          <div class="card-title">Membresía activa</div>
+          <div id="membResumenContent"></div>
+        </div>
+
+        <!-- Stats rápidos -->
+        <div class="stat-grid" style="margin-bottom:14px">
+          <div class="stat-box">
+            <div class="s-head"><span class="s-lbl">Asistencias mes</span><i class="fas fa-chart-line s-ico"></i></div>
+            <div><span class="s-val" id="statAsistMes">—</span><span class="s-unit">visitas</span></div>
+          </div>
+          <div class="stat-box">
+            <div class="s-head"><span class="s-lbl">Total histórico</span><i class="fas fa-trophy s-ico"></i></div>
+            <div><span class="s-val" id="statAsistTotal">—</span><span class="s-unit">total</span></div>
+          </div>
+          <div class="stat-box">
+            <div class="s-head"><span class="s-lbl">Peso actual</span><i class="fas fa-weight-scale s-ico"></i></div>
+            <div><span class="s-val" id="statPesoActual">—</span><span class="s-unit">kg</span></div>
+          </div>
+          <div class="stat-box">
+            <div class="s-head"><span class="s-lbl">IMC</span><i class="fas fa-bolt s-ico"></i></div>
+            <div><span class="s-val" id="statImcActual">—</span><span class="s-unit" id="statImcCat"></span></div>
+          </div>
+        </div>
+
+        <!-- Últimas 3 asistencias -->
+        <div class="card">
+          <div class="card-title">Últimas visitas</div>
+          <div id="ultimasAsistencias"></div>
+        </div>
+      </div>
+
+      <!-- Columna lateral (Acceso Express / Vencimiento / Racha) — también visible en móvil, apilada -->
+      <div class="inicio-side">
+        <div class="card">
+          <div class="card-title card-title-row">
+            <span>Acceso Express</span>
+            <span id="qrEstadoBadge"></span>
+          </div>
+          <div class="qr-wrap">
+            <div id="qrCanvasInicio" style="background:#fff;padding:10px;border-radius:12px;border:1px solid var(--border)"></div>
+            <div class="qr-code-txt" id="qrTxtInicio"></div>
+            <div style="font-size:0.72rem;color:var(--text-2);text-align:center">Muestra este código al ingresar</div>
+          </div>
+        </div>
+        <div class="card" id="cardVencimientoInicio"></div>
+        <div class="card">
+          <div class="card-title">Racha actual</div>
+          <div class="racha-row">
+            <span class="racha-ico"><i class="fas fa-fire"></i></span>
+            <div>
+              <div class="racha-num"><span id="rachaInicioNum">—</span> <span id="rachaInicioLbl">días</span></div>
+              <div class="racha-sub">¡Sigue así!</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MEMBRESÍA ═══ -->
+<div class="section section-narrow" id="sec-membresia">
+  <div class="section-title">Mis membresías</div>
+  <div class="loading" id="loadMemb"><div class="spinner"></div></div>
+  <div id="contenidoMemb" style="display:none"></div>
+</div>
+
+<!-- ═══ ASISTENCIAS ═══ -->
+<div class="section" id="sec-asistencias">
+  <div class="section-title">Historial de asistencias</div>
+  <div class="loading" id="loadAsist"><div class="spinner"></div></div>
+
+  <!-- Calendario -->
+  <div id="calCard" style="display:none" class="card">
+    <div class="cal-header">
+      <button id="calPrev" onclick="calNavegar(-1)">‹</button>
+      <span class="cal-mes" id="calTitulo">—</span>
+      <button id="calNext" onclick="calNavegar(1)">›</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-legend">
+      <span><i class="dot-ok"></i> Asistencia válida</span>
+      <span><i class="dot-inv"></i> Sin membresía</span>
+      <span><i class="dot-hoy"></i> Hoy</span>
+    </div>
+    <div class="cal-stats">
+      <div class="cal-stat green"><div class="cs-num" id="calMesCount">0</div><div class="cs-lbl">Este mes</div></div>
+      <div class="cal-stat"><div class="cs-num" id="calAnioCount">0</div><div class="cs-lbl">Este año</div></div>
+      <div class="cal-stat"><div class="cs-num" id="calTotal">0</div><div class="cs-lbl">Total</div></div>
+      <div class="cal-stat red"><div class="cs-num" id="calRacha">0</div><div class="cs-lbl">Racha días</div></div>
+    </div>
+  </div>
+
+  <div id="contenidoAsist" style="display:none"></div>
+</div>
+
+<!-- ═══ MI PESO ═══ -->
+<div class="section" id="sec-peso">
+  <div class="section-title">Peso & IMC</div>
+
+  <!-- IMC visual (ancho completo) -->
+  <div class="card" id="cardImc">
+    <div class="card-title">Índice de Masa Corporal</div>
+    <div id="imcContent"><div class="empty"><i class="fas fa-weight-scale"></i><p>Sin registros de peso aún.</p></div></div>
+  </div>
+
+  <div class="peso-grid">
+    <!-- Agregar peso -->
+    <div class="peso-form">
+      <h4><i class="fas fa-plus" style="margin-right:5px"></i>Registrar peso</h4>
+      <div class="form-row">
+        <div>
+          <label>Peso (kg) *</label>
+          <input type="number" id="inpPeso" placeholder="Ej: 70.5" min="20" max="300" step="0.1">
+        </div>
+        <div>
+          <label>Altura (cm)</label>
+          <input type="number" id="inpAltura" placeholder="Ej: 175" min="100" max="250" step="0.1">
+        </div>
+      </div>
+      <div class="form-single">
+        <label>Notas (opcional)</label>
+        <textarea id="inpNotas" placeholder="Ej: después del entrenamiento..."></textarea>
+      </div>
+      <button class="btn btn-sm" onclick="registrarPeso()"><i class="fas fa-save" style="margin-right:5px"></i>Guardar registro</button>
+    </div>
+
+    <!-- Historial -->
+    <div class="card" style="margin-bottom:0">
+      <div class="card-title">Historial de peso</div>
+      <div class="loading" id="loadPeso"><div class="spinner"></div></div>
+      <div id="contenidoPeso" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PERFIL ═══ -->
+<div class="section" id="sec-perfil">
+  <div class="section-title">Mi perfil</div>
+
+  <!-- Código QR (ancho completo, arriba) -->
+  <div class="card">
+    <div class="card-title">Código QR de acceso</div>
+    <div class="qr-wrap">
+      <div id="qrCanvas" style="background:#fff;padding:10px;border-radius:12px;border:1px solid var(--border)"></div>
+      <div class="qr-code-txt" id="qrTxt"></div>
+    </div>
+  </div>
+
+  <div class="perfil-grid">
+    <!-- Info personal editable -->
+    <div class="card" id="cardPerfil" style="margin-bottom:0">
+      <div class="card-title"><span class="hdr-icon"><i class="fas fa-user"></i></span>Información personal</div>
+      <div class="loading" id="loadPerfil"><div class="spinner"></div></div>
+      <div id="contenidoPerfil" style="display:none"></div>
+    </div>
+
+    <!-- Cambiar contraseña -->
+    <div class="pw-form" style="margin-top:0">
+      <h4><span class="hdr-icon"><i class="fas fa-lock"></i></span>Seguridad</h4>
+      <div class="form-single">
+        <label>Contraseña actual</label>
+        <div class="input-wrap">
+          <input type="password" id="pwActual" placeholder="••••••••">
+          <button class="toggle-pw" type="button" onclick="toggleInput('pwActual','eyePwA')"><i class="fas fa-eye" id="eyePwA"></i></button>
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label>Nueva contraseña</label>
+          <div class="input-wrap">
+            <input type="password" id="pwNueva" placeholder="••••••••">
+            <button class="toggle-pw" type="button" onclick="toggleInput('pwNueva','eyePwN')"><i class="fas fa-eye" id="eyePwN"></i></button>
+          </div>
+        </div>
+        <div>
+          <label>Confirmar</label>
+          <div class="input-wrap">
+            <input type="password" id="pwConfirm" placeholder="••••••••">
+            <button class="toggle-pw" type="button" onclick="toggleInput('pwConfirm','eyePwC')"><i class="fas fa-eye" id="eyePwC"></i></button>
+          </div>
+        </div>
+      </div>
+      <button class="btn" onclick="cambiarPassword()">Actualizar contraseña</button>
+      <div class="pw-hint">
+        <i class="fas fa-circle-info"></i>
+        <span>Tu contraseña debe tener al menos 6 caracteres. Te recomendamos combinar mayúsculas, minúsculas y números.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ COMPRAS ═══ -->
+<div class="section section-narrow" id="sec-compras">
+  <div class="section-title">Mis compras</div>
+  <div class="loading" id="loadCompras"><div class="spinner"></div></div>
+  <div id="contenidoCompras" style="display:none"></div>
+</div>
+
+<!-- BOTTOM NAV (móvil) / SIDEBAR (desktop, ≥1024px vía CSS) -->
+<nav class="bottom-nav">
+  <img src="/volcano/logo1bar.png" alt="Volcano Gym" class="sidebar-logo-img desktop-only">
+  <button class="bnav-item active" data-nav="inicio" onclick="navTo('inicio', this)"><i class="fas fa-home"></i>Inicio</button>
+  <button class="bnav-item" data-nav="membresia" onclick="navTo('membresia', this)"><i class="fas fa-id-badge"></i>Membresía</button>
+  <button class="bnav-item" data-nav="asistencias" onclick="navTo('asistencias', this)"><i class="fas fa-calendar-check"></i>Asistencias</button>
+  <button class="bnav-item" data-nav="peso" onclick="navTo('peso', this)"><i class="fas fa-weight-scale"></i>Peso</button>
+  <button class="bnav-item" data-nav="compras" onclick="navTo('compras', this)"><i class="fas fa-shopping-bag"></i>Compras</button>
+  <button class="bnav-item" data-nav="perfil" onclick="navTo('perfil', this)"><i class="fas fa-user"></i>Perfil</button>
+</nav>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script src="js/mi-cuenta-core.js"></script>
+<script src="js/mi-cuenta-inicio.js"></script>
+<script src="js/mi-cuenta-comprobante-membresia.js"></script>
+<script src="js/mi-cuenta-membresias.js"></script>
+<script src="js/mi-cuenta-asistencias.js"></script>
+<script src="js/mi-cuenta-peso.js"></script>
+<script src="js/mi-cuenta-perfil.js"></script>
+<script src="js/mi-cuenta-compras.js"></script>
+</body>
+</html>

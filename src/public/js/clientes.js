@@ -1,0 +1,2420 @@
+// ══════════════════════════════════════════════════════════════════════════════
+//  MÓDULO: CLIENTES  — versión mejorada
+//  Cambios:
+//    • Botón "Ver" → modal historial completo (matrículas, asistencias, caja)
+//    • Botón único adaptativo: "Matricular" / "Renovar" / "Congelada"
+//    • Al presionar "Renovar" abre modal de acción con opciones en la parte
+//      superior: Congelar/Descongelar y Eliminar membresía (+ siempre pide motivo)
+//    • Filtro de fechas en historial
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _filtroClienteActual  = 'todos';
+let _clienteSearchTimer   = null;
+
+// Separa dígitos en grupos de 3 visualmente; los espacios tienen user-select:none
+// para que al copiar con el ratón se obtenga el número limpio.
+function fmtTel(raw) {
+  if (!raw) return '—';
+  const digits = String(raw).replace(/\D/g, '');
+  if (!digits.length) return String(raw);
+  const sep = '<span style="user-select:none;pointer-events:none"> </span>';
+  return (digits.match(/.{1,3}/g) || [digits]).join(sep);
+}
+
+// Primer nombre + 2 apellidos en formato Título (1ª letra mayúscula, resto minúsculas)
+function fmtNombreCard(nombre, apellido) {
+  const toTitle = s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  const n = (nombre  || '').trim().split(/\s+/).filter(Boolean);
+  const a = (apellido || '').trim().split(/\s+/).filter(Boolean);
+  return [...n.slice(0, 1), ...a.slice(0, 2)].map(toTitle).join(' ');
+}
+
+// ── CARGAR CLIENTES ───────────────────────────────────────────────────────────
+async function loadClientes(page = 1) {
+  document.getElementById('tbodyClientes').innerHTML =
+    '<tr class="loading-row"><td colspan="11">Cargando...</td></tr>';
+  cargarRegistradoresClientes();   // llena el select "Registrado por" (una sola vez)
+  try {
+    const raw    = document.getElementById('searchClientes')?.value || '';
+    const parsed = parseSearchInput(raw);
+    const params = new URLSearchParams({ page, limit: 25 });
+    if (parsed.type === 'id')    params.set('id', parsed.value);
+    else if (parsed.value)       params.set('q', parsed.value);
+    if (_filtroClienteActual !== 'todos') params.set('filtro', _filtroClienteActual);
+
+    // Filtros adicionales: usuario que registró + rango de fecha de registro
+    const registrador = document.getElementById('cliFiltroRegistrador')?.value || '';
+    const fechaIni    = document.getElementById('cliFechaInicio')?.value        || '';
+    const fechaFin    = document.getElementById('cliFechaFin')?.value           || '';
+    if (registrador) params.set('id_usuario_reg', registrador);
+    if (fechaIni)    params.set('fecha_inicio', fechaIni);
+    if (fechaFin)    params.set('fecha_fin', fechaFin);
+
+    const [res, stats] = await Promise.all([
+      api('GET', `/api/clientes?${params}`),
+      api('GET', '/api/clientes/stats')
+    ]);
+    dataClientes      = res.data;
+    clientesFiltrados = res.data;
+
+    document.getElementById('cl-activos').textContent    = stats.activos;
+    document.getElementById('cl-vencidas').textContent   = stats.vencidas;
+    document.getElementById('cl-congeladas').textContent = stats.congeladas;
+    document.getElementById('cl-sin-memb').textContent   = stats.sin_membresia ?? 0;
+    document.getElementById('cl-mes').textContent        = stats.este_mes;
+    document.getElementById('cl-saldo').textContent      = stats.con_saldo ?? 0;
+
+    const el = document.getElementById('countClientes');
+    if (el) el.textContent = res.total;
+
+    renderClientes(res.data, res);
+  } catch (e) {
+    document.getElementById('tbodyClientes').innerHTML =
+      `<tr class="empty-row"><td colspan="11">${e.message}</td></tr>`;
+  }
+}
+
+// ── FILTROS ───────────────────────────────────────────────────────────────────
+function filtroCliente(f, el) {
+  _filtroClienteActual = f;
+  document.querySelectorAll('#clienteStatsRow .stat-pill').forEach(p => p.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const sel = document.getElementById('filtroEstadoClientes');
+  if (sel) sel.value = f;
+  loadClientes(1);
+}
+
+function filtroClienteSelect(f) {
+  _filtroClienteActual = f;
+  document.querySelectorAll('#clienteStatsRow .stat-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.f === f);
+  });
+  loadClientes(1);
+}
+
+function filtrarClientes() {
+  clearTimeout(_clienteSearchTimer);
+  // Si hay texto en el buscador, ignorar el filtro de estado para buscar en todos los clientes
+  const raw = document.getElementById('searchClientes')?.value || '';
+  if (raw.trim()) {
+    _filtroClienteActual = 'todos';
+    document.querySelectorAll('#clienteStatsRow .stat-pill').forEach(p => p.classList.remove('active'));
+    const selFiltro = document.getElementById('filtroEstadoClientes');
+    if (selFiltro) selFiltro.value = 'todos';
+  }
+  _clienteSearchTimer = setTimeout(() => loadClientes(1), 300);
+}
+
+// Despliega/colapsa el panel de filtros (solo móvil; en escritorio siempre visible).
+function toggleCliFiltros(btn) {
+  const panel = document.getElementById('cliFiltrosPanel');
+  if (!panel) return;
+  const abierto = panel.classList.toggle('aud-filtros-open');
+  btn.classList.toggle('aud-open', abierto);
+}
+
+// Carga el select "Registrado por" con los usuarios que han registrado clientes.
+async function cargarRegistradoresClientes() {
+  const sel = document.getElementById('cliFiltroRegistrador');
+  if (!sel || sel.options.length > 1) return;   // ya cargado
+  try {
+    const lista = await api('GET', '/api/clientes/usuarios-registradores');
+    lista.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.id_usuario;
+      opt.textContent = u.nombre_completo || u.username;
+      sel.appendChild(opt);
+    });
+  } catch (_) {}
+}
+
+// Limpia TODOS los filtros de clientes (búsqueda, estado, registrador y fechas).
+function limpiarFiltrosClientes() {
+  const s = document.getElementById('searchClientes');        if (s) s.value = '';
+  const r = document.getElementById('cliFiltroRegistrador');  if (r) r.value = '';
+  const fi = document.getElementById('cliFechaInicio');       if (fi) fi.value = '';
+  const ff = document.getElementById('cliFechaFin');          if (ff) ff.value = '';
+  const est = document.getElementById('filtroEstadoClientes'); if (est) est.value = 'todos';
+  _filtroClienteActual = 'todos';
+  document.querySelectorAll('#clienteStatsRow .stat-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.f === 'todos');
+  });
+  loadClientes(1);
+}
+
+// ── RENDER TABLA ──────────────────────────────────────────────────────────────
+function renderClientes(data, pag = null) {
+  const tbody = document.getElementById('tbodyClientes');
+  if (!data.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="11">Sin clientes</td></tr>';
+    _renderPagBar('tbodyClientes', null, 'loadClientes');
+    return;
+  }
+
+  tbody.innerHTML = data.map(c => {
+    // Calcular estadoEfectivo PRIMERO antes de usarlo
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const fechaFin = c.memb_fecha_fin ? new Date(c.memb_fecha_fin.split('T')[0] + 'T12:00:00') : null;
+    const yaVencioFecha = fechaFin && fechaFin < hoy;
+    const estadoEfectivo = (c.memb_estado === 'activa' && yaVencioFecha) ? 'vencida' : c.memb_estado;
+
+    let planTag = '<span style="color:#bbb;font-size:12px">—</span>';
+    if (c.plan_nombre && estadoEfectivo !== 'anulada') {
+        planTag = `<span class="tag-plan">${c.plan_nombre}</span>`;
+    }
+
+    const vence = (c.memb_fecha_fin && estadoEfectivo !== 'anulada') ? formatFechaCorta(c.memb_fecha_fin) : '—';
+
+    // Badge de estado membresía
+    let estadoBadge = '<span style="color:#bbb;font-size:12px">Sin memb.</span>';
+    if (estadoEfectivo) {
+      if (c.memb_saldo > 0 && estadoEfectivo !== 'anulada') {
+        estadoBadge = '<span class="tag-estado-pendiente">Saldo<br>pendiente</span>';
+      } else if (estadoEfectivo === 'activa') {
+        estadoBadge = '<span class="tag-estado-activa">Activa</span>';
+      } else if (estadoEfectivo === 'vencida') {
+        estadoBadge = '<span class="tag-estado-vencida">Vencida</span>';
+      } else if (estadoEfectivo === 'congelada') {
+        estadoBadge = `<span class="tag-estado-activa" style="background:#e3f2fd;color:#1565c0">Congelada</span>`;
+      } else {
+        estadoBadge = `<span class="tag-estado-anulada">${estadoEfectivo.charAt(0).toUpperCase() + estadoEfectivo.slice(1)}</span>`;
+      }
+    }
+
+    const tipoTag = (c.memb_tipo && estadoEfectivo !== 'anulada')
+      ? `<span class="badge-estado ${c.memb_tipo === 'nuevo' ? 'tag-tipo-nuevo' :
+          c.memb_tipo === 'renovacion' ? 'tag-tipo-renov' : 'tag-tipo-inter'}">
+          ${c.memb_tipo === 'nuevo' ? 'Nuevo' : c.memb_tipo === 'renovacion' ? 'Renov.' : 'Interdiario'}
+         </span>`
+      : '<span style="color:#bbb;font-size:12px">—</span>';
+
+    const asesor = (c.asesor && estadoEfectivo !== 'anulada') ? c.asesor : '—';
+
+    const _nom = (c.nombre + ' ' + c.apellido).replace(/'/g, "\\'");
+    const _nomCorto = (() => {
+      const ns = (c.nombre  || '').trim().split(/\s+/);
+      const as = (c.apellido || '').trim().split(/\s+/);
+      return [...ns.slice(0,2), ...as.slice(0,2)].join(' ');
+    })();
+    const tienePrevias = parseInt(c.total_membresias || 0) > 0;
+    const tieneDeuda   = c.memb_saldo > 0 && estadoEfectivo !== 'anulada' && c.id_membresia;
+
+    const _membAccent = { activa:'#4caf50', vencida:'#f44336', congelada:'#2196f3', anulada:'#78909c' };
+    const accentColor  = tieneDeuda ? '#ff9800' : (_membAccent[estadoEfectivo] || '#78909c');
+    let btnMemb = '';
+
+    if (tieneDeuda) {
+      // Deuda pendiente → acción prioritaria: cobrar
+      btnMemb = `
+        <button class="btn-cl-pagar"
+          onclick="openModalCuotas(${c.id_membresia}, '${_nom}')">
+          <i class="bi bi-cash-coin"></i> Pagar
+        </button>`;
+    } else if (estadoEfectivo === 'activa') {
+      btnMemb = `
+        <button class="btn-cl-renovar"
+          onclick="abrirModalAccionMemb(${c.id_cliente}, ${c.id_membresia || 'null'}, '${_nom}', '${estadoEfectivo}')">
+          <i class="bi bi-arrow-repeat"></i> Renovar
+        </button>`;
+    } else if (estadoEfectivo === 'congelada') {
+      btnMemb = `
+        <button class="btn-cl-congelada"
+          onclick="abrirModalAccionMemb(${c.id_cliente}, ${c.id_membresia || 'null'}, '${_nom}', '${estadoEfectivo}')">
+          <i class="bi bi-snow"></i> Congelada
+        </button>`;
+    } else {
+      // Vencida, anulada o sin membresía previa → volver a matricular
+      btnMemb = `
+        <button class="btn-cl-matricular"
+          onclick="matricularCliente(${c.id_cliente})">
+          <i class="bi bi-person-plus"></i> Matricular
+        </button>`;
+    }
+
+    // Versión icon-only del botón membresía (para la card móvil)
+    let btnMembIcon = '';
+    if (tieneDeuda) {
+      btnMembIcon = `<button class="btn-icon btn-cuotas-pagar" title="Pagar deuda"
+        onclick="openModalCuotas(${c.id_membresia}, '${_nom}')">
+        <i class="bi bi-cash-coin"></i>
+      </button>`;
+    } else if (estadoEfectivo === 'activa') {
+      btnMembIcon = `<button class="btn-icon" title="Renovar"
+        style="background:#e8f5e9;color:#2e7d32;border-color:#a7f3d0"
+        onclick="abrirModalAccionMemb(${c.id_cliente},${c.id_membresia||'null'},'${_nom}','${estadoEfectivo}')">
+        <i class="bi bi-arrow-repeat"></i>
+      </button>`;
+    } else if (estadoEfectivo === 'congelada') {
+      btnMembIcon = `<button class="btn-icon" title="Congelada"
+        style="background:#e3f2fd;color:#1565c0;border-color:#90caf9"
+        onclick="abrirModalAccionMemb(${c.id_cliente},${c.id_membresia||'null'},'${_nom}','${estadoEfectivo}')">
+        <i class="bi bi-snow"></i>
+      </button>`;
+    } else {
+      btnMembIcon = `<button class="btn-icon" title="Matricular"
+        onclick="matricularCliente(${c.id_cliente})">
+        <i class="bi bi-person-plus"></i>
+      </button>`;
+    }
+    const saldoHtml = tieneDeuda
+      ? `<div class="cl-saldo">S/ ${parseFloat(c.memb_saldo).toFixed(2)}</div>`
+      : '';
+
+    return `<tr style="cursor:pointer" ondblclick="editCliente(${c.id_cliente})">
+      <td class="cl-dt">
+        <button class="btn-cl-ver" title="Ver historial del cliente"
+          onclick="verHistorialCliente(${c.id_cliente})">
+          <i class="bi bi-eye"></i>
+        </button>
+      </td>
+      <td class="cl-dt" style="max-width:160px">
+        <strong style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+          title="${c.nombre} ${c.apellido}">${_nomCorto}</strong>
+      </td>
+      <td class="cl-dt"><code>${c.dni}</code></td>
+      <td class="cl-dt" style="white-space:nowrap">${fmtTel(c.celular || c.telefono)}</td>
+      <td class="cl-dt" style="font-size:12px;color:#666">${formatFechaCorta(c.fecha_registro)}</td>
+      <td class="cl-dt">${planTag}</td>
+      <td class="cl-dt" style="font-size:12px">${vence}</td>
+      <td class="cl-dt">${estadoBadge}</td>
+      <td class="cl-dt">${tipoTag}</td>
+      <td class="cl-dt"><span class="asesor-tag">${asesor}</span></td>
+      <td class="cl-dt" ondblclick="event.stopPropagation()">
+        <div style="display:flex;gap:5px;align-items:center">
+        ${btnMemb}
+        <button class="btn-icon" title="Editar cliente" onclick="editCliente(${c.id_cliente})">
+          <i class="bi bi-pencil"></i>
+        </button>
+        <button class="btn-icon danger" title="Eliminar cliente"
+          onclick="confirmarEliminarCliente(${c.id_cliente},'${(c.nombre+' '+c.apellido).replace(/'/g,"\\'")}')">
+          <i class="bi bi-trash"></i>
+        </button>
+        </div>
+      </td>
+      <td class="cl-mb" colspan="11">
+        <div class="cl-card" style="border-left:4px solid ${accentColor}">
+          <div class="cl-top-row">
+            <div class="cl-hdr">
+              <div class="cl-nombre">${fmtNombreCard(c.nombre, c.apellido)}</div>
+              ${c.plan_nombre && estadoEfectivo !== 'anulada' ? `<div class="cl-plan">${planTag}</div>` : ''}
+            </div>
+            <div class="cl-aside">
+              ${saldoHtml}
+              ${estadoBadge}
+            </div>
+          </div>
+          <div class="cl-body">
+            <div class="cl-kv-pair">
+              <span class="memb-lbl">DNI</span>
+              <span class="memb-val memb-val-dni">${c.dni || '—'}</span>
+              <span class="memb-lbl">CEL</span>
+              <span class="memb-val">${fmtTel(c.celular || c.telefono)}</span>
+            </div>
+            <div class="cl-kv-pair">
+              <span class="memb-lbl">REG.</span>
+              <span class="memb-val">${formatFechaCorta(c.fecha_registro)}</span>
+              <span class="memb-lbl">VENCE</span>
+              <span class="memb-val">${vence}</span>
+            </div>
+            <div class="cl-kv-pair">
+              <span class="memb-lbl">TIPO</span>
+              <span class="memb-val">${tipoTag}</span>
+              <span class="memb-lbl">ASESOR</span>
+              <span class="memb-val"><span class="asesor-tag">${asesor}</span></span>
+            </div>
+          </div>
+          <div class="cl-actions">
+            <button class="btn-icon" title="Ver historial"
+              style="color:#1e88e5;border-color:#90caf9"
+              onclick="verHistorialCliente(${c.id_cliente})">
+              <i class="bi bi-eye"></i>
+            </button>
+            ${btnMembIcon}
+            <button class="btn-icon" title="Editar cliente"
+              style="border:1.5px solid #f59e0b;color:#f59e0b"
+              onclick="editCliente(${c.id_cliente})">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn-icon" title="Eliminar cliente"
+              style="color:#e53935;border-color:#ef9a9a"
+              onclick="confirmarEliminarCliente(${c.id_cliente},'${(c.nombre+' '+c.apellido).replace(/'/g,"\\'")}')">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  _renderPagBar('tbodyClientes', pag, 'loadClientes');
+}
+
+// ── INYECTAR CSS BOTONES ──────────────────────────────────────────────────────
+(function injectBotonesCSS() {
+  if (document.getElementById('cl-botones-style')) return;
+  const style = document.createElement('style');
+  style.id = 'cl-botones-style';
+  style.textContent = `
+    /* Ancho fijo compartido para TODOS los botones de la tabla de clientes */
+    .btn-cl-ver {
+      display:inline-flex;align-items:center;justify-content:center;
+      width:40px;padding:4px 0;font-size:13px;font-weight:600;
+      border-radius:7px;cursor:pointer;white-space:nowrap;
+      transition:background .15s;border-width:1px;border-style:solid;
+    }
+    .btn-cl-renovar,
+    .btn-cl-matricular,
+    .btn-cl-congelada,
+    .btn-cl-pagar {
+      display:inline-flex;align-items:center;justify-content:center;gap:4px;
+      width:88px;padding:4px 0;font-size:11.5px;font-weight:600;
+      border-radius:7px;cursor:pointer;white-space:nowrap;
+      transition:background .15s;border-width:1px;border-style:solid;
+    }
+    .btn-cl-ver        { background:#e8f0fe;color:#1a73e8;border-color:#c5d8fc; }
+    .btn-cl-ver:hover  { background:#d2e3fc; }
+    .btn-cl-renovar    { background:#fff8e1;color:#f57f17;border-color:#ffe082; }
+    .btn-cl-renovar:hover { background:#fff3cd; }
+    .btn-cl-matricular { background:#e8f5e9;color:#2e7d32;border-color:#a5d6a7; }
+    .btn-cl-matricular:hover { background:#c8e6c9; }
+    .btn-cl-congelada  { background:#e3f2fd;color:#1565c0;border-color:#90caf9; }
+    .btn-cl-congelada:hover { background:#bbdefb; }
+    .btn-cl-pagar      { background:#ffebee;color:#c62828;border-color:#ef9a9a; }
+    .btn-cl-pagar:hover { background:#ffcdd2; }
+
+    /* ── Modal Membresía — header acciones rápidas (Renovar/Congelada) ── */
+    #membAccionesRapidas .memb-btn-freeze:hover { filter: brightness(0.93); }
+    #membAccionesRapidas .memb-btn-delete:hover { filter: brightness(0.93); }
+  `;
+  document.head.appendChild(style);
+})();
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MODAL DE ACCIÓN MEMBRESÍA  (1 solo click — abre directo el modal de membresía
+//  con el header de acciones integrado en la parte superior)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function abrirModalAccionMemb(idCliente, idMembresia, nombre, estadoEfectivo) {
+  const esCongelada = estadoEfectivo === 'congelada';
+
+  // Preparar el formulario de membresía en modo Renovar
+  resetMembresiaForm();
+  cargarPlanesSelect();
+  cargarAsesoresSelect();
+
+  setTimeout(() => {
+    const c = dataClientes.find(x => String(x.id_cliente) === String(idCliente));
+    if (c) seleccionarClienteMemb(c.id_cliente, `${c.nombre} ${c.apellido}`, c.dni);
+  }, 100);
+
+  // ── Hero header ──
+  const tituloTexto = esCongelada ? '❄️ Membresía Congelada' : '🔄 Renovar Membresía';
+  document.getElementById('modalMembresiaTitle').textContent = tituloTexto;
+  document.getElementById('membHeroSub').textContent = nombre;
+
+  // Icono hero según estado
+  const heroIcon = document.getElementById('membHeroIcon');
+  heroIcon.innerHTML = esCongelada
+    ? '<i class="bi bi-snow"></i>'
+    : '<i class="bi bi-arrow-repeat"></i>';
+  heroIcon.style.background = esCongelada
+    ? 'linear-gradient(135deg,#1565c0,#1976d2)'
+    : 'linear-gradient(135deg,#ff6f00,#ffa000)';
+
+  // ── Mostrar barra de acciones rápidas ──
+  const headerAcciones = document.getElementById('membAccionesRapidas');
+  headerAcciones.classList.add('visible');
+
+  // Configurar botón Congelar/Descongelar
+  const btnFreeze      = document.getElementById('membBtnFreeze');
+  const btnFreezeIcon  = document.getElementById('membBtnFreezeIcon');
+  const btnFreezeTexto = document.getElementById('membBtnFreezeTexto');
+
+  if (esCongelada) {
+    btnFreezeTexto.textContent   = 'Descongelar membresía';
+    btnFreeze.style.background   = 'linear-gradient(135deg,#e8f5e9,#c8e6c9)';
+    btnFreeze.style.color        = '#2e7d32';
+    btnFreeze.style.boxShadow    = '0 2px 8px rgba(46,125,50,.15)';
+    btnFreezeIcon.className      = 'bi bi-play-circle';
+  } else {
+    btnFreezeTexto.textContent   = 'Congelar membresía';
+    btnFreeze.style.background   = 'linear-gradient(135deg,#e3f2fd,#bbdefb)';
+    btnFreeze.style.color        = '#1565c0';
+    btnFreeze.style.boxShadow    = '0 2px 8px rgba(21,101,192,.15)';
+    btnFreezeIcon.className      = 'bi bi-snow';
+  }
+
+  btnFreeze.onclick = () => {
+    closeModal('modalMembresia');
+    congelarClienteMemb(idMembresia, esCongelada ? 'descongelar' : 'congelar', nombre);
+  };
+
+  document.getElementById('membBtnDelete').onclick = () => {
+    closeModal('modalMembresia');
+    anularMembresiaCliente(idMembresia, nombre);
+  };
+
+  // ── Aviso y bloqueo si está congelada ──
+  const formContent   = document.getElementById('membFormContent');
+  const frozenNotice  = document.getElementById('membFrozenNotice');
+  if (esCongelada) {
+    formContent.classList.add('frozen');
+    if (frozenNotice) frozenNotice.classList.add('visible');
+  } else {
+    formContent.classList.remove('frozen');
+    if (frozenNotice) frozenNotice.classList.remove('visible');
+  }
+
+  document.getElementById('modalMembresia').classList.add('open');
+}
+
+// ── CONGELAR / DESCONGELAR MEMBRESÍA DESDE CLIENTES ──────────────────────────
+function congelarClienteMemb(idMembresia, accion, nombre) {
+  if (!document.getElementById('modalCongelarCl')) {
+    document.body.insertAdjacentHTML('beforeend', `
+    <div class="modal-overlay" id="modalCongelarCl" style="z-index:1060">
+      <div class="modal-box" style="width:420px">
+        <div class="modal-title" id="titCongelarCl"></div>
+        <div class="alert-msg" id="alertCongelarCl"></div>
+        <p id="textoCongelarCl" style="color:#555;margin-bottom:14px;font-size:14px"></p>
+        <div class="mb-3">
+          <div class="form-label">Motivo <span style="color:#c62828">*</span></div>
+          <textarea class="form-control" id="motivoCongelarCl" rows="3"
+            placeholder="Ingresa el motivo obligatoriamente..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" onclick="closeModal('modalCongelarCl')">Cancelar</button>
+          <button class="btn-save" id="btnConfCongelarCl">Confirmar</button>
+        </div>
+      </div>
+    </div>`);
+  }
+
+  const esCongelar = accion === 'congelar';
+  document.getElementById('titCongelarCl').textContent   = esCongelar ? '❄️ Congelar membresía' : '▶️ Descongelar membresía';
+  document.getElementById('textoCongelarCl').textContent = esCongelar
+    ? `Se pausará la membresía de ${nombre}. El tiempo congelado no descontará días del plan.`
+    : `Se reactivará la membresía de ${nombre} y continuará el conteo de días.`;
+  document.getElementById('motivoCongelarCl').value = '';
+  document.getElementById('alertCongelarCl').className = 'alert-msg';
+
+  const btn = document.getElementById('btnConfCongelarCl');
+  btn.innerHTML = esCongelar ? '<i class="bi bi-snow me-1"></i>Congelar' : '<i class="bi bi-play-circle me-1"></i>Descongelar';
+  btn.style.background = esCongelar ? '#1565c0' : '#2e7d32';
+
+  btn.onclick = async () => {
+    const motivo = document.getElementById('motivoCongelarCl').value.trim();
+    if (!motivo) { showAlert('alertCongelarCl', 'El motivo es obligatorio'); return; }
+    try {
+      await api('PUT', `/api/membresias/${idMembresia}`, {
+        estado: esCongelar ? 'congelada' : 'activa',
+        observaciones: motivo
+      });
+      closeModal('modalCongelarCl');
+      loadClientes();
+      loadMembresias?.();
+    } catch (e) { showAlert('alertCongelarCl', e.message); }
+  };
+
+  document.getElementById('modalCongelarCl').classList.add('open');
+}
+
+// ── ANULAR MEMBRESÍA DESDE CLIENTES ─────────────────────────────────────────
+function anularMembresiaCliente(idMembresia, nombre) {
+  if (!document.getElementById('modalElimMembCl')) {
+    document.body.insertAdjacentHTML('beforeend', `
+    <div class="modal-overlay" id="modalElimMembCl" style="z-index:1060">
+      <div class="modal-box" style="width:430px">
+        <div class="modal-title" style="color:#6a1b9a">🚫 Anular membresía</div>
+        <div class="alert-msg" id="alertElimMembCl"></div>
+        <p id="textoElimMembCl" style="color:#555;margin-bottom:6px;font-size:14px"></p>
+        <p style="color:#6a1b9a;font-size:12px;margin-bottom:14px">
+          ⚠️ La membresía quedará en estado <strong>Anulada</strong>. El historial se conserva.
+        </p>
+        <div class="mb-3">
+          <div class="form-label">Motivo de anulación <span style="color:#c62828">*</span></div>
+          <textarea class="form-control" id="motivoElimMembCl" rows="3"
+            placeholder="Describe el motivo de la anulación..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" onclick="closeModal('modalElimMembCl')">Cancelar</button>
+          <button id="btnConfElimMembCl"
+            style="background:#6a1b9a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer">
+            <i class="bi bi-slash-circle me-1"></i>Anular membresía
+          </button>
+        </div>
+      </div>
+    </div>`);
+  }
+
+  document.getElementById('textoElimMembCl').textContent = `¿Anular la membresía de ${nombre}?`;
+  document.getElementById('motivoElimMembCl').value = '';
+  document.getElementById('alertElimMembCl').className = 'alert-msg';
+
+  document.getElementById('btnConfElimMembCl').onclick = async () => {
+    const motivo = document.getElementById('motivoElimMembCl').value.trim();
+    if (!motivo) { showAlert('alertElimMembCl', 'El motivo es obligatorio'); return; }
+    try {
+      await api('PUT', `/api/membresias/${idMembresia}`, {
+        estado: 'anulada',
+        observaciones: motivo
+      });
+      closeModal('modalElimMembCl');
+      loadClientes();
+      loadMembresias?.();
+    } catch (e) { showAlert('alertElimMembCl', e.message); }
+  };
+
+  document.getElementById('modalElimMembCl').classList.add('open');
+}
+
+// ── ELIMINAR CLIENTE (soft-delete por cambio de estado) ──────────────────────
+function confirmarEliminarCliente(idCliente, nombre) {
+  if (!document.getElementById('modalElimCl')) {
+    document.body.insertAdjacentHTML('beforeend', `
+    <div class="modal-overlay" id="modalElimCl">
+      <div class="modal-box" style="width:430px">
+        <div class="modal-title" style="color:#c62828">🗑️ Eliminar cliente</div>
+        <div class="alert-msg" id="alertElimCl"></div>
+        <p id="textoElimCl" style="color:#555;margin-bottom:6px;font-size:14px"></p>
+        <p style="color:#c62828;font-size:12px;margin-bottom:14px">
+          ⚠️ El cliente pasará a estado <strong>Inactivo</strong>. El historial se conserva y puede reactivarse.
+        </p>
+        <div class="mb-3">
+          <div class="form-label">Motivo de eliminación <span style="color:#c62828">*</span></div>
+          <textarea class="form-control" id="motivoElimCl" rows="3"
+            placeholder="Describe el motivo..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" onclick="closeModal('modalElimCl')">Cancelar</button>
+          <button id="btnConfElimCl"
+            style="background:#c62828;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer">
+            <i class="bi bi-trash me-1"></i>Eliminar cliente
+          </button>
+        </div>
+      </div>
+    </div>`);
+  }
+
+  document.getElementById('textoElimCl').textContent = `¿Eliminar al cliente ${nombre} del sistema?`;
+  document.getElementById('motivoElimCl').value = '';
+  document.getElementById('alertElimCl').className = 'alert-msg';
+
+  document.getElementById('btnConfElimCl').onclick = async () => {
+    const motivo = document.getElementById('motivoElimCl').value.trim();
+    if (!motivo) { showAlert('alertElimCl', 'El motivo es obligatorio'); return; }
+    try {
+      await api('PATCH', `/api/clientes/${idCliente}/estado`, { activo: false, motivo });
+      closeModal('modalElimCl');
+      loadClientes();
+    } catch (e) { showAlert('alertElimCl', e.message); }
+  };
+
+  document.getElementById('modalElimCl').classList.add('open');
+}
+
+// ── MAYOR/MENOR DE EDAD ───────────────────────────────────────────────────────
+function onClienteMayorEdadChange() {
+  const esMenor = document.getElementById('clienteMayorEdad')?.value === 'no';
+  const aviso   = document.getElementById('clTutorAviso');
+  const badge   = document.getElementById('clContacto1Badge');
+  const subtitle = document.getElementById('clContactosSubtitle');
+  const desc    = document.getElementById('clContactosDesc');
+  const card    = document.getElementById('clContacto1Card');
+
+  if (esMenor) {
+    if (aviso)    aviso.style.display    = 'block';
+    if (subtitle) subtitle.textContent   = '(máx. 2) — Contacto 1 OBLIGATORIO';
+    if (desc)     desc.textContent       = 'Contacto 1: tutor que suscribe el contrato (todos los campos requeridos).';
+    if (badge)    badge.innerHTML        = '<i class="bi bi-1-circle-fill"></i> Contacto 1 — Tutor <span style="background:#e53935;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-left:4px">REQUERIDO</span>';
+    if (card)     card.style.borderColor = '#ff9800';
+  } else {
+    if (aviso)    aviso.style.display    = 'none';
+    if (subtitle) subtitle.textContent   = '(opcional, máx. 2)';
+    if (desc)     desc.textContent       = 'Si ingresa un teléfono, el nombre y parentesco son obligatorios.';
+    if (badge)    badge.innerHTML        = '<i class="bi bi-1-circle-fill"></i> Contacto 1';
+    if (card)     card.style.borderColor = '';
+  }
+}
+
+// Auto-detectar menor por fecha de nacimiento
+function onClienteFechaNacChange() {
+  const fnac = document.getElementById('clienteFechaNac').value;
+  if (!fnac) return;
+  const edad = Math.floor((Date.now() - new Date(fnac).getTime()) / (365.25 * 24 * 3600 * 1000));
+  const sel  = document.getElementById('clienteMayorEdad');
+  if (sel) sel.value = edad < 18 ? 'no' : 'si';
+  onClienteMayorEdadChange();
+}
+
+// ── TIPO DE DOCUMENTO ─────────────────────────────────────────────────────────
+function onClienteTipoDocChange() {
+  const tipo  = document.getElementById('clienteTipoDoc')?.value || 'DNI';
+  const input = document.getElementById('clienteDni');
+  const label = document.getElementById('clienteDniLabel');
+  if (!input) return;
+  if (tipo === 'DNI') {
+    input.placeholder  = '00000000';
+    input.maxLength    = 8;
+    input.inputMode    = 'numeric';
+    input.value        = input.value.replace(/\D/g, '').slice(0, 8);
+    if (label) label.innerHTML = 'DNI <span class="req">*</span>';
+  } else {
+    input.placeholder  = 'Ej: 000123456';
+    input.maxLength    = 12;
+    input.inputMode    = 'text';
+    input.value        = input.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toUpperCase();
+    if (label) label.innerHTML = 'Carnet Ext. <span class="req">*</span>';
+  }
+}
+
+// ── CONTACTO 2 (toggle con botón +) ────────────────────────────────────────────
+function agregarContacto2Cliente() {
+  const wrap = document.getElementById('clContacto2Wrap');
+  const btn  = document.getElementById('clBtnAddContacto2');
+  if (wrap) wrap.style.display = 'block';
+  if (btn)  btn.style.display  = 'none';
+}
+
+function quitarContacto2Cliente() {
+  const wrap = document.getElementById('clContacto2Wrap');
+  const btn  = document.getElementById('clBtnAddContacto2');
+  ['ce2Nombre','ce2Parentesco','ce2Telefono'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  if (wrap) wrap.style.display = 'none';
+  if (btn)  btn.style.display  = 'inline-flex';
+}
+
+// ── RESET FORMULARIO ──────────────────────────────────────────────────────────
+function resetClienteForm() {
+  ['clienteId','clienteNombre','clienteApellido','clienteDni',
+   'clienteCelular','clienteEmail','clienteFechaNac','clienteFotoPerfil',
+   'ce1Nombre','ce1Parentesco','ce1Telefono',
+   'ce2Nombre','ce2Parentesco','ce2Telefono'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  quitarContacto2Cliente();
+  document.getElementById('clienteDni').readOnly    = false;
+  document.getElementById('clienteDni').placeholder = '';
+  const tmpNotice = document.getElementById('clTmpDniNotice');
+  if (tmpNotice) tmpNotice.style.display = 'none';
+  const tipoDocSel = document.getElementById('clienteTipoDoc');
+  if (tipoDocSel) { tipoDocSel.value = 'DNI'; tipoDocSel.disabled = false; }
+  onClienteTipoDocChange();
+  document.getElementById('clienteMayorEdad').value = 'si';
+  document.getElementById('alertCliente').className = 'alert-msg';
+
+  // Hero: modo nuevo cliente
+  document.getElementById('modalClienteTitle').textContent = 'Registrar nuevo cliente';
+  const heroSub = document.getElementById('clHeroSub');
+  if (heroSub) heroSub.textContent = 'Completa los datos personales del cliente';
+  const heroAv = document.getElementById('clHeroAvatar');
+  if (heroAv) {
+    heroAv.style.background = 'linear-gradient(135deg,#1976d2,#42a5f5)';
+    heroAv.innerHTML = '<i class="bi bi-person-plus-fill"></i>';
+  }
+
+  // Reset avatar preview
+  const prev = document.getElementById('clAvatarPreview');
+  if (prev) prev.innerHTML = '<i class="bi bi-person-fill" style="font-size:26px"></i>';
+
+  // Reset file input and status
+  const fileInput = document.getElementById('clienteFotoFile');
+  if (fileInput) fileInput.value = '';
+  const fotoStatus = document.getElementById('clFotoStatus');
+  if (fotoStatus) fotoStatus.textContent = '';
+
+  // Botón guardar
+  const btnText = document.getElementById('clBtnSaveText');
+  if (btnText) btnText.textContent = 'Registrar cliente';
+}
+
+// ── EDITAR ────────────────────────────────────────────────────────────────────
+function editCliente(id) {
+  const c = dataClientes.find(x => String(x.id_cliente) === String(id));
+  if (!c) return;
+
+  resetClienteForm();
+
+  document.getElementById('clienteId').value       = id;
+  document.getElementById('clienteNombre').value   = c.nombre;
+  document.getElementById('clienteApellido').value = c.apellido;
+
+  const esDniTemporal = c.tipo_documento === 'TMP';
+
+  const tipoDocSel = document.getElementById('clienteTipoDoc');
+  if (tipoDocSel) {
+    tipoDocSel.value = esDniTemporal ? 'DNI' : (c.tipo_documento || 'DNI');
+    tipoDocSel.disabled = !esDniTemporal;
+  }
+
+  const dniInput = document.getElementById('clienteDni');
+  if (esDniTemporal) {
+    // Documento temporal (importado sin DNI): se deja vacío y editable para
+    // capturar el DNI real, en vez de mostrar el código interno TMP-####.
+    dniInput.value    = '';
+    dniInput.readOnly = false;
+    const tmpNotice = document.getElementById('clTmpDniNotice');
+    if (tmpNotice) tmpNotice.style.display = 'flex';
+  } else {
+    dniInput.value    = c.dni;
+    dniInput.readOnly = true;
+  }
+  onClienteTipoDocChange();
+  if (esDniTemporal) dniInput.placeholder = 'Ingresar DNI real';
+  document.getElementById('clienteCelular').value  = c.celular || '';
+  document.getElementById('clienteEmail').value    = c.email || '';
+  document.getElementById('clienteFechaNac').value = c.fecha_nacimiento
+    ? c.fecha_nacimiento.split('T')[0] : '';
+  document.getElementById('clienteFotoPerfil').value = c.foto_perfil || '';
+
+  // Preview de foto si existe
+  previewClienteAvatar(c.foto_perfil || '');
+  const fotoStatus = document.getElementById('clFotoStatus');
+  if (fotoStatus) fotoStatus.textContent = c.foto_perfil ? 'Foto actual cargada' : '';
+
+  const ces = Array.isArray(c.contactos_emergencia) ? c.contactos_emergencia : [];
+  if (ces[0]) {
+    document.getElementById('ce1Nombre').value      = ces[0].nombre      || '';
+    document.getElementById('ce1Parentesco').value  = ces[0].parentesco  || '';
+    document.getElementById('ce1Telefono').value    = ces[0].telefono    || '';
+  }
+  if (ces[1]) {
+    agregarContacto2Cliente();
+    document.getElementById('ce2Nombre').value      = ces[1].nombre      || '';
+    document.getElementById('ce2Parentesco').value  = ces[1].parentesco  || '';
+    document.getElementById('ce2Telefono').value    = ces[1].telefono    || '';
+  }
+
+  // Hero: modo editar
+  document.getElementById('modalClienteTitle').textContent = 'Editar cliente';
+  const heroSub = document.getElementById('clHeroSub');
+  if (heroSub) heroSub.textContent = `${c.nombre} ${c.apellido} · ${c.tipo_documento || 'DNI'} ${c.dni}`;
+  const heroAv = document.getElementById('clHeroAvatar');
+  if (heroAv) {
+    heroAv.style.background = 'linear-gradient(135deg,#ff8f00,#ffa000)';
+    heroAv.innerHTML = '<i class="bi bi-pencil-fill"></i>';
+  }
+
+  document.getElementById('alertCliente').className = 'alert-msg';
+  const btnText = document.getElementById('clBtnSaveText');
+  if (btnText) btnText.textContent = 'Guardar cambios';
+
+  document.getElementById('modalCliente').classList.add('open');
+}
+
+// ── PREVIEW FOTO PERFIL ───────────────────────────────────────────────────────
+function previewClienteAvatar(url) {
+  const prev = document.getElementById('clAvatarPreview');
+  if (!prev) return;
+  if (url && url.trim()) {
+    prev.innerHTML = `<img src="${url.trim()}" alt="foto"
+      onerror="this.parentElement.innerHTML='<i class=\\'bi bi-person-fill\\' style=\\'font-size:26px\\'></i>'">`;
+  } else {
+    prev.innerHTML = '<i class="bi bi-person-fill" style="font-size:26px"></i>';
+  }
+}
+
+// ── SUBIR FOTO DE CLIENTE ─────────────────────────────────────────────────────
+async function handleClienteFotoChange(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const prev = document.getElementById('clAvatarPreview');
+    if (prev) prev.innerHTML = `<img src="${e.target.result}" alt="foto">`;
+  };
+  reader.readAsDataURL(file);
+
+  const status = document.getElementById('clFotoStatus');
+  if (status) status.textContent = 'Subiendo...';
+
+  const formData = new FormData();
+  formData.append('foto', file);
+
+  try {
+    const res = await fetch('/api/clientes/upload-foto', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${TOKEN}` },
+      body: formData
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Error al subir');
+    document.getElementById('clienteFotoPerfil').value = data.url;
+    if (status) status.textContent = `✓ ${file.name}`;
+  } catch (e) {
+    if (status) status.textContent = `Error: ${e.message}`;
+  }
+}
+
+// ── GUARDAR ───────────────────────────────────────────────────────────────────
+async function saveCliente() {
+  const id             = document.getElementById('clienteId').value;
+  const dni            = document.getElementById('clienteDni').value.trim().toUpperCase();
+  const tipo_documento = document.getElementById('clienteTipoDoc')?.value || 'DNI';
+  const nombre         = document.getElementById('clienteNombre').value.trim();
+  const apellido       = document.getElementById('clienteApellido').value.trim();
+  const celular        = document.getElementById('clienteCelular').value.trim();
+  const email      = document.getElementById('clienteEmail').value.trim();
+  const fnac       = document.getElementById('clienteFechaNac').value;
+  const fotoPerfil = document.getElementById('clienteFotoPerfil').value.trim();
+
+  const ce1Tel  = document.getElementById('ce1Telefono').value.trim();
+  const ce1Nom  = document.getElementById('ce1Nombre').value.trim();
+  const ce1Par  = document.getElementById('ce1Parentesco').value.trim();
+  const ce2Tel  = document.getElementById('ce2Telefono').value.trim();
+  const ce2Nom  = document.getElementById('ce2Nombre').value.trim();
+  const ce2Par  = document.getElementById('ce2Parentesco').value.trim();
+
+  const clienteActual = id ? dataClientes.find(x => String(x.id_cliente) === String(id)) : null;
+  const esDniTemporal  = clienteActual?.tipo_documento === 'TMP';
+
+  if (!nombre || !apellido || (!id && !dni) || (esDniTemporal && !dni)) {
+    showAlert('alertCliente', 'Nombre, apellido y número de documento son requeridos');
+    return;
+  }
+
+  if ((!id || esDniTemporal) && tipo_documento === 'DNI' && dni && !/^\d{8}$/.test(dni)) {
+    showAlert('alertCliente', 'El DNI debe tener exactamente 8 dígitos numéricos');
+    return;
+  }
+  if ((!id || esDniTemporal) && tipo_documento === 'CE' && dni && !/^[A-Z0-9]{8,12}$/.test(dni)) {
+    showAlert('alertCliente', 'El Carnet de Extranjería debe tener entre 8 y 12 caracteres alfanuméricos');
+    return;
+  }
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showAlert('alertCliente', 'Ingresa un correo válido');
+    return;
+  }
+
+  // Validar que el documento no esté ya registrado (al crear, o al completar el
+  // DNI real de un cliente que tenía documento temporal)
+  if ((!id || esDniTemporal) && dni) {
+    const dniExistente = dataClientes.find(c =>
+      c.dni === dni && (c.tipo_documento || 'DNI') === tipo_documento && String(c.id_cliente) !== String(id)
+    );
+    if (dniExistente) {
+      showAlert('alertCliente', `El ${tipo_documento} ${dni} ya está registrado para ${dniExistente.nombre} ${dniExistente.apellido}`);
+      return;
+    }
+  }
+
+  // Validar que el celular no esté ya registrado en otro cliente
+  if (celular) {
+    const celularExistente = dataClientes.find(c =>
+      c.celular && c.celular.replace(/\s/g, '') === celular.replace(/\s/g, '') &&
+      String(c.id_cliente) !== String(id)   // ignorar el propio cliente al editar
+    );
+    if (celularExistente) {
+      showAlert('alertCliente', `El celular ${celular} ya está registrado para ${celularExistente.nombre} ${celularExistente.apellido}`);
+      return;
+    }
+  }
+
+  // Cláusula 1a: si es menor de edad, Contacto 1 (tutor) es obligatorio
+  const esMenor = document.getElementById('clienteMayorEdad')?.value === 'no';
+  if (esMenor) {
+    if (!ce1Nom) { showAlert('alertCliente', 'Cláusula 1a: el nombre del tutor (Contacto 1) es obligatorio para menores de edad.'); return; }
+    if (!ce1Par) { showAlert('alertCliente', 'Cláusula 1a: el parentesco del tutor (Contacto 1) es obligatorio para menores de edad.'); return; }
+    if (!ce1Tel) { showAlert('alertCliente', 'Cláusula 1a: el teléfono del tutor (Contacto 1) es obligatorio para menores de edad.'); return; }
+  }
+
+  if (ce1Tel && !ce1Par) { showAlert('alertCliente', 'Contacto 1: el parentesco es obligatorio'); return; }
+  if (ce1Tel && !ce1Nom) { showAlert('alertCliente', 'Contacto 1: el nombre es obligatorio'); return; }
+  if (ce2Tel && !ce2Par) { showAlert('alertCliente', 'Contacto 2: el parentesco es obligatorio'); return; }
+  if (ce2Tel && !ce2Nom) { showAlert('alertCliente', 'Contacto 2: el nombre es obligatorio'); return; }
+
+  const contactos_emergencia = [];
+  if (ce1Tel) contactos_emergencia.push({ nombre: ce1Nom, parentesco: ce1Par, telefono: ce1Tel });
+  if (ce2Tel) contactos_emergencia.push({ nombre: ce2Nom, parentesco: ce2Par, telefono: ce2Tel });
+
+  const body = {
+    nombre, apellido,
+    celular:             celular    || null,
+    email:               email      || null,
+    fecha_nacimiento:    fnac       || null,
+    foto_perfil:         fotoPerfil || null,
+    contactos_emergencia
+  };
+
+  try {
+    if (id) {
+      if (esDniTemporal) await api('PATCH', `/api/clientes/${id}/dni`, { dni, tipo_documento });
+      await api('PUT', `/api/clientes/${id}`, body);
+    } else {
+      await api('POST', '/api/clientes', { ...body, dni, tipo_documento });
+    }
+    closeModal('modalCliente');
+    loadClientes();
+  } catch (e) { showAlert('alertCliente', e.message); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  RENOVAR / MATRICULAR — abre modal membresía pre-seleccionando el cliente
+// ══════════════════════════════════════════════════════════════════════════════
+
+function matricularCliente(idCliente) {
+  const c = dataClientes.find(x => String(x.id_cliente) === String(idCliente));
+  if (!c) return;
+
+  resetMembresiaForm();
+  cargarPlanesSelect();
+  cargarAsesoresSelect();
+
+  setTimeout(() => {
+    seleccionarClienteMemb(c.id_cliente, `${c.nombre} ${c.apellido}`, c.dni);
+  }, 100);
+
+  // Hero: modo matrícula
+  document.getElementById('modalMembresiaTitle').textContent = `Nueva Matrícula`;
+  document.getElementById('membHeroSub').textContent = `${c.nombre} ${c.apellido}`;
+  const heroIcon = document.getElementById('membHeroIcon');
+  heroIcon.innerHTML = '<i class="bi bi-person-plus-fill"></i>';
+  heroIcon.style.background = 'linear-gradient(135deg,#2e7d32,#43a047)';
+
+  // Ocultar acciones rápidas y aviso congelada
+  document.getElementById('membAccionesRapidas').classList.remove('visible');
+  const formContent  = document.getElementById('membFormContent');
+  const frozenNotice = document.getElementById('membFrozenNotice');
+  formContent.classList.remove('frozen');
+  if (frozenNotice) frozenNotice.classList.remove('visible');
+
+  document.getElementById('modalMembresia').classList.add('open');
+}
+
+function renovarCliente(idCliente) {
+  const c = dataClientes.find(x => String(x.id_cliente) === String(idCliente));
+  if (!c) return;
+
+  resetMembresiaForm();
+  cargarPlanesSelect();
+  cargarAsesoresSelect();
+
+  setTimeout(() => {
+    seleccionarClienteMemb(c.id_cliente, `${c.nombre} ${c.apellido}`, c.dni);
+  }, 100);
+
+  // Hero: modo renovar directo (sin acciones rápidas)
+  document.getElementById('modalMembresiaTitle').textContent = `Renovar Plan`;
+  document.getElementById('membHeroSub').textContent = `${c.nombre} ${c.apellido}`;
+  const heroIcon = document.getElementById('membHeroIcon');
+  heroIcon.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+  heroIcon.style.background = 'linear-gradient(135deg,#ff6f00,#ffa000)';
+
+  // Ocultar acciones rápidas y aviso congelada
+  document.getElementById('membAccionesRapidas').classList.remove('visible');
+  const formContent  = document.getElementById('membFormContent');
+  const frozenNotice = document.getElementById('membFrozenNotice');
+  formContent.classList.remove('frozen');
+  if (frozenNotice) frozenNotice.classList.remove('visible');
+
+  document.getElementById('modalMembresia').classList.add('open');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MODAL HISTORIAL DEL CLIENTE  (botón "Ver")
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function verHistorialCliente(idCliente) {
+  if (!document.getElementById('modalHistorialCliente')) {
+    document.body.insertAdjacentHTML('beforeend', _buildModalHistorial());
+    let _styleEl = document.getElementById('estilosHistorial');
+    if (!_styleEl) {
+      _styleEl = document.createElement('style');
+      _styleEl.id = 'estilosHistorial';
+      document.head.appendChild(_styleEl);
+    }
+    _styleEl.textContent = _estilosHistorial();
+  }
+
+  const modal = document.getElementById('modalHistorialCliente');
+  // Resetear scroll ANTES de mostrarlo para que siempre abra desde arriba
+  const _boxPre = modal.querySelector('.modal-box');
+  if (_boxPre) _boxPre.scrollTop = 0;
+  modal.classList.add('open');
+
+  document.getElementById('hcAvatar').textContent    = '?';
+  document.getElementById('hcNombre').textContent    = 'Cargando...';
+  document.getElementById('hcDni').textContent       = '';
+  document.getElementById('hcTelefono').textContent  = '';
+  document.getElementById('hcRegistro').textContent  = '';
+  document.getElementById('hcBodyMemb').innerHTML    = '<div class="hc-loading">Cargando...</div>';
+  document.getElementById('hcBodyVentas').innerHTML  = '<div class="hc-loading">Cargando...</div>';
+  document.getElementById('hcBodyAsist').innerHTML   = '<div class="hc-loading">Cargando...</div>';
+  document.getElementById('hcBodyCaja').innerHTML    = '<div class="hc-loading">Cargando...</div>';
+  document.getElementById('hcTotalPagado').textContent = '—';
+
+  modal.dataset.idCliente = idCliente;
+
+  await _cargarHistorial(idCliente);
+}
+
+async function _cargarHistorial(idCliente, fechaInicio = '', fechaFin = '') {
+  try {
+    let url = `/api/clientes/${idCliente}/historial`;
+    const params = [];
+    if (fechaInicio) params.push(`fecha_inicio=${fechaInicio}`);
+    if (fechaFin)    params.push(`fecha_fin=${fechaFin}`);
+    if (params.length) url += '?' + params.join('&');
+
+    const data = await api('GET', url);
+    _renderHistorial(data);
+  } catch (e) {
+    ['hcBodyMemb','hcBodyVentas','hcBodyAsist','hcBodyCaja'].forEach(id => {
+      document.getElementById(id).innerHTML =
+        `<div style="color:#c62828;padding:16px">${e.message}</div>`;
+    });
+  }
+}
+
+let _hcAsistencias = [];
+let _calMes = null; // { year, month }
+let _historialActual = null; // datos del último historial cargado (para boleta)
+
+function _renderHistorial(data) {
+  _historialActual = data; // cachear para que verBoletaMembresia pueda acceder
+  const { cliente, membresias, ventas, asistencias, flujo_caja, total_pagado } = data;
+
+  const hcAvatar = document.getElementById('hcAvatar');
+  const iniciales = (`${cliente.nombre} ${cliente.apellido}`)
+    .split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+  if (cliente.foto_perfil) {
+    hcAvatar.style.cursor = 'pointer';
+    hcAvatar.title = 'Clic para ampliar';
+    hcAvatar.onclick = () => abrirFotoLightbox(cliente.foto_perfil, `${cliente.nombre} ${cliente.apellido}`);
+    hcAvatar.innerHTML = `<img src="${cliente.foto_perfil}" alt="foto"
+      style="width:100%;height:100%;object-fit:cover;pointer-events:none"
+      onerror="this.parentElement.textContent='${iniciales}';this.parentElement.style.cursor='default';this.parentElement.onclick=null;this.parentElement.title=''">`;
+  } else {
+    hcAvatar.style.cursor = 'default';
+    hcAvatar.title = '';
+    hcAvatar.onclick = null;
+    hcAvatar.textContent = iniciales;
+  }
+  document.getElementById('hcNombre').textContent   = `${cliente.nombre} ${cliente.apellido}`;
+  document.getElementById('hcDni').textContent      = `DNI: ${cliente.dni}`;
+  const _tel = cliente.celular || cliente.telefono;
+  document.getElementById('hcTelefono').innerHTML = _tel ? `📞 ${fmtTel(_tel)}` : '';
+  document.getElementById('hcRegistro').textContent = `Registrado: ${formatFechaLargaHist(cliente.fecha_registro)}`;
+  document.getElementById('hcTotalPagado').textContent = `S/ ${parseFloat(total_pagado || 0).toFixed(2)}`;
+
+  // Actualizar subtítulos del menú móvil
+  const _mbSub = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+  _mbSub('hcMbSubMemb',   membresias.length + ' matrícula' + (membresias.length !== 1 ? 's' : ''));
+  _mbSub('hcMbSubVentas', ventas?.length ? ventas.length + ' venta' + (ventas.length !== 1 ? 's' : '') : 'Sin ventas');
+  _mbSub('hcMbSubAsist',  asistencias?.length ? asistencias.length + ' día' + (asistencias.length !== 1 ? 's' : '') + ' asistido' + (asistencias.length !== 1 ? 's' : '') : 'Sin registros');
+  _mbSub('hcMbSubCaja',   'S/ ' + parseFloat(total_pagado||0).toFixed(2) + ' pagado');
+  _mbSub('hcMbTotalRow',  'S/ ' + parseFloat(total_pagado||0).toFixed(2));
+
+  // ── Membresías ──
+  // Actualizar contador en el título de la sección
+  const hcTitleMemb = document.querySelector('#modalHistorialCliente .hc-section-title');
+  if (hcTitleMemb) {
+    const countBadge = hcTitleMemb.querySelector('.hc-count-badge');
+    if (countBadge) countBadge.textContent = membresias.length;
+    else hcTitleMemb.insertAdjacentHTML('beforeend',
+      `<span class="hc-count-badge" style="margin-left:8px;background:#7c4dff;color:#fff;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700">${membresias.length}</span>`);
+  }
+
+  const contMemb = document.getElementById('hcBodyMemb');
+  contMemb.style.maxHeight = '';
+  contMemb.style.overflowY = '';
+  contMemb.style.overflowX = '';
+  if (!membresias.length) {
+    contMemb.innerHTML = '<div class="hc-empty">Sin matrículas registradas</div>';
+  } else {
+    const tipoLabel      = { nuevo: 'Nuevo', renovacion: 'Renovación', interdiario: 'Interdiario' };
+    const metodoPagoLbl  = { efectivo: 'Efectivo', yape: 'Yape', plin: 'Plin', transferencia: 'Transferencia' };
+    const estadoCuotaMap = {
+      pagado:    { cls: 'hc-badge-activa',  label: 'Pagado'    },
+      pendiente: { cls: 'hc-badge-otro',    label: 'Pendiente' },
+      vencido:   { cls: 'hc-badge-vencida', label: 'Vencido'   },
+    };
+
+    // Ordenar descendente: fecha_inicio DESC, luego activas antes que anuladas, luego created_at DESC
+    const _estadoPrio = { activa: 0, congelada: 1, vencida: 2, anulada: 3 };
+    const membOrdenadas = [...membresias].sort((a, b) => {
+      const fa = a.fecha_inicio ? new Date(a.fecha_inicio) : new Date(0);
+      const fb = b.fecha_inicio ? new Date(b.fecha_inicio) : new Date(0);
+      if (fb - fa !== 0) return fb - fa;
+      const pa = _estadoPrio[a.estado] ?? 99;
+      const pb = _estadoPrio[b.estado] ?? 99;
+      if (pa !== pb) return pa - pb;
+      const ca = a.created_at ? new Date(a.created_at) : new Date(0);
+      const cb = b.created_at ? new Date(b.created_at) : new Date(0);
+      return cb - ca;
+    });
+
+    const filas = membOrdenadas.map((m, idx) => {
+      const nroMemb   = idx + 1;
+      const hoyH      = new Date(); hoyH.setHours(0,0,0,0);
+      const fechaFinM = m.fecha_fin ? new Date(m.fecha_fin.split('T')[0] + 'T12:00:00') : null;
+      const estadoEfM = (m.estado === 'activa' && fechaFinM && fechaFinM < hoyH) ? 'vencida' : m.estado;
+      const estadoMap = {
+        activa:    { cls: 'hc-badge-activa',    label: 'ACTIVA'    },
+        vencida:   { cls: 'hc-badge-vencida',   label: 'VENCIDA'   },
+        congelada: { cls: 'hc-badge-congelada', label: 'CONGELADA' },
+        anulada:   { cls: 'hc-badge-anulada',   label: 'ANULADA'   },
+      };
+      const badgeInfo = estadoMap[estadoEfM] || { cls: 'hc-badge-otro', label: (estadoEfM || '').toUpperCase() };
+      const montoStr  = m.monto_total ? `S/ ${parseFloat(m.monto_total).toFixed(2)}` : '—';
+      const saldoPend = parseFloat(m.saldo_pendiente || 0);
+      const saldoStr  = saldoPend > 0
+        ? `<br><small style="color:#c62828;font-size:10px;font-weight:600">Saldo: S/ ${saldoPend.toFixed(2)}</small>`
+        : `<br><small style="color:#2e7d32;font-size:10px">Al día ✓</small>`;
+
+      // ── Cuotas de pago (fila expandible) ──────────────────────────────────
+      const cuotas  = Array.isArray(m.cuotas) ? m.cuotas : [];
+      const rowId   = `hcCuotas_${idx}`;
+      const totPag  = cuotas
+        .filter(q => q.estado_cuota === 'pagado')
+        .reduce((s, q) => s + parseFloat(q.monto || 0), 0);
+
+      let cuotasInnerHtml;
+      if (!cuotas.length) {
+        cuotasInnerHtml = `<td colspan="8" style="padding:12px 24px;background:#fafafa;color:#aaa;font-size:12px;font-style:italic;border-bottom:2px solid #ede7f6">
+            Sin cuotas registradas para esta matrícula
+          </td>`;
+      } else {
+        const filasCuotas = cuotas.map(q => {
+          const cInfo  = estadoCuotaMap[q.estado_cuota] || { cls: 'hc-badge-otro', label: q.estado_cuota };
+          const metLbl = metodoPagoLbl[q.metodo_pago] || (q.metodo_pago
+            ? q.metodo_pago.charAt(0).toUpperCase() + q.metodo_pago.slice(1) : '—');
+          const fPago  = q.fecha_pago ? formatFechaLargaHist(q.fecha_pago) : '—';
+          return `<tr style="background:#f9f6ff">
+            <td style="padding:7px 10px 7px 36px;font-size:11px;color:#7c4dff;font-weight:600">↳ Cuota ${q.num_cuota}</td>
+            <td style="padding:7px 10px;font-size:12px;font-weight:700;color:#0f3460">S/ ${parseFloat(q.monto || 0).toFixed(2)}</td>
+            <td style="padding:7px 10px;font-size:12px">${fPago}</td>
+            <td style="padding:7px 10px"><span class="hc-badge ${cInfo.cls}" style="font-size:9px">${cInfo.label}</span></td>
+            <td style="padding:7px 10px;font-size:11px;color:#555">${metLbl}</td>
+            <td style="padding:7px 10px;font-size:11px;color:#888">${q.num_comprobante || '—'}</td>
+            <td colspan="2"></td>
+          </tr>`;
+        }).join('');
+
+        cuotasInnerHtml = `<td colspan="8" style="padding:0;border-bottom:2px solid #ede7f6">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr style="background:#ede7f6">
+                <th style="padding:6px 10px 6px 36px;font-size:10px;font-weight:700;color:#7c4dff;text-transform:uppercase;letter-spacing:.4px;text-align:left">Cuota</th>
+                <th style="padding:6px 10px;font-size:10px;font-weight:700;color:#7c4dff;text-transform:uppercase;letter-spacing:.4px;text-align:left">Monto</th>
+                <th style="padding:6px 10px;font-size:10px;font-weight:700;color:#7c4dff;text-transform:uppercase;letter-spacing:.4px;text-align:left">Fecha Pago</th>
+                <th style="padding:6px 10px;font-size:10px;font-weight:700;color:#7c4dff;text-transform:uppercase;letter-spacing:.4px;text-align:left">Estado</th>
+                <th style="padding:6px 10px;font-size:10px;font-weight:700;color:#7c4dff;text-transform:uppercase;letter-spacing:.4px;text-align:left">Método</th>
+                <th style="padding:6px 10px;font-size:10px;font-weight:700;color:#7c4dff;text-transform:uppercase;letter-spacing:.4px;text-align:left">Comprobante</th>
+                <th colspan="2"></th>
+              </tr></thead>
+              <tbody>${filasCuotas}</tbody>
+              <tfoot><tr style="background:#f3e5f5">
+                <td colspan="8" style="padding:6px 20px;font-size:11px;font-weight:700;color:#6a1b9a;text-align:right">
+                  Total pagado: <strong>S/ ${totPag.toFixed(2)}</strong>
+                  &nbsp;·&nbsp; ${cuotas.filter(q => q.estado_cuota === 'pagado').length} de ${cuotas.length} cuota(s) abonada(s)
+                </td>
+              </tr></tfoot>
+            </table>
+          </td>`;
+      }
+
+      const btnCuotasLabel = cuotas.length
+        ? `<i class="bi bi-chevron-down" id="hcCuotasIcon_${idx}" style="transition:transform .2s"></i> ${cuotas.length} cuota(s)`
+        : `<i class="bi bi-dash"></i> Sin cuotas`;
+
+      return `
+        <tr class="hc-memb-row" onclick="hcToggleCuotas(${idx})" style="cursor:pointer">
+          <td style="text-align:center;font-weight:700;color:#7c4dff;font-size:13px">#${nroMemb}</td>
+          <td>
+            <strong>${m.plan_nombre}</strong>
+            <br><small style="color:#888;font-size:10px">${tipoLabel[m.tipo_ingreso] || m.tipo_ingreso || ''}</small>
+          </td>
+          <td style="font-size:12px;white-space:nowrap">
+            ${formatFechaLargaHist(m.fecha_inicio)}<br>
+            <span style="color:#0f3460;font-weight:600">${formatFechaLargaHist(m.fecha_fin)}</span>
+          </td>
+          <td><span class="hc-badge ${badgeInfo.cls}">${badgeInfo.label}</span></td>
+          <td style="font-size:12px">${montoStr}${saldoStr}</td>
+          <td style="font-size:11px;color:#555;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${m.asesor || '—'}">${m.asesor || '—'}</td>
+          <td>
+            <button class="hc-btn-cuotas" title="Ver cuotas de pago"
+              onclick="event.stopPropagation();hcToggleCuotas(${idx})">
+              ${btnCuotasLabel}
+            </button>
+          </td>
+          <td>
+            <button class="hc-btn-boleta" title="Ver comprobante"
+              onclick="event.stopPropagation();verBoletaMembresia(${m.id_membresia})">
+              <i class="bi bi-printer"></i>
+            </button>
+          </td>
+        </tr>
+        <tr id="${rowId}" style="display:none">${cuotasInnerHtml}</tr>`;
+    }).join('');
+
+    // Thead fijo fuera del scroll + div scrollable para el tbody.
+    // Esto evita que las filas "traspasen" el encabezado al hacer scroll.
+    // Altura del wrapper scrollable: 3 filas + ½ ≈ 224px (scroll hint visual).
+    contMemb.style.maxHeight = '';
+    contMemb.style.overflowY = '';
+    contMemb.style.overflowX = '';
+    contMemb.innerHTML = `
+      <style>
+        #hcScrollBody::-webkit-scrollbar { width: 5px; }
+        #hcScrollBody::-webkit-scrollbar-track { background: #f5f5f5; }
+        #hcScrollBody::-webkit-scrollbar-thumb { background: #d1c4e9; border-radius: 10px; }
+        #hcScrollBody::-webkit-scrollbar-thumb:hover { background: #b39ddb; }
+      </style>
+      <table class="hc-table" style="table-layout:fixed;width:100%">
+        <colgroup>
+          <col style="width:44px"><col style="width:140px"><col style="width:110px">
+          <col style="width:90px"><col style="width:90px"><col style="width:70px">
+          <col style="width:110px"><col style="width:54px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>#</th><th>Plan</th><th>Período</th><th>Estado</th><th>Monto</th><th>Asesor</th><th>Cuotas</th><th>Boleta</th>
+          </tr>
+        </thead>
+      </table>
+      <div id="hcScrollBody"
+        style="max-height:224px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#d1c4e9 #f5f5f5">
+        <table class="hc-table" style="table-layout:fixed;width:100%">
+          <colgroup>
+            <col style="width:44px"><col style="width:140px"><col style="width:110px">
+            <col style="width:90px"><col style="width:90px"><col style="width:70px">
+            <col style="width:110px"><col style="width:54px">
+          </colgroup>
+          <tbody>${filas}</tbody>
+        </table>
+      </div>`;
+  }
+
+  // ── Ventas de productos ──
+  const contVentas = document.getElementById('hcBodyVentas');
+  if (!ventas || !ventas.length) {
+    contVentas.innerHTML = '<div class="hc-empty">Sin ventas registradas</div>';
+  } else {
+    const _sunatBadge = (estado) => {
+      const map = {
+        sin_emitir: ['#fff3e0','#e65100','Nota de Venta'],
+        enviado:    ['#e3f2fd','#1565c0','Enviado'],
+        aceptado:   ['#e8f5e9','#2e7d32','Aceptado'],
+        rechazado:  ['#fce4ec','#c62828','Rechazado'],
+        anulado:    ['#f3e5f5','#6a1b9a','Anulado'],
+      };
+      const [bg, color, label] = map[estado] || ['#f5f5f5','#888', estado || '—'];
+      return `<span style="background:${bg};color:${color};font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;white-space:nowrap">${label}</span>`;
+    };
+    contVentas.innerHTML = `
+      <div style="overflow-x:auto">
+      <table class="hc-table" style="min-width:580px">
+        <thead><tr>
+          <th>Fecha</th><th>Documento</th><th>Productos</th><th>Método</th><th>Total</th><th>Estado</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${ventas.map(v => {
+            const fv = v.fecha
+              ? new Date(v.fecha).toLocaleString('es-PE', {
+                  day:'2-digit', month:'2-digit', year:'numeric',
+                  hour:'2-digit', minute:'2-digit'
+                })
+              : '—';
+            const metodo = v.metodo_pago
+              ? v.metodo_pago.charAt(0).toUpperCase() + v.metodo_pago.slice(1)
+              : '—';
+            const numDoc = v.serie_electronica && v.numero_electronico
+              ? `${v.serie_electronica}-${String(v.numero_electronico).padStart(6,'0')}`
+              : (v.numero_venta || '—');
+            const deuda = parseFloat(v.saldo_pendiente || 0);
+            const deudaHtml = deuda > 0
+              ? `<br><span style="color:#e53935;font-size:10px;font-weight:600">Debe S/${deuda.toFixed(2)}</span>`
+              : '';
+            return `<tr>
+              <td style="font-size:11px;color:#777;white-space:nowrap">${fv}</td>
+              <td style="font-size:12px;font-weight:600;white-space:nowrap">${numDoc}</td>
+              <td style="font-size:11px;color:#555;max-width:180px;line-height:1.4">${v.productos || '—'}</td>
+              <td style="font-size:12px">${metodo}</td>
+              <td style="white-space:nowrap"><strong>S/ ${parseFloat(v.monto || 0).toFixed(2)}</strong>${deudaHtml}</td>
+              <td>${_sunatBadge(v.estado_sunat)}</td>
+              <td>
+                <button class="hc-btn-boleta" title="Ver detalle de venta"
+                  onclick="verBoletaVenta(${v.id_venta})">
+                  <i class="bi bi-eye"></i>
+                </button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>`;
+  }
+
+  // ── Asistencias ──
+  _hcAsistencias = asistencias;
+  if (asistencias.length) {
+    const ultima = _parseFechaAsist(asistencias[0]);
+    _calMes = { year: ultima.getFullYear(), month: ultima.getMonth() };
+  } else {
+    const hoy = new Date();
+    _calMes = { year: hoy.getFullYear(), month: hoy.getMonth() };
+  }
+  _renderCalendarioAsist();
+
+  // ── Flujo de caja ──
+  const contCaja      = document.getElementById('hcBodyCaja');
+  const contCajaTotal = document.getElementById('hcCajaTotalRow');
+  if (!flujo_caja.length) {
+    contCaja.innerHTML = '<div class="hc-empty">Sin pagos registrados</div>';
+    if (contCajaTotal) contCajaTotal.style.display = 'none';
+  } else {
+    contCaja.innerHTML = `
+      <div style="overflow-x:auto">
+      <table class="hc-table">
+        <thead><tr>
+          <th>Fecha y Hora</th><th>Concepto / Referencia</th><th>Método de Pago</th><th>Monto Pagado</th>
+        </tr></thead>
+        <tbody>
+          ${flujo_caja.map(f => {
+            const badgeColor = f.tipo === 'MATRICULA'
+              ? 'background:#ede7f6;color:#6a1b9a'
+              : 'background:#e3f2fd;color:#1565c0';
+            const fechaHora = f.fecha_hora
+              ? new Date(f.fecha_hora).toLocaleString('es-PE', {
+                  day:'2-digit', month:'2-digit', year:'numeric',
+                  hour:'2-digit', minute:'2-digit'
+                })
+              : f.fecha || '—';
+            return `<tr>
+              <td style="font-size:12px;color:#666">${fechaHora}</td>
+              <td>
+                <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-right:4px;${badgeColor}">
+                  ${f.tipo}
+                </span>
+                ${f.concepto}
+              </td>
+              <td style="font-size:12px;color:#555">${(f.metodo_pago||'—').charAt(0).toUpperCase()+(f.metodo_pago||'').slice(1)}</td>
+              <td style="font-weight:700;color:#0f3460">S/. ${parseFloat(f.monto_pagado||0).toFixed(2)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>`;
+    if (contCajaTotal) {
+      contCajaTotal.innerHTML = `TOTAL PAGADO POR EL CLIENTE (EN ESTE PERIODO):
+        <strong style="color:#c62828;margin-left:8px">S/ ${parseFloat(total_pagado||0).toFixed(2)}</strong>`;
+      contCajaTotal.style.display = '';
+    }
+  }
+
+  setTimeout(() => {
+    const _box = document.querySelector('#modalHistorialCliente .modal-box');
+    if (_box) _box.scrollTop = 0;
+  }, 80);
+}
+
+function filtrarHistorial() {
+  const modal   = document.getElementById('modalHistorialCliente');
+  const id      = modal?.dataset.idCliente;
+  const fi      = document.getElementById('hcFechaInicio')?.value || '';
+  const ff      = document.getElementById('hcFechaFin')?.value || '';
+  if (!id) return;
+  _cargarHistorial(id, fi, ff);
+}
+
+function verBoletaMembresia(idMembresia) {
+  if (!_historialActual) return;
+
+  const m = _historialActual.membresias?.find(x => x.id_membresia === idMembresia);
+  if (!m) return;
+
+  const fmtFecha = typeof window.memb_fmtFecha === 'function'
+    ? window.memb_fmtFecha
+    : (f) => {
+        if (!f) return '—';
+        const d = String(f).includes('T') ? new Date(f) : new Date(f + 'T12:00:00');
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
+      };
+
+  const cliente   = _historialActual.cliente || {};
+  const cuotas    = m.cuotas || [];
+  const montoPagado = cuotas
+    .filter(c => c.estado_cuota === 'pagado')
+    .reduce((s, c) => s + parseFloat(c.monto || 0), 0);
+
+  // Calcular duración usando unidad correcta (dias/meses/años)
+  let duracion = '—';
+  if (m.duracion_meses) {
+    const fmtD = typeof window.memb_fmtDuracion === 'function' ? window.memb_fmtDuracion : null;
+    duracion = fmtD
+      ? fmtD(m.duracion_meses, m.duracion_unidad || 'meses')
+      : (() => {
+          const v = parseInt(m.duracion_meses);
+          const u = m.duracion_unidad || 'meses';
+          const s = { dias:'día', meses:'mes', anos:'año' }[u] || u;
+          const p = { dias:'días', meses:'meses', anos:'años' }[u] || u;
+          return `${v} ${v === 1 ? s : p}`;
+        })();
+  }
+
+  const fechaEmision = m.created_at
+    ? new Date(m.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : fmtFecha(m.fecha_inicio);
+
+  const boletaDatos = {
+    id_membresia:    m.id_membresia,
+    num_comprobante: `B001-${String(m.id_membresia).padStart(4, '0')}`,
+    fecha_emision:   fechaEmision,
+    nombre:          cliente.nombre  || '—',
+    apellido:        cliente.apellido || '—',
+    dni:             cliente.dni      || '—',
+    celular:         cliente.celular  || cliente.telefono || '—',
+    plan:            m.plan_nombre    || '—',
+    duracion,
+    fecha_inicio:    fmtFecha(m.fecha_inicio),
+    fecha_fin:       fmtFecha(m.fecha_fin),
+    monto_total:     parseFloat(m.monto_total  || 0),
+    monto_pagado:    montoPagado,
+    metodo_pago:     cuotas[0]?.metodo_pago || '—',
+    cuotas,
+    observaciones:   m.observaciones || ''
+  };
+
+  if (typeof window.memb_imprimirBoletaConDatos === 'function') {
+    window.memb_imprimirBoletaConDatos(boletaDatos);
+  } else {
+    showToast('El módulo de membresías no está cargado. Recarga la página.', 'warning');
+  }
+}
+
+function verBoletaVenta(idVenta) {
+  if (typeof verDetalleVenta === 'function') {
+    // El modal de historial tiene z-index:1100, el detalle de venta debe quedar por encima
+    const modalDV = document.getElementById('modalDetalleVenta');
+    if (modalDV) modalDV.style.zIndex = '1200';
+    verDetalleVenta(idVenta);
+  } else {
+    showToast('El módulo de ventas no está cargado. Recarga la página.', 'warning');
+  }
+}
+
+// ── NAVEGACIÓN MÓVIL DEL HISTORIAL ───────────────────────────────────────────
+
+function hcNavToSection(key) {
+  if (!_historialActual) return;
+  const { membresias, ventas, asistencias, flujo_caja, total_pagado } = _historialActual;
+
+  const meta = {
+    memb:   { title: 'Matrículas',   icon: 'bi-person-badge',   color: '#7c4dff' },
+    ventas: { title: 'Ventas',        icon: 'bi-cart3',           color: '#e65100' },
+    asist:  { title: 'Asistencias',   icon: 'bi-calendar-check', color: '#26a69a' },
+    caja:   { title: 'Flujo de Caja', icon: 'bi-cash-stack',     color: '#c62828' },
+  };
+  const s = meta[key];
+  if (!s) return;
+
+  const titleEl = document.getElementById('hcMbSectionTitle');
+  if (titleEl) titleEl.innerHTML = '<i class="bi ' + s.icon + ' me-2" style="color:' + s.color + '"></i>' + s.title;
+
+  const searchEl = document.getElementById('hcMbSearch');
+  if (searchEl) searchEl.value = '';
+
+  const slot = document.getElementById('hcMobileContentSlot');
+  if (!slot) return;
+
+  if (key === 'memb')        slot.innerHTML = _hcMbRenderMemb(membresias);
+  else if (key === 'ventas') slot.innerHTML = _hcMbRenderVentas(ventas);
+  else if (key === 'asist')  slot.innerHTML = _hcMbRenderAsist(asistencias);
+  else if (key === 'caja')   slot.innerHTML = _hcMbRenderCaja(flujo_caja, total_pagado);
+
+  const mainBox    = document.getElementById('hcMainBox');
+  const sectionBox = document.getElementById('hcSectionBox');
+  if (mainBox)    mainBox.style.display = 'none';
+  if (sectionBox) { sectionBox.style.display = 'flex'; sectionBox.dataset.section = key; }
+  slot.scrollTop = 0;
+
+  // _navOpen gestiona el slot de historial: si la sección ya está en el stack
+  // (cambio de pestaña) retorna sin hacer push; si es la primera apertura, añade
+  // al stack sin push extra porque el modal padre ya tiene el slot {modal:true}.
+  // console.log('[NAV] hcNavToSection', key, '| stack antes:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
+  if (typeof _navOpen === 'function') {
+    _navOpen('hcSectionBox', _hcSectionClose);
+  }
+  // console.log('[NAV] hcNavToSection POST | stack:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
+}
+
+// Cierre visual del sub-view (sin tocar el stack — lo hace hcNavBack o el popstate)
+function _hcSectionClose() {
+  const sectionBox = document.getElementById('hcSectionBox');
+  const mainBox    = document.getElementById('hcMainBox');
+  if (sectionBox) sectionBox.style.display = 'none';
+  if (mainBox)    mainBox.style.display = '';
+}
+
+// Cierra el modal completo (X o "Volver al listado") de forma limpia:
+// saca hcSectionBox Y modalHistorialCliente del stack, limpia el slot de history.
+function hcCerrarModal() {
+  // console.log('[NAV] hcCerrarModal | stack antes:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
+  _hcSectionClose();
+  if (typeof _navClose === 'function') {
+    _navClose('hcSectionBox');
+    _navClose('modalHistorialCliente');
+  }
+  document.getElementById('modalHistorialCliente')?.classList.remove('open');
+  // Si el stack quedó vacío, limpiar el slot {modal:true} para que el siguiente
+  // "retroceder" no desperdicie un nivel ni quede huérfano.
+  if (history.state?.modal &&
+      typeof _navStack !== 'undefined' && _navStack.length === 0) {
+    history.replaceState(
+      { vista: typeof _currentVista !== 'undefined' ? _currentVista : 'clientes' },
+      '', '/dashboard'
+    );
+  }
+  // console.log('[NAV] hcCerrarModal POST | stack:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
+}
+
+function hcNavBack() {
+  // console.log('[NAV] hcNavBack (← botón) | stack antes:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
+  _hcSectionClose();
+  // Sincronizar el stack cuando el usuario cierra manualmente (flecha ←)
+  if (typeof _navClose === 'function') _navClose('hcSectionBox');
+  // console.log('[NAV] hcNavBack POST | stack:', JSON.stringify(_navStack.map(x=>x.id)), '| history.length:', history.length);
+}
+
+function hcMbFilter() {
+  const q = (document.getElementById('hcMbSearch')?.value || '').toLowerCase().trim();
+  document.querySelectorAll('#hcMobileContentSlot .hcmb-card').forEach(card => {
+    card.style.display = (!q || card.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
+}
+
+function hcMbToggleCuotas(idx) {
+  const row  = document.getElementById('hcMbCuotas_' + idx);
+  const icon = document.getElementById('hcMbCuotasIcon_' + idx);
+  if (!row) return;
+  const open = row.style.display !== 'none';
+  row.style.display = open ? 'none' : '';
+  if (icon) icon.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+function _hcMbRenderMemb(membresias) {
+  if (!membresias || !membresias.length)
+    return '<div class="hcmb-empty">Sin matrículas registradas</div>';
+
+  const estadoAccent = { activa:'#4caf50', vencida:'#f44336', congelada:'#2196f3', anulada:'#78909c' };
+  const estadoMap = {
+    activa:    { cls:'hc-badge-activa',    label:'ACTIVA'    },
+    vencida:   { cls:'hc-badge-vencida',   label:'VENCIDA'   },
+    congelada: { cls:'hc-badge-congelada', label:'CONGELADA' },
+    anulada:   { cls:'hc-badge-anulada',   label:'ANULADA'   },
+  };
+  const tipoLabel = { nuevo:'Nuevo ingreso', renovacion:'Renovación', interdiario:'Interdiario' };
+
+  return [...membresias].sort((a,b) => {
+    const fa = a.fecha_inicio ? new Date(a.fecha_inicio) : new Date(0);
+    const fb = b.fecha_inicio ? new Date(b.fecha_inicio) : new Date(0);
+    return fb - fa;
+  }).map((m, idx) => {
+    const hoyH = new Date(); hoyH.setHours(0,0,0,0);
+    const fechaFinM = m.fecha_fin ? new Date(m.fecha_fin.split('T')[0] + 'T12:00:00') : null;
+    const ef = (m.estado === 'activa' && fechaFinM && fechaFinM < hoyH) ? 'vencida' : m.estado;
+    const badgeInfo = estadoMap[ef] || { cls:'hc-badge-otro', label:(ef||'').toUpperCase() };
+    const accent    = estadoAccent[ef] || '#78909c';
+    const saldoPend = parseFloat(m.saldo_pendiente || 0);
+    const cuotas    = Array.isArray(m.cuotas) ? m.cuotas : [];
+    const montoStr  = m.monto_total ? 'S/ ' + parseFloat(m.monto_total).toFixed(2) : '—';
+
+    const cuotasHtml = cuotas.map(q => {
+      const fPago   = q.fecha_pago ? formatFechaLargaHist(q.fecha_pago) : '—';
+      const metodo  = q.metodo_pago ? q.metodo_pago.charAt(0).toUpperCase() + q.metodo_pago.slice(1) : '—';
+      const eCls    = ({pagado:'hc-badge-activa',pendiente:'hc-badge-otro',vencido:'hc-badge-vencida'})[q.estado_cuota] || 'hc-badge-otro';
+      return '<div class="hcmb-cuota-row">'
+        + '<span class="hcmb-cuota-num">Cuota ' + q.num_cuota + '</span>'
+        + '<span class="hc-badge ' + eCls + '" style="font-size:10px">' + (q.estado_cuota||'—') + '</span>'
+        + '<span class="hcmb-cuota-info">S/ ' + parseFloat(q.monto||0).toFixed(2) + ' · ' + metodo + ' · ' + fPago + '</span>'
+        + '</div>';
+    }).join('');
+
+    return '<div class="hcmb-card" style="border-left:4px solid ' + accent + '">'
+      + '<div class="hcmb-card-top">'
+        + '<div class="hcmb-card-title">' + (m.plan_nombre||'—') + '</div>'
+        + '<span class="hc-badge ' + badgeInfo.cls + '">' + badgeInfo.label + '</span>'
+      + '</div>'
+      + '<div class="hcmb-card-sub">#' + (idx+1) + ' · ' + (tipoLabel[m.tipo_ingreso] || m.tipo_ingreso || '—') + '</div>'
+      + '<div class="hcmb-kv-list">'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">PERÍODO</span><span class="hcmb-val">' + formatFechaLargaHist(m.fecha_inicio) + ' → ' + formatFechaLargaHist(m.fecha_fin) + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">MONTO</span><span class="hcmb-val">' + montoStr + (saldoPend > 0 ? ' <span style="color:#e53935;font-size:12px"> · Debe S/' + saldoPend.toFixed(2) + '</span>' : ' <span style="color:#4caf50;font-size:12px"> · Al día ✓</span>') + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">ASESOR</span><span class="hcmb-val">' + (m.asesor||'—') + '</span></div>'
+      + '</div>'
+      + '<div class="hcmb-card-foot">'
+        + (cuotas.length
+            ? '<button class="hcmb-cuotas-btn" onclick="hcMbToggleCuotas(' + idx + ')"><i class="bi bi-chevron-down" id="hcMbCuotasIcon_' + idx + '" style="transition:transform .2s"></i> ' + cuotas.length + ' cuota(s)</button>'
+            : '<span style="color:#bbb;font-size:13px">Sin cuotas</span>')
+        + '<button class="hc-btn-boleta" onclick="verBoletaMembresia(' + m.id_membresia + ')" title="Ver boleta"><i class="bi bi-printer"></i></button>'
+      + '</div>'
+      + (cuotas.length ? '<div id="hcMbCuotas_' + idx + '" style="display:none" class="hcmb-cuotas-list">' + cuotasHtml + '</div>' : '')
+      + '</div>';
+  }).join('');
+}
+
+function _hcMbRenderVentas(ventas) {
+  if (!ventas || !ventas.length)
+    return '<div class="hcmb-empty">Sin ventas registradas</div>';
+
+  const sunatAccent = { sin_emitir:'#e65100', enviado:'#1565c0', aceptado:'#2e7d32', rechazado:'#c62828', anulado:'#6a1b9a' };
+  const sunatLabel  = { sin_emitir:'Nota de Venta', enviado:'Enviado', aceptado:'Aceptado', rechazado:'Rechazado', anulado:'Anulado' };
+  const sunatBg     = { sin_emitir:'#fff3e0', enviado:'#e3f2fd', aceptado:'#e8f5e9', rechazado:'#fce4ec', anulado:'#f3e5f5' };
+
+  return ventas.map(v => {
+    const fv = v.fecha ? new Date(v.fecha).toLocaleString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+    const metodo = v.metodo_pago ? v.metodo_pago.charAt(0).toUpperCase() + v.metodo_pago.slice(1) : '—';
+    const numDoc = v.serie_electronica && v.numero_electronico
+      ? v.serie_electronica + '-' + String(v.numero_electronico).padStart(6,'0')
+      : (v.numero_venta || '—');
+    const deuda  = parseFloat(v.saldo_pendiente || 0);
+    const accent = sunatAccent[v.estado_sunat] || '#78909c';
+    const lbl    = sunatLabel[v.estado_sunat] || v.estado_sunat || '—';
+    const bg     = sunatBg[v.estado_sunat] || '#f5f5f5';
+
+    return '<div class="hcmb-card" style="border-left:4px solid ' + accent + '">'
+      + '<div class="hcmb-card-top">'
+        + '<div class="hcmb-card-title">' + numDoc + '</div>'
+        + '<span style="background:' + bg + ';color:' + accent + ';font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px;white-space:nowrap">' + lbl + '</span>'
+      + '</div>'
+      + '<div class="hcmb-kv-list">'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">FECHA</span><span class="hcmb-val">' + fv + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">MÉTODO</span><span class="hcmb-val">' + metodo + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">PRODUCTOS</span><span class="hcmb-val">' + (v.productos||'—') + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">TOTAL</span><span class="hcmb-val"><strong>S/ ' + parseFloat(v.monto||0).toFixed(2) + '</strong>' + (deuda > 0 ? ' <span style="color:#e53935;font-size:12px"> · Debe S/' + deuda.toFixed(2) + '</span>' : '') + '</span></div>'
+      + '</div>'
+      + '<div class="hcmb-card-foot">'
+        + '<button class="hcmb-btn-ver" onclick="verBoletaVenta(' + v.id_venta + ')"><i class="bi bi-eye me-1"></i>Ver detalle</button>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function _hcMbRenderAsist(asistencias) {
+  if (!asistencias || !asistencias.length)
+    return '<div class="hcmb-empty">Sin asistencias registradas</div>';
+
+  const grupos = {};
+  asistencias.forEach(a => {
+    const d  = _parseFechaAsist(a);
+    const yr = d.getFullYear(), mo = d.getMonth();
+    const key = yr + '-' + String(mo+1).padStart(2,'0');
+    if (!grupos[key]) {
+      const lbl = new Date(yr,mo,1).toLocaleDateString('es-PE',{month:'long',year:'numeric'});
+      grupos[key] = { label: lbl.charAt(0).toUpperCase() + lbl.slice(1), dias: [] };
+    }
+    grupos[key].dias.push(d);
+  });
+
+  return Object.keys(grupos).sort().reverse().map(key => {
+    const g = grupos[key];
+    const chips = g.dias.sort((a,b)=>b-a).map(d =>
+      '<span class="hcmb-asist-chip">' + d.toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit'}) + '</span>'
+    ).join('');
+    return '<div class="hcmb-card" style="border-left:4px solid #26a69a">'
+      + '<div class="hcmb-card-top">'
+        + '<div class="hcmb-card-title">' + g.label + '</div>'
+        + '<span style="background:#e0f7f4;color:#26a69a;font-size:12px;font-weight:700;padding:2px 10px;border-radius:12px">' + g.dias.length + ' día(s)</span>'
+      + '</div>'
+      + '<div class="hcmb-asist-chips">' + chips + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function _hcMbRenderCaja(flujo_caja, total_pagado) {
+  if (!flujo_caja || !flujo_caja.length)
+    return '<div class="hcmb-empty">Sin pagos registrados</div>';
+
+  const tipoAccent = { MATRICULA:'#7c4dff', VENTA:'#1565c0' };
+  const tipoBg     = { MATRICULA:'#ede7f6', VENTA:'#e3f2fd'  };
+
+  const cards = flujo_caja.map(f => {
+    const fechaHora = f.fecha_hora
+      ? new Date(f.fecha_hora).toLocaleString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})
+      : f.fecha || '—';
+    const metodo = f.metodo_pago ? f.metodo_pago.charAt(0).toUpperCase() + f.metodo_pago.slice(1) : '—';
+    const accent = tipoAccent[f.tipo] || '#78909c';
+    const bg     = tipoBg[f.tipo]     || '#f5f5f5';
+
+    return '<div class="hcmb-card" style="border-left:4px solid ' + accent + '">'
+      + '<div class="hcmb-card-top">'
+        + '<div class="hcmb-card-title">' + (f.concepto||'—') + '</div>'
+        + '<span style="background:' + bg + ';color:' + accent + ';font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px">' + (f.tipo||'—') + '</span>'
+      + '</div>'
+      + '<div class="hcmb-kv-list">'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">FECHA</span><span class="hcmb-val">' + fechaHora + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">MÉTODO</span><span class="hcmb-val">' + metodo + '</span></div>'
+        + '<div class="hcmb-kv"><span class="hcmb-lbl">MONTO</span><span class="hcmb-val"><strong style="color:#0f3460">S/ ' + parseFloat(f.monto_pagado||0).toFixed(2) + '</strong></span></div>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+
+  return cards + '<div class="hcmb-total-footer">Total pagado: <strong>S/ ' + parseFloat(total_pagado||0).toFixed(2) + '</strong></div>';
+}
+
+function _buildModalHistorial() {
+  return `
+  <div class="modal-overlay" id="modalHistorialCliente" style="z-index:1100">
+    <div class="modal-box" id="hcMainBox" style="width:960px;max-width:98vw;max-height:94vh;overflow-y:auto;padding:0;overflow-anchor:none">
+
+      <!-- HEADER con datos del cliente -->
+      <div style="background:linear-gradient(135deg,#0f3460 0%,#16213e 100%);padding:20px 24px 16px;color:#fff;position:relative;border-radius:12px 12px 0 0">
+        <button onclick="hcCerrarModal()"
+          style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,.15);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center">✕</button>
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;flex-shrink:0;overflow:hidden;transition:opacity .15s" id="hcAvatar">?</div>
+          <div>
+            <div style="font-size:18px;font-weight:800;letter-spacing:-.3px" id="hcNombre">—</div>
+            <div style="font-size:13px;opacity:.8;margin-top:2px">
+              <span id="hcDni"></span>
+              &nbsp;·&nbsp;<span id="hcTelefono"></span>
+            </div>
+            <div style="font-size:11px;opacity:.6;margin-top:2px" id="hcRegistro"></div>
+          </div>
+        </div>
+        <!-- Filtro de fechas -->
+        <div style="display:flex;gap:10px;margin-top:14px;align-items:center;flex-wrap:wrap">
+          <i class="bi bi-funnel" style="opacity:.7"></i>
+          <span style="font-size:12px;opacity:.7">Filtrar por fechas:</span>
+          <input type="date" id="hcFechaInicio" class="hc-input-fecha" placeholder="Desde">
+          <span style="opacity:.5">—</span>
+          <input type="date" id="hcFechaFin" class="hc-input-fecha" placeholder="Hasta">
+          <button onclick="filtrarHistorial()" class="hc-btn-filtrar">
+            <i class="bi bi-search me-1"></i>Filtrar
+          </button>
+          <button onclick="limpiarFiltroHistorial()" class="hc-btn-clear">
+            <i class="bi bi-x-circle me-1"></i>Limpiar
+          </button>
+        </div>
+      </div>
+
+      <!-- MOBILE MENU (mobile only) -->
+      <div id="hcMobileMenu">
+        <div class="hcmb-tile" onclick="hcNavToSection('memb')">
+          <div class="hcmb-tile-icon" style="background:#ede7f6;color:#7c4dff"><i class="bi bi-person-badge"></i></div>
+          <div class="hcmb-tile-body">
+            <div class="hcmb-tile-name">Matrículas</div>
+            <div class="hcmb-tile-sub" id="hcMbSubMemb">Cargando...</div>
+          </div>
+          <i class="bi bi-chevron-right hcmb-tile-arrow"></i>
+        </div>
+        <div class="hcmb-tile" onclick="hcNavToSection('ventas')">
+          <div class="hcmb-tile-icon" style="background:#fff3e0;color:#e65100"><i class="bi bi-cart3"></i></div>
+          <div class="hcmb-tile-body">
+            <div class="hcmb-tile-name">Ventas</div>
+            <div class="hcmb-tile-sub" id="hcMbSubVentas">Cargando...</div>
+          </div>
+          <i class="bi bi-chevron-right hcmb-tile-arrow"></i>
+        </div>
+        <div class="hcmb-tile" onclick="hcNavToSection('asist')">
+          <div class="hcmb-tile-icon" style="background:#e0f7f4;color:#26a69a"><i class="bi bi-calendar-check"></i></div>
+          <div class="hcmb-tile-body">
+            <div class="hcmb-tile-name">Asistencias</div>
+            <div class="hcmb-tile-sub" id="hcMbSubAsist">Cargando...</div>
+          </div>
+          <i class="bi bi-chevron-right hcmb-tile-arrow"></i>
+        </div>
+        <div class="hcmb-tile" onclick="hcNavToSection('caja')">
+          <div class="hcmb-tile-icon" style="background:#ffebee;color:#c62828"><i class="bi bi-cash-stack"></i></div>
+          <div class="hcmb-tile-body">
+            <div class="hcmb-tile-name">Flujo de Caja</div>
+            <div class="hcmb-tile-sub" id="hcMbSubCaja">Cargando...</div>
+          </div>
+          <i class="bi bi-chevron-right hcmb-tile-arrow"></i>
+        </div>
+        <div class="hcmb-total-row">
+          Total pagado (período): <strong id="hcMbTotalRow">—</strong>
+        </div>
+      </div>
+
+      <!-- BODY con secciones -->
+      <div id="hcDesktopBody" style="padding:20px 24px">
+
+        <!-- FILA 1: Matrículas (fila completa) -->
+        <div class="hc-section">
+          <div class="hc-section-title hc-collapsible" onclick="hcToggleSection('hcBodyMemb','hcChevronMemb')">
+            <i class="bi bi-person-badge me-2" style="color:#7c4dff"></i>Historial de Matrículas
+            <i id="hcChevronMemb" class="bi bi-chevron-down" style="margin-left:auto;font-size:13px;transition:transform .25s"></i>
+          </div>
+          <div id="hcBodyMemb" class="hc-loading hc-body-scroll">Cargando...</div>
+        </div>
+
+        <!-- FILA 2: Ventas -->
+        <div class="hc-section" style="margin-top:16px">
+          <div class="hc-section-title hc-collapsible" onclick="hcToggleSection('hcBodyVentas','hcChevronVentas')">
+            <i class="bi bi-cart3 me-2" style="color:#e65100"></i>Historial de Ventas
+            <i id="hcChevronVentas" class="bi bi-chevron-down" style="margin-left:auto;font-size:13px;transition:transform .25s"></i>
+          </div>
+          <div id="hcBodyVentas" class="hc-loading hc-body-scroll">Cargando...</div>
+        </div>
+
+        <!-- FILA 2: Asistencias -->
+        <div class="hc-section" style="margin-top:16px">
+          <div class="hc-section-title">
+            <i class="bi bi-calendar-check me-2" style="color:#26a69a"></i>Historial de Asistencias
+            <button onclick="exportarAsistenciasCSV()" title="Exportar CSV" class="cal-btn-export" style="margin-left:auto">
+              <i class="bi bi-download"></i>Exportar
+            </button>
+            <button class="hc-section-toggle" style="margin-left:8px" onclick="hcToggle('hcBodyAsist')" title="Comprimir/Expandir">
+              <i id="hcToggleIconAsist" class="bi bi-dash-lg"></i>
+            </button>
+          </div>
+          <div id="hcBodyAsist" class="hc-loading">Cargando...</div>
+        </div>
+
+        <!-- FILA 3: Flujo de caja -->
+        <div class="hc-section" style="margin-top:16px">
+          <div class="hc-section-title hc-collapsible" onclick="hcToggleSection('hcSectionCajaBody','hcChevronCaja')">
+            <i class="bi bi-cash-stack me-2" style="color:#c62828"></i>Historial General de Pagos (Flujo de Caja)
+            <i id="hcChevronCaja" class="bi bi-chevron-down" style="margin-left:auto;font-size:13px;transition:transform .25s"></i>
+          </div>
+          <div id="hcSectionCajaBody">
+            <div id="hcBodyCaja" class="hc-loading hc-body-scroll">Cargando...</div>
+            <div id="hcCajaTotalRow" class="hc-total-row" style="display:none"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- FOOTER -->
+      <div id="hcMainFooter" class="hc-footer" style="padding:14px 24px;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center;background:#fafafa;border-radius:0 0 12px 12px">
+        <div style="font-size:13px;color:#555">
+          Total pagado (periodo):
+          <strong id="hcTotalPagado" style="color:#c62828;font-size:15px;margin-left:6px">S/ 0.00</strong>
+        </div>
+        <button onclick="hcCerrarModal()"
+          style="padding:8px 20px;background:#0f3460;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">
+          Volver al listado de clientes
+        </button>
+      </div>
+    </div>
+
+  <div id="hcSectionBox" style="display:none">
+    <div class="hcmb-section-hdr">
+      <button class="hcmb-back-btn" onclick="hcNavBack()">
+        <i class="bi bi-arrow-left"></i>
+      </button>
+      <span id="hcMbSectionTitle" class="hcmb-section-title-txt"></span>
+    </div>
+    <div class="hcmb-search-bar">
+      <i class="bi bi-search" style="font-size:14px;flex-shrink:0"></i>
+      <input type="search" id="hcMbSearch" class="hcmb-search-input" placeholder="Buscar..." oninput="hcMbFilter()">
+    </div>
+    <div id="hcMobileContentSlot" class="hcmb-content"></div>
+  </div>
+
+  </div>`;
+}
+
+function limpiarFiltroHistorial() {
+  const fi = document.getElementById('hcFechaInicio');
+  const ff = document.getElementById('hcFechaFin');
+  if (fi) fi.value = '';
+  if (ff) ff.value = '';
+  const modal = document.getElementById('modalHistorialCliente');
+  if (modal?.dataset.idCliente) _cargarHistorial(modal.dataset.idCliente);
+}
+
+// ── Toggle expandible de cuotas por matrícula ─────────────────────────────────
+function hcToggleCuotas(idx) {
+  const row  = document.getElementById(`hcCuotas_${idx}`);
+  const icon = document.getElementById(`hcCuotasIcon_${idx}`);
+  if (!row) return;
+  const abierto = row.style.display !== 'none';
+  row.style.display = abierto ? 'none' : '';
+  if (icon) icon.style.transform = abierto ? '' : 'rotate(180deg)';
+}
+
+function hcToggle(sectionId) {
+  // Usado solo para Asistencias
+  const el = document.getElementById(sectionId);
+  if (!el) return;
+  const collapse = el.style.display !== 'none';
+  el.style.display = collapse ? 'none' : '';
+  const icon = document.getElementById('hcToggleIconAsist');
+  if (icon) icon.className = collapse ? 'bi bi-plus-lg' : 'bi bi-dash-lg';
+}
+
+function hcToggleSection(bodyId, chevronId) {
+  const el      = document.getElementById(bodyId);
+  const chevron = document.getElementById(chevronId);
+  if (!el) return;
+  const isHidden = el.style.display === 'none';
+  el.style.display = isHidden ? '' : 'none';
+  if (chevron) chevron.style.transform = isHidden ? '' : 'rotate(-90deg)';
+}
+
+// ── LIGHTBOX — ampliar foto de perfil ────────────────────────────────────────
+function abrirFotoLightbox(url, nombre) {
+  let lb = document.getElementById('fotoLightbox');
+  if (!lb) {
+    document.body.insertAdjacentHTML('beforeend', `
+    <div id="fotoLightbox"
+      style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);
+             align-items:center;justify-content:center;flex-direction:column;cursor:zoom-out">
+      <button id="fotoLightboxClose"
+        style="position:absolute;top:18px;right:22px;background:rgba(255,255,255,.18);border:none;
+               color:#fff;width:38px;height:38px;border-radius:50%;cursor:pointer;font-size:20px;
+               display:flex;align-items:center;justify-content:center;transition:background .15s">✕</button>
+      <img id="fotoLightboxImg" src="" alt="foto cliente"
+        style="max-width:88vw;max-height:78vh;border-radius:14px;
+               box-shadow:0 12px 48px rgba(0,0,0,.6);object-fit:contain;cursor:default"
+        onclick="event.stopPropagation()">
+      <div id="fotoLightboxNombre"
+        style="color:#fff;margin-top:16px;font-size:15px;font-weight:600;opacity:.9;letter-spacing:.3px"></div>
+      <div style="color:rgba(255,255,255,.45);font-size:11px;margin-top:6px">Clic fuera de la imagen o ESC para cerrar</div>
+    </div>`);
+    lb = document.getElementById('fotoLightbox');
+    lb.addEventListener('click', () => { lb.style.display = 'none'; });
+    document.getElementById('fotoLightboxClose').addEventListener('click', e => {
+      e.stopPropagation(); lb.style.display = 'none';
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && lb.style.display === 'flex') lb.style.display = 'none';
+    });
+  }
+  document.getElementById('fotoLightboxImg').src = url;
+  document.getElementById('fotoLightboxNombre').textContent = nombre;
+  lb.style.display = 'flex';
+}
+
+function formatFechaLargaHist(f) {
+  if (!f) return '—';
+  const s = typeof f === 'string' ? f.split('T')[0] : (f instanceof Date ? f.toISOString().split('T')[0] : String(f));
+  const d = new Date(s + 'T12:00:00');
+  if (isNaN(d.getTime())) return f;
+  return d.toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric' });
+}
+
+// ── Calendario de asistencias ─────────────────────────────────────────────────
+const _MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const _DIAS_EN_ES = { Monday:'Lunes', Tuesday:'Martes', Wednesday:'Miércoles', Thursday:'Jueves', Friday:'Viernes', Saturday:'Sábado', Sunday:'Domingo' };
+
+function _parseFechaAsist(a) {
+  if (a.fecha_fmt) {
+    const [d, m, y] = a.fecha_fmt.split('/').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  return new Date(a.fecha_hora);
+}
+
+function _renderCalendarioAsist() {
+  const cont = document.getElementById('hcBodyAsist');
+  if (!cont) return;
+  if (!_hcAsistencias.length) {
+    cont.innerHTML = '<div class="hc-empty">Sin asistencias registradas</div>';
+    return;
+  }
+  const { year, month } = _calMes;
+
+  // Mapa día → [horas]
+  const asistMap = {};
+  let totalMes = 0;
+  _hcAsistencias.forEach(a => {
+    const d = _parseFechaAsist(a);
+    if (d.getFullYear() === year && d.getMonth() === month) {
+      const dia = d.getDate();
+      if (!asistMap[dia]) asistMap[dia] = [];
+      asistMap[dia].push(a.hora_fmt || '');
+      totalMes++;
+    }
+  });
+
+  // Rango navegable
+  const fechas  = _hcAsistencias.map(a => _parseFechaAsist(a));
+  const minFech = new Date(Math.min(...fechas));
+  const maxFech = new Date(Math.max(...fechas));
+  const canPrev = new Date(year, month, 1) > new Date(minFech.getFullYear(), minFech.getMonth(), 1);
+  const canNext = new Date(year, month, 1) < new Date(maxFech.getFullYear(), maxFech.getMonth(), 1);
+
+  // Celdas del calendario (semana empieza en lunes)
+  const primerDia  = new Date(year, month, 1).getDay();
+  const offset     = (primerDia + 6) % 7;
+  const diasEnMes  = new Date(year, month + 1, 0).getDate();
+  let cells = '', dayCount = 1;
+  for (let row = 0; row < 6; row++) {
+    for (let col = 0; col < 7; col++) {
+      const idx = row * 7 + col;
+      if (idx < offset || dayCount > diasEnMes) {
+        cells += `<div class="cal-cell cal-empty"></div>`;
+      } else {
+        const has   = !!asistMap[dayCount];
+        const title = has ? `title="Entrada: ${asistMap[dayCount].join(', ')}"` : '';
+        cells += `<div class="cal-cell${has ? ' cal-asist' : ''}" ${title}>${dayCount}${has ? '<span class="cal-dot"></span>' : ''}</div>`;
+        dayCount++;
+      }
+    }
+    if (dayCount > diasEnMes) break;
+  }
+
+  cont.innerHTML = `
+  <div class="cal-wrap">
+    <div class="cal-header">
+      <button class="cal-nav-btn" onclick="_calPrev()" ${canPrev ? '' : 'disabled'}><i class="bi bi-chevron-left"></i></button>
+      <span class="cal-month-label">${_MESES_ES[month]} ${year}</span>
+      <button class="cal-nav-btn" onclick="_calNext()" ${canNext ? '' : 'disabled'}><i class="bi bi-chevron-right"></i></button>
+      <span class="cal-total">${totalMes > 0 ? `${totalMes} asistencia${totalMes > 1 ? 's' : ''}` : 'Sin asistencias este mes'}</span>
+    </div>
+    <div class="cal-grid">
+      <div class="cal-day-name">Lun</div><div class="cal-day-name">Mar</div>
+      <div class="cal-day-name">Mié</div><div class="cal-day-name">Jue</div>
+      <div class="cal-day-name">Vie</div><div class="cal-day-name">Sáb</div>
+      <div class="cal-day-name">Dom</div>
+      ${cells}
+    </div>
+    <div class="cal-footer">
+      <span style="font-size:11px;color:#888">${_hcAsistencias.length} asistencia${_hcAsistencias.length !== 1 ? 's' : ''} en total</span>
+    </div>
+  </div>`;
+}
+
+function _calPrev() {
+  let { year, month } = _calMes;
+  month--; if (month < 0) { month = 11; year--; }
+  _calMes = { year, month };
+  _renderCalendarioAsist();
+}
+function _calNext() {
+  let { year, month } = _calMes;
+  month++; if (month > 11) { month = 0; year++; }
+  _calMes = { year, month };
+  _renderCalendarioAsist();
+}
+
+function exportarAsistenciasCSV() {
+  if (!_hcAsistencias.length) return;
+  const header = 'Nro,Fecha,Hora,Día';
+  const rows = _hcAsistencias.map((a, i) => {
+    const diaEn = (a.dia_semana || '').trim();
+    const diaEs = _DIAS_EN_ES[diaEn] || diaEn;
+    return `${i + 1},"${a.fecha_fmt || ''}","${a.hora_fmt || ''}","${diaEs}"`;
+  });
+  const csv  = '﻿' + [header, ...rows].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = `asistencias_${Date.now()}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── ESTILOS CSS del modal historial ──────────────────────────────────────────
+function _estilosHistorial() {
+  return `
+  /* ── Modal historial ── */
+  .hc-section {
+    border:1px solid #e8eaf0;border-radius:10px;overflow:hidden;
+  }
+  .hc-section-title {
+    background:#f5f6fa;padding:10px 16px;font-weight:700;font-size:13px;
+    color:#1a1a2e;border-bottom:1px solid #e8eaf0;display:flex;align-items:center;
+  }
+  .hc-section-toggle {
+    background:none;border:none;cursor:pointer;color:#aaa;font-size:14px;
+    padding:0 4px;transition:color .15s;
+  }
+  .hc-section-toggle:hover { color:#555; }
+  .hc-collapsible {
+    cursor:pointer;user-select:none;
+  }
+  .hc-collapsible:hover {
+    filter:brightness(.96);
+  }
+  .hc-body-scroll {
+    max-height:300px;overflow-y:auto;
+  }
+  .hc-body-scroll.hc-body-expanded {
+    max-height:none;overflow-y:visible;
+  }
+  .hc-body-scroll::-webkit-scrollbar { width:5px; }
+  .hc-body-scroll::-webkit-scrollbar-track { background:transparent; }
+  .hc-body-scroll::-webkit-scrollbar-thumb { background:#ddd;border-radius:3px; }
+  .hc-body-scroll::-webkit-scrollbar-thumb:hover { background:#bbb; }
+  body[data-theme="dark"] .hc-body-scroll::-webkit-scrollbar-thumb { background:#30363d; }
+  body[data-theme="dark"] .hc-body-scroll::-webkit-scrollbar-thumb:hover { background:#484f58; }
+  body[data-theme="dark"] .hc-section-toggle:hover { color:#c9d1d9; }
+  body[data-theme="dark"] .hc-collapsible:hover { filter:brightness(1.12); }
+  .hc-table {
+    width:100%;border-collapse:collapse;font-size:13px;
+  }
+  .hc-table th {
+    background:#f9f9f9;padding:9px 12px;text-align:left;
+    font-size:11px;font-weight:700;color:#888;border-bottom:2px solid #eee;
+    text-transform:uppercase;letter-spacing:.5px;
+  }
+  .hc-table td {
+    padding:10px 12px;border-bottom:1px solid #f5f5f5;vertical-align:middle;
+  }
+  .hc-table tr:last-child td { border-bottom:none; }
+  .hc-tr-alt { background:#fafbff; }
+  .hc-loading {
+    text-align:center;padding:24px;color:#aaa;font-size:13px;
+  }
+  .hc-empty {
+    text-align:center;padding:20px;color:#bbb;font-size:13px;font-style:italic;
+  }
+  .hc-badge {
+    display:inline-block;padding:3px 10px;border-radius:20px;
+    font-size:10px;font-weight:700;letter-spacing:.4px;
+  }
+  .hc-badge-activa  { background:#e8f5e9;color:#2e7d32; }
+  .hc-badge-vencida { background:#ffebee;color:#c62828; }
+  .hc-badge-congelada { background:#e3f2fd;color:#1565c0; }
+  .hc-badge-anulada { background:#f3e5f5;color:#6a1b9a; }
+  .hc-badge-otro    { background:#f5f5f5;color:#616161; }
+  .hc-btn-boleta {
+    background:#f3e5f5;color:#6a1b9a;border:none;
+    width:30px;height:30px;border-radius:8px;cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;
+    font-size:14px;transition:background .15s;
+  }
+  .hc-btn-boleta:hover { background:#e1bee7; }
+  .hc-btn-cuotas {
+    display:inline-flex;align-items:center;gap:5px;
+    background:#ede7f6;color:#7c4dff;border:1px solid #d1c4e9;
+    padding:4px 10px;border-radius:7px;cursor:pointer;
+    font-size:11px;font-weight:600;white-space:nowrap;
+    transition:background .15s;
+  }
+  .hc-btn-cuotas:hover { background:#d1c4e9; }
+  .hc-memb-row:hover { background:#f9f6ff; }
+  .hc-total-row {
+    padding:12px 16px;background:#fff8f8;border-top:2px solid #ffcdd2;
+    font-size:13px;font-weight:600;color:#555;text-align:right;
+  }
+  .hc-input-fecha {
+    padding:5px 10px;border:1px solid rgba(255,255,255,.3);border-radius:6px;
+    background:rgba(255,255,255,.1);color:#fff;font-size:12px;
+    outline:none;
+  }
+  .hc-input-fecha::-webkit-calendar-picker-indicator { filter:invert(1); }
+  .hc-btn-filtrar {
+    padding:5px 14px;background:#26a69a;color:#fff;border:none;
+    border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;
+    transition:background .15s;
+  }
+  .hc-btn-filtrar:hover { background:#00897b; }
+  .hc-btn-clear {
+    padding:5px 12px;background:rgba(255,255,255,.15);color:#fff;border:none;
+    border-radius:6px;cursor:pointer;font-size:12px;
+    transition:background .15s;
+  }
+  .hc-btn-clear:hover { background:rgba(255,255,255,.25); }
+
+  /* ── Dark mode: clases ── */
+  body[data-theme="dark"] .hc-section { border-color:#30363d; }
+  body[data-theme="dark"] .hc-section-title { background:#21262d; color:#c9d1d9; border-bottom-color:#30363d; }
+  body[data-theme="dark"] .hc-section-toggle { color:#6e7681; }
+  body[data-theme="dark"] .hc-table th { background:#161b22; color:#6e7681; border-bottom-color:#30363d; }
+  body[data-theme="dark"] .hc-table td { border-bottom-color:#21262d; color:#c9d1d9; }
+  body[data-theme="dark"] .hc-tr-alt { background:rgba(255,255,255,.03); }
+  body[data-theme="dark"] .hc-memb-row:hover { background:rgba(124,77,255,.08); }
+  body[data-theme="dark"] .hc-total-row { background:rgba(198,40,40,.1); border-top-color:rgba(198,40,40,.3); color:#c9d1d9; }
+  body[data-theme="dark"] .hc-loading { color:#6e7681; }
+  body[data-theme="dark"] .hc-empty   { color:#6e7681; }
+  body[data-theme="dark"] .hc-badge-activa    { background:#0d2318; color:#4ade80; }
+  body[data-theme="dark"] .hc-badge-vencida   { background:#2d1515; color:#f87171; }
+  body[data-theme="dark"] .hc-badge-anulada   { background:#2a1a4a; color:#d8b4fe; }
+  body[data-theme="dark"] .hc-badge-congelada { background:#0d1a2e; color:#60a5fa; }
+  body[data-theme="dark"] .hc-badge-otro      { background:#21262d; color:#8b949e; }
+  body[data-theme="dark"] .hc-btn-cuotas { background:#2d2040; color:#c4b5fd; border-color:#4c3b6e; }
+  body[data-theme="dark"] .hc-btn-cuotas:hover { background:#3d2d55; }
+  body[data-theme="dark"] .hc-btn-boleta { background:#2d2040; color:#d8b4fe; }
+  body[data-theme="dark"] .hc-btn-boleta:hover { background:#3d2d55; }
+  body[data-theme="dark"] .hc-footer { background:#161b22 !important; border-top-color:#30363d !important; }
+  body[data-theme="dark"] .hc-footer [style*="color:#555"] { color:#8b949e !important; }
+  /* ── Dark mode: inline style overrides (selectores de atributo) ── */
+  body[data-theme="dark"] #modalHistorialCliente [style*="background:#f9f6ff"]  { background:#2a1a4a !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="background:#ede7f6"]  { background:#2d2040 !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="background:#f3e5f5"]  { background:#2a1a3a !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="background:#fafafa"]  { background:#21262d !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="background:#e3f2fd"]  { background:#0d1a2e !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="color:#0f3460"]  { color:#79b8ff !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="color:#1565c0"]  { color:#60a5fa !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="color:#6a1b9a"]  { color:#d8b4fe !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="color:#7c4dff"]  { color:#c4b5fd !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="color:#555"]     { color:#8b949e !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="color:#666"]     { color:#8b949e !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="color:#888"]     { color:#6e7681 !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="color:#aaa"]     { color:#6e7681 !important; }
+  body[data-theme="dark"] #modalHistorialCliente [style*="border-bottom:2px solid #ede7f6"] { border-bottom-color:#30363d !important; }
+
+  /* ── Calendario de asistencias ── */
+  .cal-wrap { padding:14px 16px; }
+  .cal-header { display:flex;align-items:center;gap:8px;margin-bottom:10px; }
+  .cal-month-label { font-weight:700;font-size:14px;color:#1a1a2e;flex:1;text-align:center; }
+  .cal-nav-btn { background:none;border:1px solid #e0e0e0;border-radius:6px;width:26px;height:26px;cursor:pointer;color:#666;display:inline-flex;align-items:center;justify-content:center;font-size:11px;transition:background .15s;flex-shrink:0; }
+  .cal-nav-btn:hover:not(:disabled) { background:#f0f0f0; }
+  .cal-nav-btn:disabled { opacity:.3;cursor:default; }
+  .cal-total { font-size:11px;color:#26a69a;font-weight:700;white-space:nowrap; }
+  .cal-grid { display:grid;grid-template-columns:repeat(7,1fr);gap:3px; }
+  .cal-day-name { text-align:center;font-size:10px;font-weight:700;color:#999;padding:3px 0;text-transform:uppercase;letter-spacing:.4px; }
+  .cal-cell { min-height:34px;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;color:#444;position:relative; }
+  .cal-empty { pointer-events:none; }
+  .cal-asist { background:#26a69a;color:#fff;font-weight:700;cursor:default;box-shadow:0 2px 6px #26a69a55; }
+  .cal-asist:hover { background:#00897b;box-shadow:0 2px 8px #00897b66; }
+  .cal-dot { width:5px;height:5px;background:rgba(255,255,255,.7);border-radius:50%;margin-top:2px; }
+  .cal-footer { display:flex;justify-content:flex-end;margin-top:10px;padding-top:8px;border-top:1px solid #f0f0f0; }
+  .cal-btn-export { display:inline-flex;align-items:center;gap:4px;background:none;border:1px solid #26a69a;color:#26a69a;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:background .15s; }
+  .cal-btn-export:hover { background:#e0f7f4; }
+  body[data-theme="dark"] .cal-month-label { color:#c9d1d9; }
+  body[data-theme="dark"] .cal-nav-btn { border-color:#30363d;color:#8b949e; }
+  body[data-theme="dark"] .cal-nav-btn:hover:not(:disabled) { background:#21262d; }
+  body[data-theme="dark"] .cal-day-name { color:#6e7681; }
+  body[data-theme="dark"] .cal-cell { color:#c9d1d9; }
+  body[data-theme="dark"] .cal-asist { background:#26a69a;color:#fff;box-shadow:0 2px 6px #26a69a44; }
+  body[data-theme="dark"] .cal-asist:hover { background:#00897b; }
+  body[data-theme="dark"] .cal-dot { background:rgba(255,255,255,.7); }
+  body[data-theme="dark"] .cal-footer { border-top-color:#30363d; }
+  body[data-theme="dark"] .cal-btn-export { border-color:#4db6ac;color:#4db6ac; }
+  body[data-theme="dark"] .cal-btn-export:hover { background:#0d2a26; }
+
+  /* ── Menú móvil historial ── */
+  #hcMobileMenu { display:none; flex-direction:column; }
+  #hcSectionBox {
+    background:#fff; border-radius:16px;
+    width:960px; max-width:98vw;
+    height:94vh; max-height:94vh;
+    flex-direction:column; overflow:hidden;
+    box-shadow:0 4px 32px rgba(0,0,0,.25);
+  }
+  body[data-theme="dark"] #hcSectionBox { background:#1a1a1a; }
+
+  .hcmb-tile {
+    display:flex; align-items:center; gap:14px;
+    padding:16px 20px; cursor:pointer;
+    border-bottom:1px solid #f0f0f0;
+    transition:background .15s; user-select:none;
+  }
+  .hcmb-tile:active { background:#f5f5f5; }
+  .hcmb-tile-icon {
+    width:46px; height:46px; border-radius:12px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:21px; flex-shrink:0;
+  }
+  .hcmb-tile-body { flex:1; min-width:0; }
+  .hcmb-tile-name { font-weight:700; font-size:16px; color:#1a1a2e; }
+  .hcmb-tile-sub  { font-size:14px; color:#666; margin-top:2px; }
+  .hcmb-tile-arrow { color:#bbb; font-size:16px; flex-shrink:0; }
+  .hcmb-total-row {
+    padding:16px 20px; text-align:center;
+    font-size:14px; color:#666; border-top:2px solid #f0f0f0;
+  }
+  .hcmb-total-row strong { color:#c62828; font-size:16px; margin-left:6px; }
+
+  .hcmb-section-hdr {
+    display:flex; align-items:center; gap:10px; flex-shrink:0;
+    padding:14px 16px;
+    background:linear-gradient(135deg,#0f3460 0%,#16213e 100%);
+    border-radius:16px 16px 0 0;
+  }
+  .hcmb-back-btn {
+    background:rgba(255,255,255,.15); border:none; color:#fff;
+    width:36px; height:36px; border-radius:50%; cursor:pointer;
+    font-size:16px; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; transition:background .15s;
+  }
+  .hcmb-back-btn:active { background:rgba(255,255,255,.3); }
+  .hcmb-section-title-txt { font-size:17px; font-weight:700; color:#fff; }
+  .hcmb-search-bar {
+    display:flex; align-items:center; gap:10px; flex-shrink:0;
+    padding:10px 16px; background:#f5f6fa;
+    border-bottom:1px solid #ebebeb; color:#aaa;
+  }
+  .hcmb-search-input {
+    flex:1; border:none; background:transparent;
+    font-size:15px; color:#1a1a2e; outline:none;
+  }
+  .hcmb-search-input::placeholder { color:#bbb; }
+  .hcmb-content {
+    flex:1; min-height:0; overflow-y:auto; padding:12px 14px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+
+  /* ── Tarjetas móvil historial ── */
+  .hcmb-card {
+    background:#fff; border-radius:12px;
+    box-shadow:0 1px 5px rgba(0,0,0,.08); overflow:hidden;
+    flex-shrink:0;
+  }
+  .hcmb-card-top {
+    display:flex; align-items:flex-start; justify-content:space-between;
+    gap:8px; padding:14px 16px 10px;
+  }
+  .hcmb-card-title { font-weight:700; font-size:17px; color:#1a1a2e; flex:1; min-width:0; }
+  .hcmb-card-sub   { padding:0 16px 10px; font-size:15px; color:#666; }
+  .hcmb-kv-list    { padding:10px 16px 14px; display:flex; flex-direction:column; gap:8px; }
+  .hcmb-kv         { display:flex; gap:8px; align-items:baseline; }
+  .hcmb-lbl        { font-size:12px; font-weight:700; color:#aaa; letter-spacing:.5px; flex-shrink:0; width:72px; }
+  .hcmb-val        { font-size:15px; color:#1a1a2e; flex:1; min-width:0; word-break:break-word; }
+  .hcmb-card-foot  {
+    display:flex; align-items:center; gap:8px;
+    padding:10px 16px; border-top:1px solid #f0f0f0;
+  }
+  .hcmb-cuotas-btn {
+    flex:1; background:#ede7f6; color:#7c4dff; border:none;
+    padding:8px 12px; border-radius:8px; cursor:pointer;
+    font-size:13px; font-weight:600;
+    display:flex; align-items:center; gap:6px; transition:background .15s;
+  }
+  .hcmb-cuotas-btn:active { background:#d1c4e9; }
+  .hcmb-btn-ver {
+    flex:1; background:#e3f2fd; color:#1565c0; border:none;
+    padding:8px 12px; border-radius:8px; cursor:pointer;
+    font-size:13px; font-weight:600;
+    display:flex; align-items:center; justify-content:center; gap:6px; transition:background .15s;
+  }
+  .hcmb-btn-ver:active { background:#bbdefb; }
+  .hcmb-cuotas-list { padding:0 12px 12px; display:flex; flex-direction:column; gap:6px; }
+  .hcmb-cuota-row   {
+    display:flex; align-items:center; flex-wrap:wrap; gap:6px;
+    background:#f9f6ff; border-radius:8px; padding:8px 10px;
+  }
+  .hcmb-cuota-num  { font-size:12px; font-weight:700; color:#7c4dff; flex-shrink:0; }
+  .hcmb-cuota-info { font-size:12px; color:#555; flex:1; min-width:0; }
+  .hcmb-asist-chips { display:flex; flex-wrap:wrap; gap:6px; padding:8px 16px 14px; }
+  .hcmb-asist-chip {
+    background:#e0f7f4; color:#26a69a; border-radius:8px;
+    padding:5px 10px; font-size:13px; font-weight:600;
+  }
+  .hcmb-total-footer {
+    padding:14px 16px; text-align:center; font-size:14px; color:#555;
+    background:#fff8f8; border-radius:12px; border:1px solid #ffcdd2; flex-shrink:0;
+  }
+  .hcmb-total-footer strong { color:#c62828; margin-left:6px; }
+  .hcmb-empty { padding:28px; text-align:center; color:#bbb; font-size:14px; font-style:italic; }
+
+  /* Dark mode tarjetas historial */
+  body[data-theme="dark"] .hcmb-tile               { border-bottom-color:#2a2a2a; }
+  body[data-theme="dark"] .hcmb-tile:active         { background:#2a2a2a; }
+  body[data-theme="dark"] .hcmb-tile-name           { color:#f0f0f0; }
+  body[data-theme="dark"] .hcmb-tile-sub            { color:#e0e0e0; }
+  body[data-theme="dark"] .hcmb-total-row           { border-top-color:#2a2a2a; color:#e0e0e0; }
+  body[data-theme="dark"] .hcmb-total-row strong    { color:#f87171; }
+  body[data-theme="dark"] .hcmb-search-bar          { background:#1e1e1e; border-bottom-color:#2a2a2a; color:#666; }
+  body[data-theme="dark"] .hcmb-search-input        { color:#f0f0f0; }
+  body[data-theme="dark"] .hcmb-card                { background:#242424; border:1px solid #333; }
+  body[data-theme="dark"] .hcmb-card-title          { color:#f0f0f0; }
+  body[data-theme="dark"] .hcmb-card-sub            { color:#e0e0e0; }
+  body[data-theme="dark"] .hcmb-lbl                 { color:#aaa; }
+  body[data-theme="dark"] .hcmb-val                 { color:#f0f0f0; }
+  body[data-theme="dark"] .hcmb-card-foot           { border-top-color:#333; }
+  body[data-theme="dark"] .hcmb-cuota-row           { background:#2d2040; }
+  body[data-theme="dark"] .hcmb-cuota-info          { color:#e0e0e0; }
+  body[data-theme="dark"] .hcmb-asist-chip          { background:#0d2a26; color:#4db6ac; }
+  body[data-theme="dark"] .hcmb-total-footer        { background:rgba(198,40,40,.1); border-color:rgba(198,40,40,.3); color:#e0e0e0; }
+  body[data-theme="dark"] .hcmb-total-footer strong { color:#f87171; }
+
+  @media (max-width: 768px) {
+    #hcMobileMenu  { display:flex; }
+    #hcDesktopBody { display:none !important; }
+    #hcMainFooter  { display:none !important; }
+  }
+  `;
+}

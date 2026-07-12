@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planes — Volcano Gym Sede Balta</title>
+    <link rel="icon" type="image/png" href="/logo.png">
+    <link rel="apple-touch-icon" href="/logo.png">
+    <link rel="stylesheet" href="/volcano/styles.css">
+    <link rel="stylesheet" href="/volcano/planes.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+
+    <!-- WhatsApp flotante -->
+    <a href="#" class="wsp-mobile mobile-only" id="waFloatMob"><i class="fab fa-whatsapp"></i></a>
+    <a href="#" class="wsp-pc pc-only"          id="waFloatPc"><i class="fab fa-whatsapp"></i></a>
+
+    <!-- NAVBAR -->
+    <header class="navbar">
+        <a href="/volcano" class="logo"><img src="/volcano/logo1barblanco.png" alt="Volcano Gym" class="logo-img"></a>
+        <input type="checkbox" id="menu-bar" class="pc-only">
+        <label for="menu-bar" class="menu-icon pc-only"><i class="fas fa-bars"></i></label>
+        <nav class="nav-links pc-only">
+            <a href="/volcano">Inicio</a>
+            <a href="/volcano/planes" class="active">Planes</a>
+            <a href="/volcano/catalogo">Catálogo</a>
+            <a href="/cliente" style="background:#f60000;color:#fff;padding:7px 16px;border-radius:20px;font-weight:800">Mi Cuenta</a>
+        </nav>
+    </header>
+
+    <!-- BOTTOM NAV (móvil) -->
+    <nav class="bottom-nav mobile-only">
+        <a href="/volcano" class="bottom-nav-item">
+            <i class="fas fa-home"></i><span>Inicio</span>
+        </a>
+        <a href="/volcano/planes" class="bottom-nav-item active">
+            <i class="fas fa-dumbbell"></i><span>Planes</span>
+        </a>
+        <a href="/volcano/catalogo" class="bottom-nav-item">
+            <i class="fas fa-store"></i><span>Catálogo</span>
+        </a>
+        <a href="/cliente" class="bottom-nav-item">
+            <i class="fas fa-user"></i><span>Mi Cuenta</span>
+        </a>
+    </nav>
+
+    <!-- HERO HEADER -->
+    <div class="planes-hero">
+        <span class="hero-eyebrow">Sede Balta — Chiclayo</span>
+        <h1>ELIGE TU <span>PLAN</span></h1>
+        <p>Sin excusas. Cada duración tiene su precio, cada precio tiene su transformación.</p>
+        <div class="periodo-tabs" id="periodo-tabs">
+            <span class="act" data-periodo="todos" onclick="filtrarPeriodo('todos', this)">Todos</span>
+            <span data-periodo="mensual" onclick="filtrarPeriodo('mensual', this)">Mensual</span>
+            <span data-periodo="trimestral" onclick="filtrarPeriodo('trimestral', this)">Trimestral</span>
+            <span data-periodo="semestral" onclick="filtrarPeriodo('semestral', this)">Semestral</span>
+            <span data-periodo="anual" onclick="filtrarPeriodo('anual', this)">Anual</span>
+        </div>
+    </div>
+
+    <div class="savings-banner">
+        <i class="fas fa-tag"></i>Ahorra hasta <span id="max-ahorro">S/ 270</span> eligiendo un plan de mayor duración
+    </div>
+
+    <!-- PLANES GRID -->
+    <div class="planes-grid-wrap">
+        <div class="planes-grid" id="planes-container">
+            <!-- Generado por cargarPlanes() -->
+        </div>
+        <p class="periodo-empty" id="periodo-empty" style="display:none;text-align:center;color:#555;padding:40px 0">
+            No hay planes en este periodo. Consulta en recepción por otras opciones.
+        </p>
+    </div>
+
+    <!-- QUÉ INCLUYE CADA PLAN -->
+    <section class="planes-incluye">
+        <div class="planes-incluye-inner">
+            <h2>¿QUÉ <span>INCLUYE</span> CADA PLAN?</h2>
+            <p class="sub">Todos los planes incluyen los siguientes beneficios base</p>
+            <div class="incluye-grid">
+                <div class="incluye-item">
+                    <i class="fas fa-dumbbell"></i>
+                    <div>
+                        <h4>Máquinas y pesas</h4>
+                        <p>Acceso total a todas las máquinas y zona de pesos libres.</p>
+                    </div>
+                </div>
+                <div class="incluye-item">
+                    <i class="fas fa-users"></i>
+                    <div>
+                        <h4>Clases grupales</h4>
+                        <p>Funcional, baile aeróbico y cardio en grupo.</p>
+                    </div>
+                </div>
+                <div class="incluye-item">
+                    <i class="fas fa-heartbeat"></i>
+                    <div>
+                        <h4>Evaluación inicial</h4>
+                        <p>Valoración física al ingresar para definir tu punto de partida.</p>
+                    </div>
+                </div>
+                <div class="incluye-item">
+                    <i class="fas fa-apple-alt"></i>
+                    <div>
+                        <h4>Asesoría nutricional</h4>
+                        <p>Orientación básica de nutrición incluida en planes ≥ 6 meses.</p>
+                    </div>
+                </div>
+                <div class="incluye-item">
+                    <i class="fas fa-tv"></i>
+                    <div>
+                        <h4>Pantallas gigantes</h4>
+                        <p>Entrena mientras ves transmisiones en vivo.</p>
+                    </div>
+                </div>
+                <div class="incluye-item">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <div>
+                        <h4>Sede Balta</h4>
+                        <p>Av. José Balta 2340, Chiclayo — abierto Lun–Vie 7am–5pm.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="plans-note">
+        <p>¿Tienes dudas? Escríbenos por <a href="#" id="waNota">WhatsApp</a> y te asesoramos sin compromiso.<br>
+        Consulta sobre planes corporativos o grupos.</p>
+    </div>
+
+    <footer class="planes-footer">
+        <p>© 2026 Volcano Gym — <a href="/volcano">Volver al inicio</a></p>
+    </footer>
+
+    <script src="/volcano/planes.js"></script>
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Área de Clientes — Volcano Gym</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="apple-touch-icon" href="/logo.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
+  body{background:#080808;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+  .logo{color:#fff;font-weight:900;font-size:2rem;letter-spacing:2px;text-align:center;margin-bottom:6px}
+  .logo span{color:#f60000}
+  .logo img{max-height:52px;max-width:220px;object-fit:contain;vertical-align:middle}
+  .tagline{color:#d0d0d0;font-size:0.75rem;text-align:center;letter-spacing:3px;text-transform:uppercase;margin-bottom:40px}
+  .card{background:#111;border:1px solid #1e1e1e;border-radius:16px;padding:36px 32px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .card h2{color:#fff;font-size:1.1rem;font-weight:700;margin-bottom:4px}
+  .card p{color:#d0d0d0;font-size:0.8rem;margin-bottom:28px}
+  label{display:block;color:#e8e8e8;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px}
+  .input-wrap{position:relative;margin-bottom:18px}
+  .input-wrap i{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#d0d0d0;font-size:0.9rem}
+  input{width:100%;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:13px 14px 13px 40px;color:#fff;font-size:0.95rem;outline:none;transition:border-color .2s}
+  input:focus{border-color:#f60000}
+  input::placeholder{color:#d0d0d0}
+  .toggle-pw{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:#d0d0d0;cursor:pointer;background:none;border:none;font-size:0.9rem}
+  .toggle-pw:hover{color:#fff}
+  .hint{color:#d0d0d0;font-size:0.72rem;margin-top:-12px;margin-bottom:18px;padding-left:2px}
+  .hint b{color:#f0f0f0}
+  .btn{width:100%;background:#f60000;color:#fff;border:none;border-radius:10px;padding:14px;font-size:0.95rem;font-weight:700;cursor:pointer;transition:background .2s;margin-top:4px;font-family:inherit}
+  .btn:hover{background:#c40000}
+  .btn:disabled{background:#333;cursor:not-allowed}
+  .alert{border-radius:10px;padding:12px 14px;font-size:0.82rem;font-weight:600;margin-bottom:18px;display:none}
+  .alert.err{background:#2d0000;border:1px solid #5a0000;color:#ff6b6b}
+  .alert.ok{background:#0a2a0a;border:1px solid #1a5c1a;color:#6bcb6b}
+  .back-link{color:#d0d0d0;font-size:0.78rem;text-align:center;margin-top:20px}
+  .back-link a{color:#e8e8e8;text-decoration:none}
+  .back-link a:hover{color:#f60000}
+  .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div class="logo" id="brandLogo">
+  <span id="brandLogoText"><span></span></span>
+  <img id="brandLogoImg" alt="Logo" style="display:none">
+</div>
+<div class="tagline">Área de Clientes</div>
+
+<div class="card">
+  <h2>Inicia sesión</h2>
+  <p>Ingresa con tu DNI para acceder a tu cuenta.</p>
+
+  <div class="alert err" id="alertErr"></div>
+
+  <form id="formLogin" onsubmit="doLogin(event)">
+    <label>DNI</label>
+    <div class="input-wrap">
+      <i class="fas fa-id-card"></i>
+      <input type="text" id="dni" placeholder="Tu número de DNI" maxlength="20" autocomplete="username" required>
+    </div>
+
+    <label>Contraseña</label>
+    <div class="input-wrap">
+      <i class="fas fa-lock"></i>
+      <input type="password" id="password" placeholder="Tu contraseña" autocomplete="current-password" required>
+      <button type="button" class="toggle-pw" onclick="togglePw()"><i class="fas fa-eye" id="eyeIcon"></i></button>
+    </div>
+    <div class="hint">Si es tu primera vez, tu contraseña es tu <b>número de DNI</b>.</div>
+
+    <button class="btn" type="submit" id="btnLogin">Ingresar</button>
+  </form>
+</div>
+
+<div class="back-link"><a href="/volcano"><i class="fas fa-arrow-left"></i> Volver al sitio</a></div>
+
+<script>
+  const API = window.location.port === '3001' ? 'http://localhost:8080' : '';
+
+  // Logo configurado en Dashboard > Configuración > Identidad Visual.
+  // Best-effort: si falla o no hay nada configurado, se mantiene el texto
+  // "VOLCANO GYM" (fallback) y el favicon por defecto del navegador.
+  (async function aplicarBrandingCliente() {
+    try {
+      const res = await fetch(`${API}/api/configuracion/publica`);
+      if (!res.ok) return;
+      const cfg = await res.json();
+
+      if (cfg.logo_login_base64) {
+        const texto = document.getElementById('brandLogoText');
+        const img   = document.getElementById('brandLogoImg');
+        img.src = cfg.logo_login_base64; img.style.display = '';
+        texto.style.display = 'none';
+      }
+      if (cfg.logo_base64) {
+        let icon = document.querySelector('link[rel="icon"]');
+        if (!icon) {
+          icon = document.createElement('link');
+          icon.rel = 'icon';
+          document.head.appendChild(icon);
+        }
+        icon.href = cfg.logo_base64;
+      }
+    } catch (_) { /* mantiene el fallback */ }
+  })();
+
+  function togglePw() {
+    const inp = document.getElementById('password');
+    const ico = document.getElementById('eyeIcon');
+    if (inp.type === 'password') { inp.type = 'text'; ico.className = 'fas fa-eye-slash'; }
+    else { inp.type = 'password'; ico.className = 'fas fa-eye'; }
+  }
+
+  function showErr(msg) {
+    const el = document.getElementById('alertErr');
+    el.textContent = msg; el.style.display = 'block';
+  }
+
+  async function doLogin(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnLogin');
+    const dni = document.getElementById('dni').value.trim();
+    const pw  = document.getElementById('password').value;
+    document.getElementById('alertErr').style.display = 'none';
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Verificando...';
+
+    try {
+      const r = await fetch(`${API}/api/cliente-auth/login`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ dni, password: pw })
+      });
+      const data = await r.json();
+      if (!r.ok) { showErr(data.message || 'Error al iniciar sesión.'); return; }
+
+      localStorage.setItem('vc_token',   data.token);
+      localStorage.setItem('vc_cliente', JSON.stringify(data.cliente));
+      window.location.href = 'mi-cuenta.html';
+    } catch {
+      showErr('No se pudo conectar al servidor. Intenta de nuevo.');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = 'Ingresar';
+    }
+  }
+
+  // Si ya tiene sesión, redirigir directo
+  if (localStorage.getItem('vc_token')) window.location.href = 'mi-cuenta.html';
+</script>
+</body>
+</html>
