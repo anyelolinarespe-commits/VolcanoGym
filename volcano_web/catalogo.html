@@ -279,6 +279,53 @@
         }
         .pdet-wa:hover { background: #128c47; }
 
+        /* ── MODAL PEDIDO WEB (Nombre + Celular) ── */
+        .ped-box {
+            background: #111; border: 1px solid #222; border-radius: 16px;
+            max-width: 380px; width: 100%; padding: 26px 24px; position: relative;
+        }
+        .ped-close {
+            position: absolute; top: 12px; right: 12px;
+            width: 32px; height: 32px; border-radius: 50%; border: none;
+            background: rgba(255,255,255,.08); color: #fff; font-size: 1rem; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .ped-close:hover { background: #f60000; }
+        .ped-title { color: #fff; font-size: 1.05rem; font-weight: 800; margin-bottom: 4px; }
+        .ped-producto { color: #f60000; font-size: 0.8rem; font-weight: 700; margin-bottom: 18px; }
+        .ped-label { color: #999; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 6px; }
+        .ped-input {
+            width: 100%; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px;
+            color: #fff; font-size: 0.9rem; padding: 11px 12px; margin-bottom: 14px;
+            font-family: inherit; box-sizing: border-box;
+        }
+        .ped-input:focus { outline: none; border-color: #f60000; }
+        .ped-error { color: #ff6b6b; font-size: 0.78rem; margin: -6px 0 12px; display: none; }
+        .ped-submit {
+            width: 100%; background: #25d366; color: #fff; border: none;
+            border-radius: 10px; padding: 13px; font-size: 0.9rem; font-weight: 700;
+            font-family: 'Montserrat', sans-serif; cursor: pointer; display: flex;
+            align-items: center; justify-content: center; gap: 8px; transition: background .2s;
+        }
+        .ped-submit:hover { background: #128c47; }
+        .ped-submit:disabled { opacity: .6; cursor: not-allowed; }
+
+        /* ── SELECTOR DE CANTIDAD (modal de detalle) ── */
+        .pdet-qty-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .pdet-qty-label { color: #888; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; }
+        .pdet-qty-stepper { display: flex; align-items: center; gap: 12px; }
+        .pdet-qty-stepper button {
+            width: 32px; height: 32px; border-radius: 8px; border: 1px solid #2a2a2a;
+            background: #1a1a1a; color: #fff; font-size: 1.1rem; font-weight: 700; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; transition: all .15s;
+        }
+        .pdet-qty-stepper button:hover:not(:disabled) { border-color: #f60000; color: #f60000; }
+        .pdet-qty-stepper button:disabled { opacity: .35; cursor: not-allowed; }
+        .pdet-qty-stepper span { color: #fff; font-size: 1rem; font-weight: 800; min-width: 20px; text-align: center; }
+        .pdet-wa:disabled, .pdet-wa.disabled {
+            opacity: .4; cursor: not-allowed; pointer-events: none;
+        }
+
         /* ── ESTADO DE CARGA / VACÍO ── */
         .cat-state {
             text-align: center;
@@ -402,6 +449,23 @@
         </div>
     </footer>
 
+    <!-- Modal: pre-registro de pedido web (Nombre + Celular) antes de ir a WhatsApp -->
+    <div class="pdet-overlay" id="pedModalOverlay" style="display:none" onclick="if(event.target===this) cerrarModalPedido()">
+        <div class="ped-box">
+            <button class="ped-close" onclick="cerrarModalPedido()"><i class="fas fa-times"></i></button>
+            <div class="ped-title">Consultar disponibilidad</div>
+            <div class="ped-producto" id="pedProductoLabel"></div>
+            <label class="ped-label" for="pedNombre">Nombre</label>
+            <input type="text" id="pedNombre" class="ped-input" placeholder="Tu nombre">
+            <label class="ped-label" for="pedCelular">Celular</label>
+            <input type="tel" id="pedCelular" class="ped-input" placeholder="Ej: 987654321">
+            <div class="ped-error" id="pedError"></div>
+            <button type="button" class="ped-submit" id="pedBtnEnviar" onclick="enviarPedidoWeb()">
+                <i class="fab fa-whatsapp"></i> Continuar a WhatsApp
+            </button>
+        </div>
+    </div>
+
     <script>
         // En desarrollo (port 3001) apuntar al backend Spring Boot; en producción usar rutas relativas
         const API_BASE = (location.port === '3001') ? 'http://localhost:8080' : '';
@@ -483,6 +547,97 @@
             return `https://wa.me/${waNum}?text=${encodeURIComponent(msg)}`;
         }
 
+        function _waMensajePedido(codigo, nombre, cantidad, total) {
+            const C = getContacto();
+            const waNum = (C.whatsapp || '51994681954').replace(/\D/g,'');
+            const totalFmt = _fmtPrecio(total);
+            const cantTxt  = cantidad > 1 ? ` ×${cantidad}` : '';
+            const msg = `Hola Volcanogym, quiero el producto *${nombre}*${cantTxt}${totalFmt ? ' — Total: ' + totalFmt : ''}. Mi código de pedido es ${codigo}.`;
+            return `https://wa.me/${waNum}?text=${encodeURIComponent(msg)}`;
+        }
+
+        // ── Pre-registro de pedido web (modal Nombre + Celular) ─────────────────────
+        let _pedidoCtx = null; // { idPp, nombre, precio, cantidad }
+
+        function _resolverVariante(p, idx) {
+            const variantes = Array.isArray(p.presentaciones) ? p.presentaciones : [];
+            if (idx != null && variantes[idx]) return variantes[idx];
+            return variantes.find(v => v.es_principal) || variantes[0] || null;
+        }
+
+        function abrirModalPedido(idProducto, idxVariante) {
+            const p = _todosProductos.find(x => x.id_producto === idProducto);
+            if (!p) return;
+            const v = _resolverVariante(p, idxVariante);
+            if (!v) {
+                // Sin presentaciones registradas: no hay id_pp que pre-registrar, usar el enlace simple de siempre.
+                window.open(_waProducto(p.nombre), '_blank', 'noopener');
+                return;
+            }
+            const nombreConVariante = (idxVariante != null && v.presentacion) ? `${p.nombre} (${v.presentacion})` : p.nombre;
+            const cantidad = (idxVariante != null) ? _pdetCantidad : 1;
+            _pedidoCtx = { idPp: v.id, nombre: nombreConVariante, precio: v.precio_venta ?? p.precio, cantidad };
+            document.getElementById('pedNombre').value = '';
+            document.getElementById('pedCelular').value = '';
+            document.getElementById('pedError').style.display = 'none';
+            document.getElementById('pedProductoLabel').textContent = nombreConVariante;
+
+            // Si viene del modal de detalle, ocultarlo temporalmente para que no
+            // intercepte los clics del modal de pedido (ambos comparten overlay
+            // a pantalla completa). Se restaura si el cliente cancela.
+            const pdetOverlay = document.getElementById('pdetOverlay');
+            if (pdetOverlay) pdetOverlay.style.display = 'none';
+
+            document.getElementById('pedModalOverlay').style.display = 'flex';
+        }
+
+        function cerrarModalPedido() {
+            document.getElementById('pedModalOverlay').style.display = 'none';
+            _pedidoCtx = null;
+            const pdetOverlay = document.getElementById('pdetOverlay');
+            if (pdetOverlay) pdetOverlay.style.display = 'flex';
+        }
+
+        async function enviarPedidoWeb() {
+            if (!_pedidoCtx) return;
+            const nombre  = document.getElementById('pedNombre').value.trim();
+            const celular = document.getElementById('pedCelular').value.trim();
+            const errEl   = document.getElementById('pedError');
+            errEl.style.display = 'none';
+            if (!nombre)  { errEl.textContent = 'Ingresa tu nombre.';  errEl.style.display = 'block'; return; }
+            if (!celular) { errEl.textContent = 'Ingresa tu celular.'; errEl.style.display = 'block'; return; }
+
+            const btn = document.getElementById('pedBtnEnviar');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fab fa-whatsapp"></i> Enviando...';
+            const ctx = _pedidoCtx;
+            try {
+                const res = await fetch(`${API_BASE}/api/pedidos-web`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id_pp: ctx.idPp, cantidad: ctx.cantidad || 1, nombre, celular })
+                });
+                if (res.status === 400) {
+                    // Error de validación (p.ej. stock insuficiente): dejar el modal abierto para que ajuste.
+                    const err = await res.json().catch(() => ({}));
+                    errEl.textContent = err.message || 'No se pudo registrar el pedido. Verifica la cantidad.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+                if (!res.ok) throw new Error('No se pudo registrar el pedido');
+                const data = await res.json();
+                window.location.href = _waMensajePedido(data.codigo_pedido, data.nombre_snapshot, data.cantidad, data.total);
+                cerrarModalPedido();
+            } catch (e) {
+                // Fallo de red genuino: nunca bloquear al cliente, cae al enlace simple de siempre.
+                window.location.href = _waProducto(ctx.nombre);
+                cerrarModalPedido();
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fab fa-whatsapp"></i> Continuar a WhatsApp';
+            }
+        }
+
         function _fmtPrecio(p) {
             if (p == null || p === '') return null;
             const n = parseFloat(p);
@@ -512,7 +667,7 @@
                         ${precioOldHtml}
                     </div>
                     <div class="pcat-wa-btn">
-                        <a class="pcat-wa" href="${_waProducto(p.nombre)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">
+                        <a class="pcat-wa" href="javascript:void(0)" onclick="event.stopPropagation(); abrirModalPedido(${p.id_producto})">
                             <i class="fab fa-whatsapp"></i> Consultar
                         </a>
                     </div>
@@ -523,6 +678,7 @@
         // ── DETALLE DE PRODUCTO (modal con selector de presentaciones) ──
         let _pdetProducto = null;
         let _pdetVarIdx = 0;
+        let _pdetCantidad = 1;
 
         function abrirDetalleProducto(idProducto) {
             const p = _todosProductos.find(x => x.id_producto === idProducto);
@@ -530,6 +686,7 @@
             _pdetProducto = p;
             const variantes = Array.isArray(p.presentaciones) ? p.presentaciones : [];
             _pdetVarIdx = Math.max(0, variantes.findIndex(v => v.es_principal));
+            _pdetCantidad = 1;
 
             const overlay = document.createElement('div');
             overlay.className = 'pdet-overlay';
@@ -555,7 +712,15 @@
                                         ${v.presentacion}${v.stock_actual <= 0 ? ' (Agotado)' : ''}
                                     </button>`).join('')}
                             </div>` : ''}
-                        <a class="pdet-wa" id="pdetWaBtn" target="_blank" rel="noopener">
+                        <div class="pdet-qty-row">
+                            <span class="pdet-qty-label">Cantidad</span>
+                            <div class="pdet-qty-stepper">
+                                <button type="button" id="pdetQtyMenos" onclick="_pdetCambiarCantidad(-1)">−</button>
+                                <span id="pdetCantidad">1</span>
+                                <button type="button" id="pdetQtyMas" onclick="_pdetCambiarCantidad(1)">+</button>
+                            </div>
+                        </div>
+                        <a class="pdet-wa" id="pdetWaBtn" href="javascript:void(0)">
                             <i class="fab fa-whatsapp"></i> Consultar por WhatsApp
                         </a>
                     </div>
@@ -568,7 +733,41 @@
 
         function _pdetSeleccionarVariante(idx) {
             _pdetVarIdx = idx;
+            _pdetCantidad = 1;
             _pdetRenderVariante();
+        }
+
+        function _pdetStockActual() {
+            const p = _pdetProducto;
+            const variantes = Array.isArray(p.presentaciones) ? p.presentaciones : [];
+            const v = variantes[_pdetVarIdx];
+            return v ? Math.max(0, v.stock_actual) : 99;
+        }
+
+        function _pdetCambiarCantidad(delta) {
+            const maxStock = _pdetStockActual();
+            if (maxStock <= 0) return;
+            _pdetCantidad = Math.min(maxStock, Math.max(1, _pdetCantidad + delta));
+            _pdetRenderCantidad();
+        }
+
+        function _pdetRenderCantidad() {
+            const maxStock = _pdetStockActual();
+            const cantEl = document.getElementById('pdetCantidad');
+            if (cantEl) cantEl.textContent = _pdetCantidad;
+            const btnMenos = document.getElementById('pdetQtyMenos');
+            const btnMas   = document.getElementById('pdetQtyMas');
+            if (btnMenos) btnMenos.disabled = _pdetCantidad <= 1;
+            if (btnMas)   btnMas.disabled   = _pdetCantidad >= maxStock;
+
+            const waBtn = document.getElementById('pdetWaBtn');
+            if (waBtn) {
+                const sinStock = maxStock <= 0;
+                waBtn.classList.toggle('disabled', sinStock);
+                waBtn.innerHTML = sinStock
+                    ? '<i class="fab fa-whatsapp"></i> Sin stock disponible'
+                    : '<i class="fab fa-whatsapp"></i> Consultar por WhatsApp';
+            }
         }
 
         function _pdetRenderVariante() {
@@ -598,8 +797,11 @@
                 btn.classList.toggle('active', i === _pdetVarIdx);
             });
 
-            const nombreConVariante = v ? `${p.nombre} (${v.presentacion})` : p.nombre;
-            document.getElementById('pdetWaBtn').href = _waProducto(nombreConVariante);
+            _pdetRenderCantidad();
+            document.getElementById('pdetWaBtn').onclick = () => {
+                if (_pdetStockActual() <= 0) return;
+                abrirModalPedido(p.id_producto, _pdetVarIdx);
+            };
         }
 
         function cerrarDetalleProducto(fromPopstate) {

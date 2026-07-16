@@ -28,6 +28,7 @@ async function vpCargar(page = 1) {
         vpRenderResumen(data.data);
         vpRenderTabla(data.data);
         vpRenderPaginacion(data.total, data.page, data.limit);
+        pwCargarPendientes();
     } catch (err) {
         tbody.innerHTML = `<tr><td colspan="11" style="color:#c62828;padding:20px;text-align:center">Error: ${err.message}</td></tr>`;
     }
@@ -355,6 +356,254 @@ function vpVerComprobante(url) {
     overlay.innerHTML = `<img src="${url}" style="max-width:92vw;max-height:90vh;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.5)">`;
     overlay.onclick = () => document.body.removeChild(overlay);
     document.body.appendChild(overlay);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  PEDIDOS WEB — pre-registros del catálogo (botón "Consultar") pendientes de
+//  que un admin registre el método de pago + N° de operación y los apruebe.
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _pwPendientes = [];
+
+async function pwCargarPendientes() {
+    const cont = document.getElementById('vpPedidosWeb');
+    if (!cont) return;
+    try {
+        const data = await api('GET', '/api/ventas/pedidos-web/pendientes');
+        _pwPendientes = data.data || [];
+    } catch (e) {
+        cont.innerHTML = '';
+        return;
+    }
+    pwRenderPendientes();
+}
+
+function pwRenderPendientes() {
+    const cont = document.getElementById('vpPedidosWeb');
+    const badge = document.getElementById('vpBadgePedidos');
+    if (!cont) return;
+
+    if (badge) {
+        badge.textContent = _pwPendientes.length;
+        badge.style.display = _pwPendientes.length ? 'inline-flex' : 'none';
+    }
+
+    if (!_pwPendientes.length) { cont.innerHTML = ''; return; }
+
+    const fmtF = f => {
+        const d = new Date(f);
+        return isNaN(d) ? '—' : d.toLocaleString('es-PE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    };
+
+    cont.innerHTML = `
+      <div style="margin-bottom:14px">
+        <div style="font-size:12px;font-weight:800;color:#25843c;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">
+          <i class="bi bi-whatsapp"></i> Pedidos web pendientes (${_pwPendientes.length})
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${_pwPendientes.map(p => `
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+              <div style="font-weight:800;color:#1565c0;min-width:90px">${p.codigo_pedido}</div>
+              <div style="flex:1;min-width:180px">
+                <div style="font-weight:600;font-size:13px">${p.nombre_snapshot} ${p.cantidad > 1 ? `×${p.cantidad}` : ''}</div>
+                <div style="font-size:11px;color:#666">${p.nombre_cliente} · ${p.celular} · ${fmtF(p.created_at)}</div>
+              </div>
+              <div style="font-weight:700;white-space:nowrap">S/ ${parseFloat(p.total).toFixed(2)}</div>
+              <div style="display:flex;gap:6px">
+                <button onclick="pwAbrirRegistrarPago(${p.id})"
+                    style="background:#1565c0;border:none;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:11px;color:#fff;font-weight:700;white-space:nowrap">
+                    <i class="bi bi-pencil-square"></i> Registrar Pago
+                </button>
+                <button onclick="pwCancelarPedido(${p.id},'${p.codigo_pedido}')"
+                    style="background:#ffebee;border:1px solid #ef9a9a;border-radius:7px;padding:6px 10px;cursor:pointer;font-size:11px;color:#c62828;font-weight:700">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+}
+
+async function pwCancelarPedido(id, codigo) {
+    const ok = await vpConfirm({
+        tipo: 'danger',
+        titulo: 'Cancelar pedido web',
+        mensaje: `¿Cancelar el pedido <strong>${codigo}</strong>?`,
+        detalle: 'No se creará ninguna venta. Úsalo si el cliente nunca respondió o el pedido está duplicado.',
+        textoAceptar: 'Cancelar pedido',
+    });
+    if (!ok) return;
+    try {
+        await api('POST', `/api/ventas/pedidos-web/${id}/cancelar`);
+        showToast('Pedido cancelado', 'warning');
+        pwCargarPendientes();
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    }
+}
+
+let _pwCtx = null; // { id, url_comprobante }
+
+function pwAbrirRegistrarPago(id) {
+    const p = _pwPendientes.find(x => x.id === id);
+    if (!p) return;
+    _pwCtx = { id, url_comprobante: null, precioSnapshot: parseFloat(p.precio_snapshot), stockActual: Number(p.stock_actual) };
+
+    const overlay = document.createElement('div');
+    overlay.id = 'pwModalOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;backdrop-filter:blur(2px)';
+    overlay.onclick = (e) => { if (e.target === overlay) pwCerrarModal(); };
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.22);max-width:420px;width:90%;padding:24px 26px">
+        <div style="font-weight:800;font-size:15px;margin-bottom:2px">Registrar pago — ${p.codigo_pedido}</div>
+        <div style="font-size:12px;color:#888;margin-bottom:16px">${p.nombre_snapshot} · ${p.nombre_cliente}</div>
+        <div class="alert-msg" id="pwAlert"></div>
+
+        <div style="margin-bottom:12px;background:#f7f8fc;border:1px solid #e8eaf0;border-radius:10px;padding:10px 12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div>
+              <div class="form-label" style="margin-bottom:4px">Cantidad *</div>
+              <input type="number" class="form-control" id="pwCantidad" min="1" value="${p.cantidad}"
+                oninput="pwActualizarTotal()" style="width:90px;font-weight:700">
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:11px;color:#888;font-weight:600">TOTAL</div>
+              <div id="pwTotalCalculado" style="font-size:19px;font-weight:800;color:#1565c0">S/ 0.00</div>
+            </div>
+          </div>
+          <div id="pwStockHint" style="font-size:11px;color:#888;margin-top:6px"></div>
+        </div>
+
+        <div style="margin-bottom:12px">
+          <div class="form-label">Método de pago *</div>
+          <select class="form-control" id="pwMetodo" onchange="pwToggleCamposDigitales()">
+            <option value="yape">Yape</option>
+            <option value="plin">Plin</option>
+            <option value="efectivo">Efectivo</option>
+          </select>
+        </div>
+
+        <div id="pwCamposDigitales">
+          <div style="margin-bottom:12px">
+            <div class="form-label">N° de operación *</div>
+            <input type="text" class="form-control" id="pwOperacion" placeholder="Ej: AX1234">
+          </div>
+          <div style="margin-bottom:12px">
+            <div class="form-label">Nombre / Referencia *</div>
+            <input type="text" class="form-control" id="pwReferencia" placeholder="Ej: Juan García">
+          </div>
+          <div style="margin-bottom:12px">
+            <div class="form-label">Captura de pago *</div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+              <label style="background:#e3f2fd;border:1px solid #90caf9;border-radius:7px;padding:6px 14px;font-size:12px;color:#1565c0;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+                <i class="bi bi-image"></i> Adjuntar imagen
+                <input type="file" accept="image/*" style="display:none" onchange="pwSubirComprobante(this.files[0])">
+              </label>
+              <span id="pwCompNombre" style="font-size:12px;color:#999">Sin imagen</span>
+            </div>
+            <div id="pwCompPreview"></div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="margin-top:10px;padding-top:12px;border-top:1px solid #eee">
+          <button class="btn-cancel" onclick="pwCerrarModal()">Cancelar</button>
+          <button class="btn-save" id="pwBtnConfirmar" onclick="pwConfirmarRegistro()">
+            <i class="bi bi-check2 me-1"></i>Registrar y aprobar
+          </button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    pwActualizarTotal();
+}
+
+function pwActualizarTotal() {
+    if (!_pwCtx) return;
+    const input = document.getElementById('pwCantidad');
+    const hintEl = document.getElementById('pwStockHint');
+    let cant = parseInt(input?.value, 10);
+    if (!Number.isInteger(cant) || cant < 1) cant = 1;
+    if (input) input.value = cant;
+
+    const total = _pwCtx.precioSnapshot * cant;
+    const totalEl = document.getElementById('pwTotalCalculado');
+    if (totalEl) totalEl.textContent = `S/ ${total.toFixed(2)}`;
+
+    if (hintEl) {
+        const stock = _pwCtx.stockActual;
+        if (cant > stock) {
+            hintEl.innerHTML = `<span style="color:#c62828;font-weight:700">⚠ Solo hay ${stock} disponibles en stock</span>`;
+        } else {
+            hintEl.textContent = `Disponible en stock: ${stock}`;
+        }
+    }
+}
+
+function pwToggleCamposDigitales() {
+    const esDigital = ['yape', 'plin'].includes(document.getElementById('pwMetodo')?.value);
+    const el = document.getElementById('pwCamposDigitales');
+    if (el) el.style.display = esDigital ? 'block' : 'none';
+}
+
+function pwCerrarModal() {
+    const overlay = document.getElementById('pwModalOverlay');
+    if (overlay) document.body.removeChild(overlay);
+    _pwCtx = null;
+}
+
+async function pwSubirComprobante(file) {
+    if (!file || !_pwCtx) return;
+    const tiposPermitidos = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!tiposPermitidos.includes(file.type)) { showAlert('pwAlert', 'Solo imágenes JPEG, PNG, WEBP o GIF'); return; }
+    if (file.size > 5 * 1024 * 1024) { showAlert('pwAlert', 'La imagen no puede superar 5 MB'); return; }
+
+    const nameEl = document.getElementById('pwCompNombre');
+    if (nameEl) nameEl.textContent = 'Subiendo...';
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const r = await apiForm('POST', '/api/uploads/comprobante', formData);
+        _pwCtx.url_comprobante = r.url;
+        if (nameEl) nameEl.textContent = '✓ Imagen adjunta';
+        const previewEl = document.getElementById('pwCompPreview');
+        if (previewEl) previewEl.innerHTML = `<img src="${r.url}" onclick="vpVerComprobante('${r.url}')"
+            style="max-width:100%;max-height:120px;border-radius:6px;margin-top:6px;border:1px solid #90caf9;cursor:zoom-in">`;
+    } catch (e) {
+        if (nameEl) nameEl.textContent = 'Sin imagen';
+        showAlert('pwAlert', 'Error subiendo imagen: ' + e.message);
+    }
+}
+
+async function pwConfirmarRegistro() {
+    if (!_pwCtx) return;
+    const cantidad = parseInt(document.getElementById('pwCantidad')?.value, 10);
+    const metodo_pago = document.getElementById('pwMetodo')?.value;
+    const esDigital = ['yape', 'plin'].includes(metodo_pago);
+    const numero_operacion = document.getElementById('pwOperacion')?.value.trim() || null;
+    const referencia       = document.getElementById('pwReferencia')?.value.trim() || null;
+
+    if (!Number.isInteger(cantidad) || cantidad < 1) { showAlert('pwAlert', 'Ingresa una cantidad válida'); return; }
+    if (cantidad > _pwCtx.stockActual) { showAlert('pwAlert', `Solo hay ${_pwCtx.stockActual} disponibles en stock`); return; }
+    if (esDigital && !numero_operacion)       { showAlert('pwAlert', 'Ingresa el número de operación'); return; }
+    if (esDigital && !referencia)             { showAlert('pwAlert', 'Ingresa el nombre o referencia del pago'); return; }
+    if (esDigital && !_pwCtx.url_comprobante) { showAlert('pwAlert', 'Adjunta la captura del pago'); return; }
+
+    const btn = document.getElementById('pwBtnConfirmar');
+    btn.disabled = true;
+    try {
+        await api('POST', `/api/ventas/pedidos-web/${_pwCtx.id}/completar`, {
+            cantidad,
+            metodo_pago,
+            numero_operacion,
+            referencia,
+            url_comprobante: _pwCtx.url_comprobante,
+        });
+        showToast('Pago registrado y venta aprobada', 'success');
+        pwCerrarModal();
+        vpCargar(_vpPage);
+    } catch (e) {
+        showAlert('pwAlert', e.message);
+        btn.disabled = false;
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

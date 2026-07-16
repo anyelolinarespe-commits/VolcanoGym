@@ -682,6 +682,7 @@ function goTo(view, fromHistory = false) {
   if (view === 'usuarios')       loadUsuarios();
   if (view === 'categorias')     loadCategorias();
   if (view === 'presentaciones') loadPresentaciones();
+  if (view === 'home')           loadHome();
   if (view === 'productos')      loadProductos();
   if (view === 'inventario')     loadInventario();
   if (view === 'asistencias')  { filtroAsistHoy(); _preloadClientesAsist(); cargarAsistenciasStats(); }
@@ -796,13 +797,15 @@ document.addEventListener('DOMContentLoaded', () => {
   refrescarConfiguracion();   // no se espera: no debe bloquear el arranque
 
   buildSidebar();
-  buildHomeCards();
 
   // Restaurar vista desde hash (compatibilidad con URLs antiguas)
   const hashView = location.hash.replace('#', '');
   if (hashView && MODULOS_CONFIG[hashView]) {
     goTo(hashView, true);
     history.replaceState({ vista: hashView }, '', '/dashboard');
+  } else if (typeof loadHome === 'function') {
+    // La vista home está activa por defecto en el HTML; poblarla al arrancar
+    loadHome();
   }
 
   const accesos = {

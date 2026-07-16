@@ -4,12 +4,15 @@ import {
   getBalancePeriodo, getInscritos, getAsistenciasSemana,
   getCajaPorCategoria, getCajaArqueos,
   getVentasResumen, getVentasTopProductos, getVentasSerieDiaria,
+  getHomeKpis, getIngresosMensuales,
 } from '../controllers/reportesController.js';
 import { verificarToken } from '../middlewares/verificarToken.js';
 
 const router = Router();
 router.use(verificarToken);
 
+router.get('/home-kpis',          getHomeKpis);
+router.get('/ingresos-mensuales', getIngresosMensuales);
 router.get('/clientes-riesgo',    getClientesEnRiesgo);
 router.get('/renovaciones',       getRenovaciones);
 router.get('/balance',            getBalancePeriodo);

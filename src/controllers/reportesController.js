@@ -224,7 +224,7 @@ export const getCajaArqueos = async (req, res) => {
 export const getVentasResumen = async (req, res) => {
     const periodo = truncPeriodo(req.query.periodo);
     try {
-        const [resumen, porMetodo] = await Promise.all([
+        const [resumen, porMetodo, porCanal] = await Promise.all([
             pool.query(`
                 SELECT COUNT(*)::int AS total_transacciones,
                        COALESCE(SUM(total), 0) AS total_vendido,
@@ -241,6 +241,15 @@ export const getVentasResumen = async (req, res) => {
                 GROUP BY metodo_pago
                 ORDER BY total DESC
             `, [periodo]),
+            pool.query(`
+                SELECT canal_venta,
+                       COUNT(*)::int AS cantidad,
+                       COALESCE(SUM(total), 0) AS total
+                FROM venta
+                WHERE estado_venta = 'registrada' AND created_at >= DATE_TRUNC($1, NOW())
+                GROUP BY canal_venta
+                ORDER BY total DESC
+            `, [periodo]),
         ]);
 
         const row = resumen.rows[0];
@@ -250,6 +259,7 @@ export const getVentasResumen = async (req, res) => {
             total_vendido: Number(row.total_vendido),
             ticket_promedio: Number(row.ticket_promedio),
             por_metodo_pago: porMetodo.rows,
+            por_canal_venta: porCanal.rows,
         });
     } catch (err) {
         console.error(err);
@@ -281,6 +291,102 @@ export const getVentasTopProductos = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error al obtener top de productos vendidos' });
+    }
+};
+
+// GET /api/reportes/home-kpis
+// Resumen para las 8 tarjetas KPI del dashboard principal, en una sola llamada.
+// Ingresos (día/semana/mes) sobre movimientos_caja (VENTA+INGRESO, estado=1) en
+// zona America/Lima. El resto reutiliza la lógica de los /stats de cada módulo.
+export const getHomeKpis = async (req, res) => {
+    try {
+        const [caja, membresias, asistencias, clientes] = await Promise.all([
+            pool.query(`
+                SELECT
+                    COALESCE(SUM(monto) FILTER (
+                        WHERE (fecha_registro AT TIME ZONE 'America/Lima')::date = (NOW() AT TIME ZONE 'America/Lima')::date
+                    ), 0) AS ingresos_dia,
+                    COALESCE(SUM(monto) FILTER (
+                        WHERE fecha_registro >= date_trunc('week',  NOW() AT TIME ZONE 'America/Lima') AT TIME ZONE 'America/Lima'
+                    ), 0) AS ingresos_semana,
+                    COALESCE(SUM(monto) FILTER (
+                        WHERE fecha_registro >= date_trunc('month', NOW() AT TIME ZONE 'America/Lima') AT TIME ZONE 'America/Lima'
+                    ), 0) AS ingresos_mes
+                FROM movimientos_caja
+                WHERE estado = 1 AND tipo_movimiento IN ('VENTA','INGRESO')
+            `),
+            pool.query(`
+                SELECT
+                    COUNT(*) FILTER (WHERE m.estado = 'activa') AS matriculas_activas,
+                    COALESCE(SUM(m.saldo_pendiente) FILTER (WHERE m.saldo_pendiente > 0 AND m.estado IN ('activa','vencida')), 0) AS pagos_pendientes
+                FROM membresia m
+                JOIN cliente c ON c.id_cliente = m.id_cliente
+                WHERE c.deleted_at IS NULL
+            `),
+            pool.query(`
+                SELECT COUNT(DISTINCT id_cliente) FILTER (
+                    WHERE (fecha_hora AT TIME ZONE 'America/Lima')::date = (NOW() AT TIME ZONE 'America/Lima')::date
+                ) AS asistencias_hoy
+                FROM asistencia
+            `),
+            pool.query(`
+                SELECT
+                    COUNT(*) FILTER (WHERE activo = true) AS total_clientes,
+                    COUNT(*) FILTER (
+                        WHERE fecha_registro >= (NOW() AT TIME ZONE 'America/Lima')::date - INTERVAL '30 days'
+                    ) AS nuevos_clientes_mes
+                FROM cliente
+                WHERE deleted_at IS NULL
+            `),
+        ]);
+
+        res.json({
+            ingresos_dia:        Number(caja.rows[0].ingresos_dia),
+            ingresos_semana:     Number(caja.rows[0].ingresos_semana),
+            ingresos_mes:        Number(caja.rows[0].ingresos_mes),
+            pagos_pendientes:    Number(membresias.rows[0].pagos_pendientes),
+            matriculas_activas:  parseInt(membresias.rows[0].matriculas_activas),
+            asistencias_hoy:     parseInt(asistencias.rows[0].asistencias_hoy),
+            nuevos_clientes_mes: parseInt(clientes.rows[0].nuevos_clientes_mes),
+            total_clientes:      parseInt(clientes.rows[0].total_clientes),
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error al obtener KPIs del dashboard' });
+    }
+};
+
+// GET /api/reportes/ingresos-mensuales
+// Serie de los últimos 6 meses (incluyendo meses sin ingresos, en 0), sobre
+// movimientos_caja (VENTA+INGRESO, estado=1) en zona America/Lima.
+export const getIngresosMensuales = async (req, res) => {
+    try {
+        const result = await pool.query(`
+            WITH meses AS (
+                SELECT generate_series(
+                    date_trunc('month', (NOW() AT TIME ZONE 'America/Lima')) - INTERVAL '5 months',
+                    date_trunc('month', (NOW() AT TIME ZONE 'America/Lima')),
+                    INTERVAL '1 month'
+                )::date AS mes
+            )
+            SELECT
+                TO_CHAR(m.mes, 'Mon YYYY') AS etiqueta,
+                EXTRACT(YEAR  FROM m.mes)::int AS anio,
+                EXTRACT(MONTH FROM m.mes)::int AS mes,
+                COALESCE(SUM(mc.monto), 0) AS total
+            FROM meses m
+            LEFT JOIN movimientos_caja mc
+                ON date_trunc('month', (mc.fecha_registro AT TIME ZONE 'America/Lima')) = m.mes
+                AND mc.estado = 1
+                AND mc.tipo_movimiento IN ('VENTA','INGRESO')
+            GROUP BY m.mes
+            ORDER BY m.mes
+        `);
+
+        res.json({ data: result.rows.map(r => ({ ...r, total: Number(r.total) })) });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error al obtener ingresos mensuales' });
     }
 };
 

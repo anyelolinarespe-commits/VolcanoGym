@@ -1,4 +1,5 @@
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -7,6 +8,7 @@ import cors from 'cors';
 import { verificarToken } from './middlewares/verificarToken.js';
 import { uploadComprobante } from './middlewares/upload.js';
 import { pool } from './config/bd.js';
+import { initRealtime } from './realtime.js';
 import authRoutes            from './routes/authRoutes.js';
 import perfilesRoutes        from './routes/perfilesRoutes.js';
 import usuariosRoutes        from './routes/usuariosRoutes.js';
@@ -32,6 +34,7 @@ import miCuentaRoutes     from './routes/miCuentaRoutes.js';
 import cajaRoutes         from './routes/cajaRoutes.js';
 import reportesRoutes     from './routes/reportesRoutes.js';
 import notificacionesRoutes from './routes/notificacionesRoutes.js';
+import pedidoWebRoutes    from './routes/pedidoWebRoutes.js';
 import cron from 'node-cron';
 import { ejecutarGeneracionDiaria, purgarNotificacionesViejas } from './jobs/notificacionesJob.js';
 
@@ -84,6 +87,7 @@ app.use('/api/mi-cuenta',    miCuentaRoutes);
 app.use('/api/caja',         cajaRoutes);
 app.use('/api/reportes',     reportesRoutes);
 app.use('/api/notificaciones', notificacionesRoutes);
+app.use('/api/pedidos-web',   pedidoWebRoutes); // público — sin verificarToken
 
 // Upload de capturas de comprobantes de pago
 app.post('/api/uploads/comprobante',
@@ -121,7 +125,9 @@ cron.schedule('0 3 1 * *', () => {
 }, { timezone: 'America/Lima' });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const httpServer = http.createServer(app);
+initRealtime(httpServer);
+httpServer.listen(PORT, () => {
   const base = `http://localhost:${PORT}`;
   console.log('\n  🌋  VOLCANO GYM — Servidor activo\n');
   console.log(`  🔐  Login Dashboard :  ${base}/login`);

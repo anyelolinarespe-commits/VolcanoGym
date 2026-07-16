@@ -20,8 +20,7 @@ const _PM = (() => {
     const METODOS = [
         { key: 'efectivo',       label: 'Efectivo',      icon: '💵', digital: false },
         { key: 'yape',           label: 'Yape',          icon: '📱', digital: true  },
-        { key: 'plin',           label: 'Plin',          icon: '📲', digital: true  },
-        { key: 'transferencia',  label: 'Transferencia', icon: '🏦', digital: true  }
+        { key: 'plin',           label: 'Plin',          icon: '📲', digital: true  }
     ];
 
     let _splits      = [];
@@ -1298,6 +1297,11 @@ function renderCuotasModal(cuotas) {
             ? `<span style="background:#f0f4ff;color:#3949ab;padding:2px 7px;border-radius:10px;font-size:11px">${c.metodo_pago}</span>`
             : '';
 
+        const canalLabel = { presencial: 'Presencial', whatsapp: 'Vía Web' }[c.canal_venta] || c.canal_venta;
+        const canalBadge = canalLabel
+            ? `<span style="background:#eceff1;color:#455a64;padding:2px 7px;border-radius:10px;font-size:11px;margin-left:4px">${canalLabel}</span>`
+            : '';
+
         const toggleBtn = tieneAbonos
             ? `<button onclick="toggleAbonos(${c.id_pago})"
                 style="background:#e8f5e9;color:#2e7d32;border:none;border-radius:8px;padding:4px 9px;font-size:11px;cursor:pointer;font-weight:600">
@@ -1329,7 +1333,7 @@ function renderCuotasModal(cuotas) {
             <td style="padding:10px 8px;text-align:center;font-weight:700;color:#0f3460">C${c.num_cuota}</td>
             <td style="padding:10px 8px">
                 <div style="font-weight:700">S/ ${montoDisplay.toFixed(2)}</div>
-                ${metodoBadge}
+                ${metodoBadge}${canalBadge}
                 ${esPendiente && tieneAbonos ? '<div style="font-size:10px;color:#888;margin-top:2px">Saldo restante</div>' : ''}
             </td>
             <td style="padding:10px 8px">${estadoHtml}</td>
@@ -1446,6 +1450,14 @@ function abrirFormPagoCuota(idPago, monto) {
     <div id="pcPmContainer"></div>
 
     <div style="margin-top:10px">
+        <div class="form-label">Canal de Venta</div>
+        <select class="form-control" id="pcCanal" style="max-width:220px">
+            <option value="presencial">Presencial</option>
+            <option value="whatsapp">Vía Web (WhatsApp)</option>
+        </select>
+    </div>
+
+    <div style="margin-top:10px">
         <div class="form-label">N° Comprobante (opcional)</div>
         <input class="form-control" id="pcComprobante" placeholder="Ej: REC-001" style="max-width:200px">
     </div>
@@ -1473,12 +1485,14 @@ async function confirmarPagoCuota(idPago) {
 
     const pagos_detalle = _PM.getDetalles();
     const comprobante   = document.getElementById('pcComprobante')?.value.trim() || null;
+    const canal_venta   = document.getElementById('pcCanal')?.value || 'presencial';
 
     try {
         const result = await api('POST', `/api/membresias/${_membresiaActivaCuotas}/pagar-cuota`, {
             id_pago:      idPago,
             monto_pagado: monto,
             pagos_detalle,
+            canal_venta,
             num_comprobante: comprobante
         });
 
@@ -1696,6 +1710,8 @@ function resetMembresiaForm() {
     document.getElementById('membFechaInicio').value = hoy;
     document.getElementById('alertMembresia').className     = 'alert-msg';
     document.getElementById('modalMembresiaTitle').textContent = 'Nueva Membresía';
+    const canalEl = document.getElementById('membCanalVenta');
+    if (canalEl) canalEl.value = 'presencial';
     // Limpiar el contenedor de _PM hasta que se seleccione un plan
     const pmCont = document.getElementById('membPmContainer');
     if (pmCont) pmCont.innerHTML = '<div style="font-size:12px;color:#aaa;padding:8px;border:1px dashed #ddd;border-radius:8px;text-align:center">Selecciona un plan para elegir el método de pago</div>';
@@ -2163,6 +2179,7 @@ async function saveMembresia() {
 
     const pagos_detalle = _PM.getDetalles();
     const metodo        = _PM.getPrimaryMetodo();
+    const canal_venta    = document.getElementById('membCanalVenta')?.value || 'presencial';
 
     try {
         await api('POST', '/api/membresias', {
@@ -2173,6 +2190,7 @@ async function saveMembresia() {
             monto_pagado_ahora:     parseFloat(pago1),
             num_cuotas_solicitadas: parseInt(numCuotas),
             metodo_pago:            metodo,
+            canal_venta,
             pagos_detalle,
             id_asesor:              id_asesor ? Number(id_asesor) : null,
             observaciones:          obs || null
@@ -2331,6 +2349,9 @@ async function saveMembresia() {
     if (resumenCuotas) resumenCuotas.style.display = 'none';
     const numCuotasEl = document.getElementById('memb-num-cuotas');
     if (numCuotasEl) { numCuotasEl.innerHTML = '<option value="1">1 cuota (pago único)</option>'; }
+
+    const canalEl = document.getElementById('memb-canal-venta');
+    if (canalEl) canalEl.value = 'presencial';
 
     // Fecha de inicio = hoy
     const hoy = new Date().toISOString().split('T')[0];
@@ -3311,6 +3332,7 @@ async function saveMembresia() {
 
     const pagos_detalle = _PM.getDetalles();
     const metodo        = _PM.getPrimaryMetodo();
+    const canal_venta    = document.getElementById('memb-canal-venta')?.value || 'presencial';
 
     const btn = document.getElementById('btn-confirmar');
     btn.disabled = true;
@@ -3408,6 +3430,7 @@ async function saveMembresia() {
           monto_pagado_ahora:     pago1,
           num_cuotas_solicitadas: numC,
           metodo_pago:            metodo,
+          canal_venta,
           pagos_detalle,
           observaciones:          document.getElementById('memb-observacion').value || null
         })

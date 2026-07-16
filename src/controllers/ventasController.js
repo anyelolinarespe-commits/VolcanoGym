@@ -2,6 +2,7 @@ import { pool } from '../config/bd.js';
 import { registrarAuditoria, getIP } from '../helpers/auditoria.js';
 import { registrarVentaEnCaja, anularVentaEnCaja } from '../helpers/caja.js';
 import { buscarOperacionDuplicada, describirOrigenDuplicado } from '../helpers/verificacionPago.js';
+import { getIO } from '../realtime.js';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import path from 'path';
@@ -99,7 +100,7 @@ export const getTiposComprobante = async (req, res) => {
 // GET /api/ventas
 export const getVentas = async (req, res) => {
   try {
-    const { page = 1, limit = 10, buscar, id, estado_sunat } = req.query;
+    const { page = 1, limit = 10, buscar, id, estado_sunat, canal_venta } = req.query;
     const offset = (page - 1) * limit;
     const params = [];
     let i = 1;
@@ -119,6 +120,10 @@ export const getVentas = async (req, res) => {
       filtros.push(`v.estado_sunat = $${i}`);
       params.push(estado_sunat); i++;
     }
+    if (canal_venta) {
+      filtros.push(`v.canal_venta = $${i}`);
+      params.push(canal_venta); i++;
+    }
     const where = filtros.length ? 'WHERE ' + filtros.join(' AND ') : '';
 
     const result = await pool.query(`
@@ -126,7 +131,7 @@ export const getVentas = async (req, res) => {
         v.id, v.serie_comprobante, v.numero_venta,
         v.serie_electronica, v.numero_electronico,
         tc.codigo, tc.codigo_sunat, tc.nombre AS tipo_comprobante,
-        v.metodo_pago,
+        v.metodo_pago, v.canal_venta,
         v.subtotal, v.igv, v.descuento_general, v.total, v.saldo_pendiente,
         v.estado_venta, v.estado_sunat, v.created_at,
         u.nombre||' '||u.apellido AS vendedor,
@@ -373,18 +378,25 @@ export const createVenta = async (req, res) => {
   try {
     await client.query('BEGIN');
     const { id_cliente, nombre_cliente_libre, dni_cliente_libre,
-            metodo_pago, descuento_general = 0, observacion, items,
+            metodo_pago, canal_venta = 'presencial', descuento_general = 0, observacion, items,
             monto_recibido, pago_codigo_operacion, pago_referencia, pago_url_comprobante,
             pagos_mixtos } = req.body;
 
     if (!items?.length)
       return res.status(400).json({ message: 'Debe agregar al menos un producto' });
 
-    const METODOS_VALIDOS = ['efectivo', 'yape', 'plin', 'transferencia', 'tarjeta'];
-    const pagosDigitales  = ['yape', 'transferencia', 'plin'];
+    const METODOS_VALIDOS = ['efectivo', 'yape', 'plin'];
+    const pagosDigitales  = ['yape', 'plin'];
+    const CANALES_VALIDOS = ['presencial', 'whatsapp'];
     const esMixto         = Array.isArray(pagos_mixtos) && pagos_mixtos.length >= 2;
 
+    if (!CANALES_VALIDOS.includes(canal_venta))
+      return res.status(400).json({ message: 'Canal de venta inválido' });
+
     if (!esMixto) {
+      if (!METODOS_VALIDOS.includes(metodo_pago))
+        return res.status(400).json({ message: 'Método de pago inválido' });
+
       const requiereVerificacion = pagosDigitales.includes(metodo_pago);
       if (requiereVerificacion) {
         if (!pago_codigo_operacion || !pago_referencia || !pago_url_comprobante)
@@ -516,15 +528,15 @@ export const createVenta = async (req, res) => {
       INSERT INTO venta(
         id_tipo_comprobante, serie_comprobante, numero_venta,
         id_usuario_reg, id_cliente, nombre_cliente_libre, dni_cliente_libre,
-        metodo_pago, subtotal, igv, descuento_general, total, saldo_pendiente,
+        metodo_pago, canal_venta, subtotal, igv, descuento_general, total, saldo_pendiente,
         observacion, monto_recibido, estado_venta,
         pago_codigo_operacion, pago_referencia, pago_url_comprobante
-      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
       RETURNING id
     `, [tcNV.id, tcNV.serie_defecto, numeroVenta,
         req.usuario.id,
         id_cliente||null, nombre_cliente_libre||null, dni_cliente_libre||null,
-        metodoPagoVenta, subtotal, igv, descuento_general, total, saldoPendiente,
+        metodoPagoVenta, canal_venta, subtotal, igv, descuento_general, total, saldoPendiente,
         observacion||null, montoRec,
         estadoVenta,
         pago_codigo_operacion||null, pago_referencia||null, pago_url_comprobante||null]);
@@ -1236,5 +1248,208 @@ export const getVerificacionPagos = async (req, res) => {
   } catch (err) {
     console.error('getVerificacionPagos:', err.message);
     res.status(500).json({ ok: false, message: err.message });
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  PEDIDOS WEB — pre-registros del catálogo público, pendientes de completar
+//  (método de pago + N° operación + comprobante) y convertir en venta real.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/ventas/pedidos-web/pendientes
+export const getPedidosWebPendientes = async (req, res) => {
+  try {
+    const { buscar } = req.query;
+    const params = [];
+    let where = `WHERE pw.estado = 'pendiente'`;
+    if (buscar) {
+      where += ` AND (pw.codigo_pedido ILIKE $1 OR pw.nombre_cliente ILIKE $1 OR pw.celular ILIKE $1)`;
+      params.push(`%${buscar}%`);
+    }
+    const result = await pool.query(`
+      SELECT pw.id, pw.codigo_pedido, pw.id_pp, pw.nombre_snapshot, pw.precio_snapshot,
+             pw.cantidad, pw.nombre_cliente, pw.celular, pw.created_at,
+             (pw.precio_snapshot * pw.cantidad) AS total,
+             pp.stock_actual
+      FROM pedido_web pw
+      JOIN producto_presentacion pp ON pp.id = pw.id_pp
+      ${where}
+      ORDER BY pw.created_at DESC
+    `, params);
+    res.json({ ok: true, data: result.rows });
+  } catch (err) {
+    console.error('getPedidosWebPendientes:', err.message);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+};
+
+// POST /api/ventas/pedidos-web/:id/completar
+// El admin ya validó el dinero (Yape/Plin/efectivo) con el cliente por
+// WhatsApp; aquí registra los datos y el pedido se convierte en una venta
+// real ya aprobada — mismo criterio que un pago digital simple aprobado.
+export const completarPedidoWeb = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { id } = req.params;
+    const { metodo_pago, numero_operacion, referencia, url_comprobante, cantidad } = req.body;
+
+    const METODOS_VALIDOS = ['efectivo', 'yape', 'plin'];
+    const pagosDigitales  = ['yape', 'plin'];
+    if (!METODOS_VALIDOS.includes(metodo_pago)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'Método de pago inválido' });
+    }
+
+    const pwR = await client.query('SELECT * FROM pedido_web WHERE id=$1 FOR UPDATE', [id]);
+    if (!pwR.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Pedido web no encontrado' });
+    }
+    const pedido = pwR.rows[0];
+    if (pedido.estado !== 'pendiente') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'Este pedido ya fue procesado' });
+    }
+
+    // La administradora puede ajustar la cantidad si el cliente cambió de
+    // opinión por WhatsApp respecto a lo que pre-registró en la web.
+    const cantidadFinal = cantidad !== undefined ? parseInt(cantidad, 10) : pedido.cantidad;
+    if (!Number.isInteger(cantidadFinal) || cantidadFinal <= 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'La cantidad debe ser mayor a 0' });
+    }
+
+    const esDigital = pagosDigitales.includes(metodo_pago);
+    if (esDigital) {
+      if (!numero_operacion?.trim() || !referencia?.trim() || !url_comprobante) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ message: `El pago con ${metodo_pago} requiere número de operación, referencia y comprobante` });
+      }
+      const dup = await buscarOperacionDuplicada(client, metodo_pago, numero_operacion.trim());
+      if (dup) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          message: `El N° de operación "${numero_operacion.trim()}" de ${metodo_pago.toUpperCase()} ya fue registrado en ${describirOrigenDuplicado(dup)}`
+        });
+      }
+    }
+
+    // Stock disponible (físico − reservado por otras ventas pendientes)
+    const st = await client.query(
+      'SELECT stock_actual FROM producto_presentacion WHERE id=$1 FOR UPDATE', [pedido.id_pp]
+    );
+    const reservado  = await stockReservado(client, pedido.id_pp);
+    const disponible = (st.rows[0]?.stock_actual ?? 0) - reservado;
+    if (!st.rows.length || disponible < cantidadFinal) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        message: `Stock insuficiente para "${pedido.nombre_snapshot}" (disponible: ${Math.max(0, disponible)})`
+      });
+    }
+
+    const total    = parseFloat((Number(pedido.precio_snapshot) * cantidadFinal).toFixed(2));
+    const subtotal = parseFloat((total / 1.18).toFixed(2));
+    const igv      = parseFloat((total - subtotal).toFixed(2));
+
+    // Tipo Nota de Venta + número automático (misma lógica que createVenta)
+    const tcR = await client.query(`SELECT id, serie_defecto FROM tipo_comprobante WHERE codigo = 'NV'`);
+    if (!tcR.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(500).json({ message: "Tipo 'NV' no encontrado en tipo_comprobante" });
+    }
+    const tcNV = tcR.rows[0];
+    const numR = await client.query(`
+      SELECT COALESCE(MAX(CAST(SPLIT_PART(numero_venta,'-',2) AS INTEGER)),0)+1 AS sig
+      FROM venta WHERE serie_comprobante = $1
+    `, [tcNV.serie_defecto]);
+    const numeroVenta = `${tcNV.serie_defecto}-${String(numR.rows[0].sig).padStart(6,'0')}`;
+
+    const vR = await client.query(`
+      INSERT INTO venta(
+        id_tipo_comprobante, serie_comprobante, numero_venta,
+        id_usuario_reg, nombre_cliente_libre,
+        metodo_pago, canal_venta, subtotal, igv, descuento_general, total, saldo_pendiente,
+        estado_venta, pago_codigo_operacion, pago_referencia, pago_url_comprobante
+      ) VALUES($1,$2,$3,$4,$5,$6,'whatsapp',$7,$8,0,$9,0,'registrada',$10,$11,$12)
+      RETURNING id
+    `, [tcNV.id, tcNV.serie_defecto, numeroVenta,
+        req.usuario.id, pedido.nombre_cliente,
+        metodo_pago, subtotal, igv, total,
+        numero_operacion || null, referencia || null, url_comprobante || null]);
+    const id_venta = vR.rows[0].id;
+
+    if (esDigital) {
+      await client.query(`
+        INSERT INTO cuota_venta(id_venta, es_mixto, monto, id_usuario_reg)
+        VALUES ($1, false, $2, $3)
+      `, [id_venta, total, req.usuario.id]);
+      await client.query(`
+        INSERT INTO verificacion_pago
+          (id_venta, metodo_pago, numero_operacion, nombre_referencia, monto, ruta_imagen, estado,
+           id_usuario_revisor, fecha_revision)
+        VALUES ($1, $2, $3, $4, $5, $6, 2, $7, now())
+      `, [id_venta, metodo_pago, numero_operacion.trim(), referencia.trim(), total, url_comprobante || null, req.usuario.id]);
+    }
+
+    await client.query(`
+      INSERT INTO venta_detalle(id_venta,id_pp,nombre_snapshot,precio_unitario,cantidad,descuento,subtotal)
+      VALUES($1,$2,$3,$4,$5,0,$6)
+    `, [id_venta, pedido.id_pp, pedido.nombre_snapshot, pedido.precio_snapshot, cantidadFinal, total]);
+
+    await descontarStockDeVenta(client, id_venta, numeroVenta, req.usuario.id);
+    await registrarVentaEnCaja(client, {
+      idUsuario: req.usuario.id, monto: total, metodoPago: metodo_pago,
+      concepto: `Venta ${numeroVenta}`, numeroVenta,
+    });
+
+    await client.query(`
+      UPDATE pedido_web SET estado='convertido', id_venta=$1, cantidad=$2, updated_at=now() WHERE id=$3
+    `, [id_venta, cantidadFinal, id]);
+
+    await client.query('COMMIT');
+
+    registrarAuditoria({
+      id_usuario:     req.usuario.id,
+      nombre_usuario: req.usuario.nombre || req.usuario.username,
+      accion:         'CREAR',
+      modulo:         'Verificación de Pagos',
+      descripcion:    `Pedido web ${pedido.codigo_pedido} convertido a venta ${numeroVenta} — Total: S/ ${total}`,
+      ip:             getIP(req),
+      datos_nuevos:   { codigo_pedido: pedido.codigo_pedido, numero_venta: numeroVenta, metodo_pago, total },
+    });
+
+    getIO()?.to('verificacion').emit('pedido-web-convertido', {
+      id: Number(id), codigo_pedido: pedido.codigo_pedido, numero_venta: numeroVenta,
+    });
+
+    res.json({ message: 'Pedido registrado y venta aprobada correctamente', id_venta, numero_venta: numeroVenta });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err);
+    res.status(500).json({ message: err.message });
+  } finally {
+    client.release();
+  }
+};
+
+// POST /api/ventas/pedidos-web/:id/cancelar
+export const cancelarPedidoWeb = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(`
+      UPDATE pedido_web SET estado='cancelado', updated_at=now()
+      WHERE id=$1 AND estado='pendiente'
+      RETURNING codigo_pedido
+    `, [id]);
+    if (!result.rows.length)
+      return res.status(404).json({ message: 'Pedido no encontrado o ya fue procesado' });
+
+    getIO()?.to('verificacion').emit('pedido-web-cancelado', { id: Number(id) });
+
+    res.json({ message: `Pedido ${result.rows[0].codigo_pedido} cancelado` });
+  } catch (err) {
+    console.error('cancelarPedidoWeb:', err.message);
+    res.status(500).json({ message: err.message });
   }
 };

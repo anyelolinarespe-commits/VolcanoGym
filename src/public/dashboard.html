@@ -85,8 +85,98 @@
 
       <div class="view active" id="view-home">
         <h4 style="font-weight:700;color:#1a1a2e;margin-bottom:6px;">Dashboard</h4>
-        <p style="color:#888;font-size:14px;margin-bottom:24px;">Bienvenido al sistema de gestión</p>
-        <div class="row g-3" id="homeCards"></div>
+        <p style="color:#888;font-size:14px;margin-bottom:20px;">Bienvenido al sistema de gestión</p>
+
+        <!-- Fila de 8 KPIs -->
+        <div class="row g-3 mb-3">
+          <div class="col-6 col-md-4 col-lg-3">
+            <div class="kpi-card kpi-teal">
+              <i class="bi bi-cash-coin kpi-icon"></i>
+              <div><div class="kpi-value" id="kpiIngDia">—</div><div class="kpi-label">Ingresos del Día</div></div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-lg-3">
+            <div class="kpi-card kpi-blue">
+              <i class="bi bi-graph-up-arrow kpi-icon"></i>
+              <div><div class="kpi-value" id="kpiIngSem">—</div><div class="kpi-label">Ingresos de la Semana</div></div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-lg-3">
+            <div class="kpi-card kpi-amber">
+              <i class="bi bi-pie-chart-fill kpi-icon"></i>
+              <div><div class="kpi-value" id="kpiIngMes">—</div><div class="kpi-label">Ingresos del Mes</div></div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-lg-3">
+            <div class="kpi-card kpi-red">
+              <i class="bi bi-exclamation-triangle-fill kpi-icon"></i>
+              <div><div class="kpi-value" id="kpiPagosPend">—</div><div class="kpi-label">Pagos Pendientes</div></div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-lg-3">
+            <div class="kpi-card kpi-teal">
+              <i class="bi bi-person-check-fill kpi-icon"></i>
+              <div><div class="kpi-value" id="kpiMatriculas">—</div><div class="kpi-label">Matrículas Activas</div></div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-lg-3">
+            <div class="kpi-card kpi-green">
+              <i class="bi bi-calendar-check-fill kpi-icon"></i>
+              <div><div class="kpi-value" id="kpiAsistHoy">—</div><div class="kpi-label">Asistencias de Hoy</div></div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-lg-3">
+            <div class="kpi-card kpi-dark">
+              <i class="bi bi-person-plus-fill kpi-icon"></i>
+              <div><div class="kpi-value" id="kpiNuevos">—</div><div class="kpi-label">Nuevos Clientes (últ. mes)</div></div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-lg-3">
+            <div class="kpi-card kpi-dark">
+              <i class="bi bi-people-fill kpi-icon"></i>
+              <div><div class="kpi-value" id="kpiTotalClientes">—</div><div class="kpi-label">Total Clientes Registrados</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts fila 1 -->
+        <div class="row g-3 mb-3">
+          <div class="col-12 col-lg-6">
+            <div class="chart-card">
+              <div class="chart-card-title"><i class="bi bi-bar-chart-line-fill"></i>Ingresos Mensuales (Últimos 6 Meses)</div>
+              <div class="chart-holder"><canvas id="dashChartIngresos"></canvas></div>
+            </div>
+          </div>
+          <div class="col-12 col-lg-6">
+            <div class="chart-card">
+              <div class="chart-card-title"><i class="bi bi-activity"></i>Asistencias Diarias (Últimos 7 Días)</div>
+              <div class="chart-holder"><canvas id="dashChartAsistencias"></canvas></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts fila 2 -->
+        <div class="row g-3 mb-3">
+          <div class="col-12 col-lg-6">
+            <div class="chart-card">
+              <div class="chart-card-title"><i class="bi bi-box-seam"></i>Productos con Bajo Stock</div>
+              <div id="dashBajoStock"><div class="dash-list-empty">Cargando…</div></div>
+            </div>
+          </div>
+          <div class="col-12 col-lg-6">
+            <div class="chart-card">
+              <div class="chart-card-title"><i class="bi bi-pie-chart-fill"></i>Distribución de Ingresos por Tipo de Pago</div>
+              <div class="chart-holder"><canvas id="dashChartPagos"></canvas></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Clientes en riesgo -->
+        <div class="chart-card">
+          <div class="chart-card-title"><i class="bi bi-person-exclamation"></i>Clientes en Riesgo (sin asistir)</div>
+          <div id="dashClientesRiesgo" style="overflow-x:auto;"><div class="dash-list-empty">Cargando…</div></div>
+        </div>
+
       </div>
 
       <div class="view" id="view-clientes">
@@ -993,6 +1083,8 @@
 
         <!-- ══ TAB: VENTAS ══ -->
         <div id="vp-tab-ventas">
+          <div id="vpPedidosWeb"></div>
+
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
             <input type="text" id="vpBuscar" class="form-control" placeholder="Buscar por N° venta, cliente o DNI..."
               style="max-width:280px" oninput="vpBuscarTimer()">
@@ -1110,8 +1202,13 @@
         <div class="table-card">
           <div class="table-toolbar">
             <span id="ventaContador" style="font-size:13px;color:#888">—</span>
+            <select id="filtroCanalVenta" onchange="loadVentas(1)" class="form-control" style="width:170px;margin-left:auto">
+              <option value="">Todos los canales</option>
+              <option value="presencial">Presencial</option>
+              <option value="whatsapp">Vía Web (WhatsApp)</option>
+            </select>
             <input type="text" id="buscarVenta" placeholder="🔍 Buscar documento o cliente..."
-              oninput="loadVentas(1)" style="width:260px;margin-left:auto">
+              oninput="loadVentas(1)" style="width:260px">
           </div>
           <div style="overflow-x:auto">
             <table style="table-layout:fixed">
@@ -1123,6 +1220,7 @@
                 <col style="width:80px">
                 <col style="width:78px">
                 <col style="width:88px">
+                <col style="width:110px">
                 <col style="width:78px">
                 <col style="width:88px">
                 <col style="width:180px">
@@ -1136,6 +1234,7 @@
                   <th>FECHA</th>
                   <th>TOTAL</th>
                   <th>PAGO</th>
+                  <th>CANAL</th>
                   <th>DEUDA</th>
                   <th>ESTADO</th>
                   <th>ACCIONES</th>
@@ -1732,7 +1831,7 @@
       <div class="vt-section-label" style="margin-top:18px">
         <i class="bi bi-file-earmark-text"></i> COMPROBANTE Y PAGO
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:6px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:6px">
         <div>
           <label class="form-label">Serie de Comprobante</label>
           <input type="text" id="nv-serie" class="form-control" value="Nota de Venta" readonly>
@@ -1747,8 +1846,13 @@
             <option value="efectivo">Efectivo</option>
             <option value="yape">Yape</option>
             <option value="plin">Plin</option>
-            <option value="transferencia">Transferencia</option>
-            <option value="tarjeta">Tarjeta (Débito/Crédito)</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Canal de Venta</label>
+          <select id="nv-canal-venta" class="form-control">
+            <option value="presencial">Presencial</option>
+            <option value="whatsapp">Vía Web (WhatsApp)</option>
           </select>
         </div>
       </div>
@@ -2001,8 +2105,8 @@
         <div id="dventa-cliente-telefono" style="font-size:13px;color:#555;margin-top:2px"></div>
       </div>
 
-      <!-- Fecha + Forma de Pago -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <!-- Fecha + Forma de Pago + Canal -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
         <div class="vt-dv-card">
           <div class="vt-dv-label"><i class="bi bi-calendar3 me-1"></i>FECHA EMISIÓN</div>
           <div id="dventa-fecha" style="font-size:15px;font-weight:600;color:#1a1a2e;margin-top:4px"></div>
@@ -2010,6 +2114,10 @@
         <div class="vt-dv-card" style="background:#f0f7ff;border-color:#bbdefb">
           <div class="vt-dv-label" style="color:#1565c0"><i class="bi bi-credit-card me-1"></i>FORMA DE PAGO</div>
           <div id="dventa-metodo" style="font-size:15px;font-weight:700;color:#1565c0;margin-top:4px"></div>
+        </div>
+        <div class="vt-dv-card">
+          <div class="vt-dv-label"><i class="bi bi-signpost-split me-1"></i>CANAL DE VENTA</div>
+          <div id="dventa-canal" style="font-size:15px;font-weight:700;color:#455a64;margin-top:4px"></div>
         </div>
       </div>
 
@@ -2082,6 +2190,10 @@
 .vt-badge-metodo.plin  { background:#e3f2fd; color:#1565c0; }
 .vt-badge-metodo.transferencia { background:#fff3e0; color:#e65100; }
 .vt-badge-metodo.tarjeta { background:#e8f5e9; color:#2e7d32; }
+
+.vt-badge-canal { display:inline-block; padding:3px 10px; border-radius:20px;
+  font-size:11.5px; font-weight:600; background:#eceff1; color:#455a64; white-space:nowrap; }
+.vt-badge-canal.whatsapp { background:#e8f5e9; color:#25843c; }
 
 .badge-estado { display:inline-block; padding:3px 10px; border-radius:20px;
   font-size:11px; font-weight:700; white-space:nowrap; }
@@ -3226,6 +3338,14 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
           </select>
         </div>
 
+        <div class="memb-field">
+          <label class="memb-label">Canal de Venta</label>
+          <select class="memb-select" id="membCanalVenta">
+            <option value="presencial">Presencial</option>
+            <option value="whatsapp">Vía Web (WhatsApp)</option>
+          </select>
+        </div>
+
         <!-- Observaciones -->
         <div class="memb-section-label" style="margin-top:4px"><i class="bi bi-chat-left-text" style="color:#ff8f00"></i> Observaciones</div>
         <div class="memb-field" style="margin-bottom:4px">
@@ -4266,8 +4386,6 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
           <div class="form-label">Método de Pago *</div>
           <select class="form-control" id="mcMetodoPago">
             <option value="efectivo">Efectivo</option>
-            <option value="tarjeta">Tarjeta</option>
-            <option value="transferencia">Transferencia</option>
             <option value="yape">Yape</option>
             <option value="plin">Plin</option>
           </select>
@@ -4666,6 +4784,14 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
 
         <!-- Método de pago — componente dinámico _PM -->
         <div id="memb-pm-container" style="margin-top:12px"></div>
+
+        <div class="memb-form-grupo" style="margin-top:10px">
+          <label for="memb-canal-venta">Canal de Venta</label>
+          <select id="memb-canal-venta">
+            <option value="presencial">Presencial</option>
+            <option value="whatsapp">Vía Web (WhatsApp)</option>
+          </select>
+        </div>
 
         <div class="memb-form-grupo" style="margin-top:10px">
           <label for="memb-observacion">Observación</label>
@@ -5437,7 +5563,12 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
   <script src="js/importar.js?v=20260630a"></script>
   <script src="js/caja.js?v=20260704a"></script>
   <script src="js/reportes.js?v=20260706a"></script>
+  <script src="js/home.js?v=20260716c"></script>
   <script src="js/notificaciones.js?v=20260707a"></script>
+
+  <!-- Socket.IO: notificaciones en vivo (pedidos web) -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/realtime.js?v=20260716a"></script>
 </body>
 
 </html>

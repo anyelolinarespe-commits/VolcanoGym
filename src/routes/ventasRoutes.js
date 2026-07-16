@@ -14,7 +14,10 @@ import {
   enviarEmailVenta,
   getVerificacionPagos,
   verificarOperacion,
-  getResumenVentasHoy
+  getResumenVentasHoy,
+  getPedidosWebPendientes,
+  completarPedidoWeb,
+  cancelarPedidoWeb
 } from '../controllers/ventasController.js';
 import { verificarToken } from '../middlewares/verificarToken.js';
 
@@ -23,6 +26,9 @@ router.use(verificarToken);
 
 router.get('/verificacion/pagos',              getVerificacionPagos);
 router.post('/verificacion/:id_vp/aprobar',   aprobarVerificacion);
+router.get('/pedidos-web/pendientes',         getPedidosWebPendientes);
+router.post('/pedidos-web/:id/completar',     completarPedidoWeb);
+router.post('/pedidos-web/:id/cancelar',      cancelarPedidoWeb);
 router.get('/tipos-comprobante',  getTiposComprobante);
 router.get('/numero-siguiente',   getNumeroSiguiente);
 router.get('/verificar-operacion', verificarOperacion);

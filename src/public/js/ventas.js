@@ -57,7 +57,7 @@ function chequearOperacionSimple() {
   const valor  = document.getElementById('nv-pago-operacion')?.value?.trim();
   _opDuplicadaSimple = false;
   if (warnEl) warnEl.style.display = 'none';
-  if (!valor || !['yape', 'plin', 'transferencia'].includes(metodo)) return;
+  if (!valor || !['yape', 'plin'].includes(metodo)) return;
 
   _opDupTimerSimple = setTimeout(async () => {
     const { duplicado, numero_venta } = await _consultarOperacionDuplicada(metodo, valor);
@@ -76,7 +76,7 @@ function chequearOperacionMixto(idx) {
   const m = _metodosMixtos[idx];
   _opDuplicadasMixto.delete(idx);
   if (warnEl) warnEl.style.display = 'none';
-  if (!m || !m.operacion?.trim() || !['yape', 'plin', 'transferencia'].includes(m.metodo)) return;
+  if (!m || !m.operacion?.trim() || !['yape', 'plin'].includes(m.metodo)) return;
 
   _opDupTimerMixto[idx] = setTimeout(async () => {
     const { duplicado, numero_venta } = await _consultarOperacionDuplicada(m.metodo, m.operacion.trim());
@@ -92,7 +92,7 @@ function chequearOperacionMixto(idx) {
 
 // ── PAGO MIXTO ────────────────────────────────────────────────────────────────
 
-const METODOS_DIGITALES_MIXTO = ['yape', 'plin', 'transferencia'];
+const METODOS_DIGITALES_MIXTO = ['yape', 'plin'];
 
 function togglePagoMixto() {
   _pagoMixtoActivo = !_pagoMixtoActivo;
@@ -166,7 +166,7 @@ function renderMetodosMixtos() {
   contenedor.innerHTML = _metodosMixtos.map((m, idx) => {
     const esDigital = METODOS_DIGITALES_MIXTO.includes(m.metodo);
     const metodosYaUsados = _metodosMixtos.map((x, i) => i !== idx ? x.metodo : null).filter(Boolean);
-    const metodosOpts = ['efectivo','yape','plin','transferencia'].map(mt => {
+    const metodosOpts = ['efectivo','yape','plin'].map(mt => {
       const usado = metodosYaUsados.includes(mt);
       return `<option value="${mt}" ${m.metodo === mt ? 'selected' : ''} ${usado ? 'disabled' : ''}>${mt.charAt(0).toUpperCase()+mt.slice(1)}${usado ? ' (en uso)' : ''}</option>`;
     }).join('');
@@ -313,14 +313,16 @@ async function loadVentas(page = 1) {
   loadResumenVentasHoy();
   const tbody = document.getElementById('tbodyVentas');
   if (!tbody) return;
-  tbody.innerHTML = '<tr class="loading-row"><td colspan="10">Cargando...</td></tr>';
+  tbody.innerHTML = '<tr class="loading-row"><td colspan="11">Cargando...</td></tr>';
 
   try {
     const raw    = document.getElementById('buscarVenta')?.value || '';
     const parsed = parseSearchInput(raw);
+    const canal  = document.getElementById('filtroCanalVenta')?.value || '';
     const params = new URLSearchParams({ page, limit: 10 });
     if (parsed.type === 'id')    params.set('id', parsed.value);
     else if (parsed.value)       params.set('buscar', parsed.value);
+    if (canal)                   params.set('canal_venta', canal);
 
     const data = await api('GET', `/api/ventas?${params}`);
     dataVentas       = data.data;
@@ -334,7 +336,7 @@ async function loadVentas(page = 1) {
     renderTablaVentas(dataVentas);
     renderPaginacionVentas(data.totalPages, page);
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="10" class="text-center" style="color:#e94560;padding:20px">${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" class="text-center" style="color:#e94560;padding:20px">${e.message}</td></tr>`;
   }
 }
 
@@ -358,6 +360,12 @@ function renderTablaVentas(ventas) {
       tarjeta:       '<span class="vt-badge-metodo tarjeta">Tarjeta</span>'
     }[metodoPago] || `<span class="vt-badge-metodo">${metodoPago}</span>`;
 
+    const canalVenta  = v.canal_venta || 'presencial';
+    const canalBadge  = {
+      presencial: '<span class="vt-badge-canal">Presencial</span>',
+      whatsapp:   '<span class="vt-badge-canal whatsapp">Vía Web</span>'
+    }[canalVenta] || `<span class="vt-badge-canal">${canalVenta}</span>`;
+
     const estadoVentaBadge = v.estado_venta === 'anulada'
       ? '<span class="badge-estado anulada-v">ANULADA</span>'
       : v.estado_venta === 'pendiente'
@@ -377,6 +385,7 @@ function renderTablaVentas(ventas) {
       <td style="font-size:12px;color:#666;white-space:nowrap">${fecha}</td>
       <td style="white-space:nowrap"><strong>S/ ${parseFloat(v.total).toFixed(2)}</strong></td>
       <td>${metodoBadge}</td>
+      <td>${canalBadge}</td>
       <td style="font-size:12px;color:#e53935;font-weight:600;white-space:nowrap">S/ ${parseFloat(v.saldo_pendiente).toFixed(2)}</td>
       <td>${estadoVentaBadge}</td>
       <td>
@@ -421,6 +430,7 @@ async function abrirNuevaVenta() {
   document.getElementById('nv-cliente-info').innerHTML  = '';
   document.getElementById('nv-numero').value            = _numeroSiguiente.numero_completo;
   document.getElementById('nv-metodo-pago').value       = 'efectivo';
+  document.getElementById('nv-canal-venta').value       = 'presencial';
   document.getElementById('nv-observacion').value       = '';
   document.getElementById('nv-descuento-general').value = '0';
   document.getElementById('nv-monto-recibido').value    = '';
@@ -819,6 +829,7 @@ async function guardarVenta() {
 
   const descGen = descGenRaw;
   const total   = _getTotalCarritoActual();
+  const canal_venta = document.getElementById('nv-canal-venta')?.value || 'presencial';
 
   let payload;
 
@@ -870,6 +881,7 @@ async function guardarVenta() {
                             ? `${_clienteSeleccionado.nombre} ${_clienteSeleccionado.apellido}` : null,
       dni_cliente_libre:    _clienteSeleccionado?._libre ? _clienteSeleccionado.dni : null,
       metodo_pago:          'mixto',
+      canal_venta,
       descuento_general:    descGen,
       observacion:          document.getElementById('nv-observacion')?.value?.trim() || null,
       pagos_mixtos: _metodosMixtos.map(m => ({
@@ -919,6 +931,7 @@ async function guardarVenta() {
                             ? `${_clienteSeleccionado.nombre} ${_clienteSeleccionado.apellido}` : null,
       dni_cliente_libre:    _clienteSeleccionado?._libre ? _clienteSeleccionado.dni : null,
       metodo_pago,
+      canal_venta,
       descuento_general:    descGen,
       observacion:          document.getElementById('nv-observacion')?.value?.trim() || null,
       monto_recibido:       montoRec,
@@ -993,6 +1006,8 @@ async function verDetalleVenta(id) {
       new Date(v.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const metodosLabel = { efectivo: 'Efectivo', yape: 'Yape', plin: 'Plin', transferencia: 'Transferencia', tarjeta: 'Tarjeta' };
     document.getElementById('dventa-metodo').textContent = metodosLabel[v.metodo_pago] || v.metodo_pago;
+    const canalesLabel = { presencial: 'Presencial', whatsapp: 'Vía Web (WhatsApp)' };
+    document.getElementById('dventa-canal').textContent = canalesLabel[v.canal_venta] || v.canal_venta || 'Presencial';
 
     // Tabla productos
     document.getElementById('dventa-detalle').innerHTML = (v.detalle || []).map((d, i) => `

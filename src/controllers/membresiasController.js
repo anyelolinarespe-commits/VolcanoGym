@@ -53,7 +53,9 @@ function genComprobante(prefijo = 'MEM') {
 // considera confirmado hasta que un operador lo apruebe en Verificación de
 // Pagos — mientras tanto la cuota queda 'pendiente' y la membresía (si es su
 // pago fundacional) queda 'pendiente_validacion'.
-const METODOS_DIGITALES_MEMB = ['yape', 'plin', 'transferencia'];
+const METODOS_PAGO_VALIDOS_MEMB = ['efectivo', 'yape', 'plin'];
+const METODOS_DIGITALES_MEMB = ['yape', 'plin'];
+const CANALES_VENTA_VALIDOS = ['presencial', 'whatsapp'];
 const tieneSplitDigital = (detalles) =>
     Array.isArray(detalles) && detalles.some(d => METODOS_DIGITALES_MEMB.includes(d?.metodo_pago));
 
@@ -247,6 +249,7 @@ async function _getCuotasConAbonos(id_membresia) {
                                 ELSE MAX(ab2.metodo_pago::text) END
                       FROM abono_cuota ab2 WHERE ab2.id_pago = pa.id_pago)
                ) AS metodo_pago,
+               pa.canal_venta,
                pa.num_comprobante, pa.estado_cuota,
                pa.created_at,
                u.nombre || ' ' || u.apellido AS registrado_por,
@@ -302,12 +305,15 @@ export const createMembresia = async (req, res) => {
     const {
         id_cliente, id_plan, fecha_inicio,
         monto_total, monto_pagado_ahora,
-        metodo_pago, observaciones, id_asesor,
+        metodo_pago, canal_venta = 'presencial', observaciones, id_asesor,
         num_cuotas_solicitadas, pagos_detalle
     } = req.body;
 
     if (!id_cliente || !id_plan || !fecha_inicio || !monto_total || !metodo_pago)
         return res.status(400).json({ message: 'Faltan campos requeridos: cliente, plan, fecha_inicio, monto_total, metodo_pago' });
+
+    if (!CANALES_VENTA_VALIDOS.includes(canal_venta))
+        return res.status(400).json({ message: 'Canal de venta inválido' });
 
     // Rechazar fechas de inicio anteriores a hoy
     const hoyLocal = new Date();
@@ -327,6 +333,12 @@ export const createMembresia = async (req, res) => {
         const detallesPagoInicial = Array.isArray(pagos_detalle) && pagos_detalle.length > 0
             ? pagos_detalle
             : [{ metodo_pago, monto_parcial: montoInicialTmp, referencia: null, codigo_seguridad: null, url_comprobante: null }];
+
+        const metodoInvalido = detallesPagoInicial.find(d => !METODOS_PAGO_VALIDOS_MEMB.includes(d.metodo_pago));
+        if (metodoInvalido) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ message: `Método de pago inválido: ${metodoInvalido.metodo_pago}` });
+        }
 
         const errorSplits = validarSplitsDigitales(detallesPagoInicial);
         if (errorSplits) {
@@ -436,7 +448,7 @@ export const createMembresia = async (req, res) => {
             await _insertarCuotas(client, {
                 id_membresia: membresia.id_membresia,
                 idUsuarioReg, idCajero: req.usuario.id, montoPagadoAhora, saldoPendiente,
-                fecha_inicio, fechaFin, plan, metodo_pago, pagos_detalle
+                fecha_inicio, fechaFin, plan, metodo_pago, canal_venta, pagos_detalle
             });
 
             await client.query('COMMIT');
@@ -527,7 +539,7 @@ export const createMembresia = async (req, res) => {
             await _insertarCuotas(client, {
                 id_membresia: nRes.rows[0].id_membresia,
                 idUsuarioReg, idCajero: req.usuario.id, montoPagadoAhora, saldoPendiente,
-                fecha_inicio, fechaFin, plan, metodo_pago, pagos_detalle
+                fecha_inicio, fechaFin, plan, metodo_pago, canal_venta, pagos_detalle
             });
             await client.query('COMMIT');
             registrarAuditoria({
@@ -639,7 +651,7 @@ export const createMembresia = async (req, res) => {
 async function _insertarCuotas(client, {
     id_membresia, idUsuarioReg, idCajero,
     montoPagadoAhora, saldoPendiente, fecha_inicio, fechaFin, plan, metodo_pago,
-    pagos_detalle = null
+    canal_venta = 'presencial', pagos_detalle = null
 }) {
     const esMixto = Array.isArray(pagos_detalle) && pagos_detalle.length > 1;
     const metodoPrimario = Array.isArray(pagos_detalle) && pagos_detalle.length > 0
@@ -664,8 +676,8 @@ async function _insertarCuotas(client, {
             `INSERT INTO pago
              (id_membresia, id_usuario_reg, num_cuota, monto,
               fecha_programada, fecha_limite,
-              metodo_pago, num_comprobante, estado_cuota, es_mixto)
-             VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9)
+              metodo_pago, canal_venta, num_comprobante, estado_cuota, es_mixto)
+             VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10)
              RETURNING id_pago`,
             [
                 id_membresia, idUsuarioReg,
@@ -673,6 +685,7 @@ async function _insertarCuotas(client, {
                 fecha_inicio,
                 fecha_inicio,
                 metodoPrimario,
+                canal_venta,
                 comprobante,
                 'pendiente',
                 esMixto
@@ -682,8 +695,8 @@ async function _insertarCuotas(client, {
             `INSERT INTO pago
              (id_membresia, id_usuario_reg, num_cuota, monto,
               fecha_pago, fecha_programada, fecha_limite,
-              metodo_pago, num_comprobante, estado_cuota, es_mixto)
-             VALUES ($1,$2,1,$3,CURRENT_DATE,$4,$5,$6,$7,$8,$9)
+              metodo_pago, canal_venta, num_comprobante, estado_cuota, es_mixto)
+             VALUES ($1,$2,1,$3,CURRENT_DATE,$4,$5,$6,$7,$8,$9,$10)
              RETURNING id_pago`,
             [
                 id_membresia, idUsuarioReg,
@@ -691,6 +704,7 @@ async function _insertarCuotas(client, {
                 fecha_inicio,
                 fecha_inicio,
                 metodoPrimario,
+                canal_venta,
                 comprobante,
                 'pagado',
                 esMixto
@@ -742,13 +756,14 @@ async function _insertarCuotas(client, {
         await client.query(
             `INSERT INTO pago
              (id_membresia, id_usuario_reg, num_cuota, monto,
-              fecha_programada, fecha_limite, estado_cuota)
-             VALUES ($1,$2,2,$3,$4,$5,'pendiente')`,
+              fecha_programada, fecha_limite, canal_venta, estado_cuota)
+             VALUES ($1,$2,2,$3,$4,$5,$6,'pendiente')`,
             [
                 id_membresia, idUsuarioReg,
                 saldoPendiente,
                 fecha_inicio,
-                addDias(fecha_inicio, plan.dias_limite_fraccion)
+                addDias(fecha_inicio, plan.dias_limite_fraccion),
+                canal_venta
             ]
         );
     }
@@ -760,10 +775,13 @@ async function _insertarCuotas(client, {
 // pagos_detalle es requerido; si solo hay 1 elemento, se trata como pago simple.
 export const pagarCuota = async (req, res) => {
     const { id } = req.params;
-    const { id_pago, monto_pagado, pagos_detalle, metodo_pago, num_comprobante } = req.body;
+    const { id_pago, monto_pagado, pagos_detalle, metodo_pago, canal_venta = 'presencial', num_comprobante } = req.body;
 
     if (!id_pago)
         return res.status(400).json({ message: 'id_pago es requerido' });
+
+    if (!CANALES_VENTA_VALIDOS.includes(canal_venta))
+        return res.status(400).json({ message: 'Canal de venta inválido' });
 
     // Determinar método primario y validar que viene algún método
     const detalles = Array.isArray(pagos_detalle) && pagos_detalle.length > 0
@@ -774,6 +792,10 @@ export const pagarCuota = async (req, res) => {
 
     if (!detalles)
         return res.status(400).json({ message: 'Se requiere al menos un método de pago (pagos_detalle o metodo_pago)' });
+
+    const metodoInvalidoCuota = detalles.find(d => !METODOS_PAGO_VALIDOS_MEMB.includes(d.metodo_pago));
+    if (metodoInvalidoCuota)
+        return res.status(400).json({ message: `Método de pago inválido: ${metodoInvalidoCuota.metodo_pago}` });
 
     const metodoPrimario = detalles[0].metodo_pago;
     const esMixto        = detalles.length > 1;
@@ -807,6 +829,8 @@ export const pagarCuota = async (req, res) => {
         );
         if (!cuotaRes.rows.length)
             return res.status(404).json({ message: 'Cuota no encontrada o ya fue pagada' });
+
+        await client.query(`UPDATE pago SET canal_venta = $1 WHERE id_pago = $2`, [canal_venta, id_pago]);
 
         const cuota      = cuotaRes.rows[0];
         const montoCuota = parseFloat(cuota.monto);
@@ -1601,6 +1625,7 @@ export const crearMembresia = async (req, res) => {
     // Datos del pago
     monto_pagado,
     metodo_pago,
+    canal_venta = 'presencial',
     codigo_seguridad,
     url_comprobante,
     observacion_pago
@@ -1611,6 +1636,12 @@ export const crearMembresia = async (req, res) => {
   // Validaciones básicas
   if (!id_plan || !fecha_inicio || !monto_pagado || !metodo_pago) {
     return res.status(400).json({ ok: false, mensaje: 'Faltan datos obligatorios del plan o pago.' });
+  }
+  if (!METODOS_PAGO_VALIDOS_MEMB.includes(metodo_pago)) {
+    return res.status(400).json({ ok: false, mensaje: `Método de pago inválido: ${metodo_pago}` });
+  }
+  if (!CANALES_VENTA_VALIDOS.includes(canal_venta)) {
+    return res.status(400).json({ ok: false, mensaje: 'Canal de venta inválido' });
   }
 
   // Pago digital: mismo criterio que el resto del módulo — requiere código de
@@ -1751,12 +1782,12 @@ export const crearMembresia = async (req, res) => {
           `INSERT INTO pago
              (id_membresia, id_usuario_reg, num_cuota, monto,
               fecha_programada, fecha_limite,
-              metodo_pago, num_comprobante, estado_cuota)
-           VALUES ($1,$2,1,$3,$4,$4,$5,$6,$7)
+              metodo_pago, canal_venta, num_comprobante, estado_cuota)
+           VALUES ($1,$2,1,$3,$4,$4,$5,$6,$7,$8)
            RETURNING id_pago`,
           [
             id_membresia, id_usuario_reg, montoNum,
-            fecha_inicio, metodo_pago,
+            fecha_inicio, metodo_pago, canal_venta,
             numComprobanteWiz,
             'pendiente'
           ]
@@ -1765,12 +1796,12 @@ export const crearMembresia = async (req, res) => {
           `INSERT INTO pago
              (id_membresia, id_usuario_reg, num_cuota, monto,
               fecha_pago, fecha_programada, fecha_limite,
-              metodo_pago, num_comprobante, estado_cuota)
-           VALUES ($1,$2,1,$3,CURRENT_DATE,$4,$4,$5,$6,$7)
+              metodo_pago, canal_venta, num_comprobante, estado_cuota)
+           VALUES ($1,$2,1,$3,CURRENT_DATE,$4,$4,$5,$6,$7,$8)
            RETURNING id_pago`,
           [
             id_membresia, id_usuario_reg, montoNum,
-            fecha_inicio, metodo_pago,
+            fecha_inicio, metodo_pago, canal_venta,
             numComprobanteWiz,
             'pagado'
           ]

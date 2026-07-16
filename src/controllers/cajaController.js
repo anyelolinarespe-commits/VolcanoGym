@@ -8,7 +8,7 @@ import { getSesionAbiertaUsuario } from '../helpers/caja.js';
 //  solo lectura) y Mi Sesión (operación diaria del cajero).
 // ══════════════════════════════════════════════════════════════════════════════
 
-const METODOS_PAGO_VALIDOS = ['efectivo', 'tarjeta', 'transferencia', 'yape', 'plin'];
+const METODOS_PAGO_VALIDOS = ['efectivo', 'yape', 'plin'];
 const pad = (n, len) => String(n).padStart(len, '0');
 
 // ── CAJAS REGISTRADORAS ───────────────────────────────────────────────────────
