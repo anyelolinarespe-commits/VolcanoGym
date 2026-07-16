@@ -657,25 +657,45 @@ async function _insertarCuotas(client, {
     // todas sus verificaciones (ver aprobarVerificacionMembresia).
     const requiereValidacion = tieneSplitDigital(detalles);
 
-    // Cuota 1
-    const c1Res = await client.query(
-        `INSERT INTO pago
-         (id_membresia, id_usuario_reg, num_cuota, monto,
-          fecha_pago, fecha_programada, fecha_limite,
-          metodo_pago, num_comprobante, estado_cuota, es_mixto)
-         VALUES ($1,$2,1,$3,${requiereValidacion ? 'NULL' : 'CURRENT_DATE'},$4,$5,$6,$7,$8,$9)
-         RETURNING id_pago`,
-        [
-            id_membresia, idUsuarioReg,
-            montoPagadoAhora,
-            fecha_inicio,
-            fecha_inicio,
-            metodoPrimario,
-            comprobante,
-            requiereValidacion ? 'pendiente' : 'pagado',
-            esMixto
-        ]
-    );
+    // Cuota 1 — si requiere validación, no se escribe fecha_pago todavía
+    // (la columna es NOT NULL; se fija en aprobarVerificacionMembresia).
+    const c1Res = requiereValidacion
+        ? await client.query(
+            `INSERT INTO pago
+             (id_membresia, id_usuario_reg, num_cuota, monto,
+              fecha_programada, fecha_limite,
+              metodo_pago, num_comprobante, estado_cuota, es_mixto)
+             VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9)
+             RETURNING id_pago`,
+            [
+                id_membresia, idUsuarioReg,
+                montoPagadoAhora,
+                fecha_inicio,
+                fecha_inicio,
+                metodoPrimario,
+                comprobante,
+                'pendiente',
+                esMixto
+            ]
+        )
+        : await client.query(
+            `INSERT INTO pago
+             (id_membresia, id_usuario_reg, num_cuota, monto,
+              fecha_pago, fecha_programada, fecha_limite,
+              metodo_pago, num_comprobante, estado_cuota, es_mixto)
+             VALUES ($1,$2,1,$3,CURRENT_DATE,$4,$5,$6,$7,$8,$9)
+             RETURNING id_pago`,
+            [
+                id_membresia, idUsuarioReg,
+                montoPagadoAhora,
+                fecha_inicio,
+                fecha_inicio,
+                metodoPrimario,
+                comprobante,
+                'pagado',
+                esMixto
+            ]
+        );
     const idPagoC1 = c1Res.rows[0].id_pago;
 
     for (const d of detalles) {
@@ -1723,21 +1743,38 @@ export const crearMembresia = async (req, res) => {
     const id_membresia = membRes.rows[0].id_membresia;
 
     // ── PASO 5: Registrar el pago ─────────────────────────────────────────────
+    // Si requiere validación, no se escribe fecha_pago todavía (la columna es
+    // NOT NULL; se fija en aprobarVerificacionMembresia).
     const numComprobanteWiz = `MEM-${Date.now()}`;
-    const pagoRes = await client.query(
-      `INSERT INTO pago
-         (id_membresia, id_usuario_reg, num_cuota, monto,
-          fecha_pago, fecha_programada, fecha_limite,
-          metodo_pago, num_comprobante, estado_cuota)
-       VALUES ($1,$2,1,$3,${requiereValidacionWiz ? 'NULL' : 'CURRENT_DATE'},$4,$4,$5,$6,$7)
-       RETURNING id_pago`,
-      [
-        id_membresia, id_usuario_reg, montoNum,
-        fecha_inicio, metodo_pago,
-        numComprobanteWiz,
-        requiereValidacionWiz ? 'pendiente' : 'pagado'
-      ]
-    );
+    const pagoRes = requiereValidacionWiz
+      ? await client.query(
+          `INSERT INTO pago
+             (id_membresia, id_usuario_reg, num_cuota, monto,
+              fecha_programada, fecha_limite,
+              metodo_pago, num_comprobante, estado_cuota)
+           VALUES ($1,$2,1,$3,$4,$4,$5,$6,$7)
+           RETURNING id_pago`,
+          [
+            id_membresia, id_usuario_reg, montoNum,
+            fecha_inicio, metodo_pago,
+            numComprobanteWiz,
+            'pendiente'
+          ]
+        )
+      : await client.query(
+          `INSERT INTO pago
+             (id_membresia, id_usuario_reg, num_cuota, monto,
+              fecha_pago, fecha_programada, fecha_limite,
+              metodo_pago, num_comprobante, estado_cuota)
+           VALUES ($1,$2,1,$3,CURRENT_DATE,$4,$4,$5,$6,$7)
+           RETURNING id_pago`,
+          [
+            id_membresia, id_usuario_reg, montoNum,
+            fecha_inicio, metodo_pago,
+            numComprobanteWiz,
+            'pagado'
+          ]
+        );
 
     if (requiereValidacionWiz) {
       await client.query(`

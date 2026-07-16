@@ -54,6 +54,15 @@ export const createPlan = async (req, res) => {
     if (!nombre || !tipo_cliente || !duracion_meses || !precio)
         return res.status(400).json({ message: 'Nombre, tipo_cliente, duracion_meses y precio son requeridos' });
 
+    if (Number(duracion_meses) <= 0 || Number(precio) < 0
+        || (precio_renovacion != null && Number(precio_renovacion) < 0)
+        || (monto_minimo_cuota != null && Number(monto_minimo_cuota) < 0)
+        || (tasa_interes != null && Number(tasa_interes) < 0)
+        || (dias_limite_fraccion != null && Number(dias_limite_fraccion) < 1)
+        || (dias_entre_cuotas != null && Number(dias_entre_cuotas) < 1)
+        || (max_asistencias_semana != null && Number(max_asistencias_semana) < 1))
+        return res.status(400).json({ message: 'Los valores numéricos no pueden ser negativos' });
+
     const unidadesValidas = ['dias', 'meses', 'anos'];
     if (!duracion_unidad || !unidadesValidas.includes(duracion_unidad))
         return res.status(400).json({ message: 'duracion_unidad inválido. Valores: dias, meses, anos' });
@@ -131,6 +140,15 @@ export const updatePlan = async (req, res) => {
 
     if (fraccion && cuotas < 2)
         return res.status(400).json({ message: 'Si permite_fraccion es true, max_cuotas debe ser >= 2' });
+
+    if (Number(duracion_meses) <= 0 || Number(precio) < 0
+        || (precio_renovacion != null && Number(precio_renovacion) < 0)
+        || (monto_minimo_cuota != null && Number(monto_minimo_cuota) < 0)
+        || (tasa_interes != null && Number(tasa_interes) < 0)
+        || (dias_limite_fraccion != null && Number(dias_limite_fraccion) < 1)
+        || (dias_entre_cuotas != null && Number(dias_entre_cuotas) < 1)
+        || (max_asistencias_semana != null && Number(max_asistencias_semana) < 1))
+        return res.status(400).json({ message: 'Los valores numéricos no pueden ser negativos' });
 
     const apInteres = !!(aplica_interes && fraccion);
     const tasaI     = apInteres ? (parseFloat(tasa_interes) || 0) : 0;

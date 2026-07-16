@@ -3275,7 +3275,7 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
             <div class="col-6">
                 <div class="form-label">Duración *</div>
                 <div style="display:flex;gap:8px">
-                    <input class="form-control" id="planDuracionValor" type="number" min="1" value="1" style="width:90px">
+                    <input class="form-control" id="planDuracionValor" type="number" min="1" value="1" style="width:90px" oninput="if(this.value<1) this.value=1">
                     <select class="form-control" id="planDuracionUnidad" style="flex:1">
                         <option value="">Seleccionar opción</option>
                         <option value="dias">Días</option>
@@ -3289,15 +3289,15 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
         <div class="row g-2 mb-2">
             <div class="col-6">
                 <div class="form-label">Precio nuevo cliente (S/) *</div>
-                <input class="form-control" id="planPrecio" type="number" step="0.01" placeholder="0.00" oninput="actualizarSimulacionInteres()">
+                <input class="form-control" id="planPrecio" type="number" min="0" step="0.01" placeholder="0.00" oninput="if(this.value<0) this.value=0; actualizarSimulacionInteres()">
             </div>
             <div class="col-6">
                 <div class="form-label">
                     Precio renovación (S/)
                     <span style="font-size:10px;color:#888;font-weight:400"> — opcional</span>
                 </div>
-                <input class="form-control" id="planPrecioRenov" type="number" step="0.01" placeholder="Dejar vacío = mismo precio"
-                    oninput="document.getElementById('planPrecioRenovHint').style.display=this.value?'block':'none'">
+                <input class="form-control" id="planPrecioRenov" type="number" min="0" step="0.01" placeholder="Dejar vacío = mismo precio"
+                    oninput="if(this.value<0) this.value=0; document.getElementById('planPrecioRenovHint').style.display=this.value?'block':'none'">
             </div>
         </div>
         <div class="row g-2 mb-2">
@@ -3340,12 +3340,12 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
                 <div class="row g-2 mb-2">
                     <div class="col-6">
                         <div class="form-label">Número máx. de cuotas</div>
-                        <input class="form-control" id="planMaxCuotas" type="number" min="2" value="2" oninput="actualizarSimulacionInteres()">
+                        <input class="form-control" id="planMaxCuotas" type="number" min="2" value="2" oninput="if(this.value<2) this.value=2; actualizarSimulacionInteres()">
                         <div style="font-size:10px;color:#888;margin-top:2px">Mínimo 2</div>
                     </div>
                     <div class="col-6">
                         <div class="form-label">Días de plazo para pagar</div>
-                        <input class="form-control" id="planDiasLimite" type="number" min="1" value="20">
+                        <input class="form-control" id="planDiasLimite" type="number" min="1" value="20" oninput="if(this.value<1) this.value=1">
                         <div style="font-size:10px;color:#888;margin-top:2px">Días de plazo total para saldar la deuda</div>
                     </div>
                 </div>
@@ -3353,7 +3353,7 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
                     <div class="col-12">
                         <div class="form-label">Monto mínimo por cuota (S/)</div>
                         <input class="form-control" id="planMontoMin" type="number"
-                            step="0.01" min="0" value="0" placeholder="0.00">
+                            step="0.01" min="0" value="0" placeholder="0.00" oninput="if(this.value<0) this.value=0">
                         <div style="font-size:10px;color:#888;margin-top:2px">Deja en 0 para sin mínimo</div>
                     </div>
                 </div>
@@ -3374,7 +3374,7 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
                             <div class="col-6">
                                 <div class="form-label">Tasa de interés</div>
                                 <input class="form-control" id="planTasaInteres" type="number"
-                                    step="0.01" min="0" value="0" placeholder="0.00" oninput="actualizarSimulacionInteres()">
+                                    step="0.01" min="0" value="0" placeholder="0.00" oninput="if(this.value<0) this.value=0; actualizarSimulacionInteres()">
                             </div>
                             <div class="col-6">
                                 <div class="form-label">Tipo</div>
@@ -3409,7 +3409,7 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
                 <div class="row g-2 align-items-end">
                     <div class="col-6">
                         <div class="form-label">Visitas máx. por semana</div>
-                        <input class="form-control" id="planMaxAsistSemana" type="number" min="1" max="7" value="3">
+                        <input class="form-control" id="planMaxAsistSemana" type="number" min="1" max="7" value="3" oninput="if(this.value<1) this.value=1; if(this.value>7) this.value=7">
                     </div>
                     <div class="col-6">
                         <div style="font-size:11px;color:#888;padding-bottom:6px">
@@ -4138,11 +4138,11 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
       <div style="display:flex;gap:12px">
         <div class="mb-3" style="flex:1">
           <div class="form-label">Monto Apertura Default (S/)</div>
-          <input class="form-control" type="number" id="cajaRegMontoApertura" min="0" step="0.01" placeholder="0.00">
+          <input class="form-control" type="number" id="cajaRegMontoApertura" min="0" step="0.01" placeholder="0.00" oninput="if(this.value<0) this.value=0">
         </div>
         <div class="mb-3" style="flex:1">
           <div class="form-label">Monto Máximo Efectivo (S/)</div>
-          <input class="form-control" type="number" id="cajaRegMontoMaximo" min="0" step="0.01" placeholder="Sin límite">
+          <input class="form-control" type="number" id="cajaRegMontoMaximo" min="0" step="0.01" placeholder="Sin límite" oninput="if(this.value<0) this.value=0">
         </div>
       </div>
       <div class="mb-3" id="cajaRegEstadoGroup" style="display:none">
@@ -4251,7 +4251,7 @@ body[data-theme="dark"] #dventa-observacion        { color:#d0c080 !important; }
       </div>
       <div class="mb-3">
         <div class="form-label">Monto (S/) *</div>
-        <input class="form-control" type="number" id="mcMonto" min="0.01" step="0.01" placeholder="0.00">
+        <input class="form-control" type="number" id="mcMonto" min="0.01" step="0.01" placeholder="0.00" oninput="if(this.value<0) this.value=0">
       </div>
       <div style="display:flex;gap:12px">
         <div class="mb-3" style="flex:1">

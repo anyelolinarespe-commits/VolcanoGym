@@ -316,9 +316,15 @@ async function savePlan() {
     const interesAct  = document.getElementById('planInteresActivo').checked;
     const tasaInteres = parseFloat(document.getElementById('planTasaInteres').value) || 0;
     const tipoInteres = document.getElementById('planTipoInteres').value || 'porcentaje';
+    const maxAsistSemana = parseInt(document.getElementById('planMaxAsistSemana').value) || 3;
 
     if (!nombre || !duracionValor || !duracionUnidad || !precio) {
         showAlert('alertPlan', 'Nombre, duración (valor y unidad) y precio son requeridos');
+        return;
+    }
+    if (Number(duracionValor) <= 0 || Number(precio) < 0 || (precioRenov && Number(precioRenov) < 0)
+        || montoMin < 0 || tasaInteres < 0 || maxCuotas < 2 || diasLim < 1 || maxAsistSemana < 1) {
+        showAlert('alertPlan', 'Los valores numéricos no pueden ser negativos');
         return;
     }
 
@@ -340,7 +346,7 @@ async function savePlan() {
             descripcion:             desc || null,
             activo,
             max_asistencias_semana:  document.getElementById('planLimiteSemana').checked
-                ? (parseInt(document.getElementById('planMaxAsistSemana').value) || 3)
+                ? maxAsistSemana
                 : null,
         };
 

@@ -340,7 +340,7 @@ function renderActualizarStockPresentaciones(presentaciones) {
               <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:4px;font-weight:600">Cantidad</div>
               <input type="number" class="form-control" id="cant_${pr.id_pp}"
                 min="1" placeholder="0" style="font-size:13px"
-                oninput="previewNuevoStock(${pr.id_pp}, ${pr.stock_actual})">
+                oninput="if(this.value<0) this.value=0; previewNuevoStock(${pr.id_pp}, ${pr.stock_actual})">
             </div>
             <div>
               <button class="btn-save" style="padding:9px 14px;white-space:nowrap;background:#43a047"
@@ -369,7 +369,7 @@ function previewNuevoStock(idPp, stockActual) {
   const tipoEl = document.getElementById(`tipo_${idPp}`);
   const preEl  = document.getElementById(`stockDespues_${idPp}`);
   if (!cantEl || !tipoEl || !preEl) return;
-  const cant = parseInt(cantEl.value || 0);
+  const cant = Math.max(0, parseInt(cantEl.value || 0));
   let nuevo = stockActual;
   if (tipoEl.value === 'ajuste') {
     nuevo = cant;

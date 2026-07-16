@@ -2940,13 +2940,14 @@ async function saveMembresia() {
   async function cargarPlanes() {
     try {
       const token = localStorage.getItem('token');
-      const resp = await fetch('/api/planes/activos', {
+      const resp = await fetch('/api/planes', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const planes = await resp.json();
       if (Array.isArray(planes)) {
-        estado.planes = planes;
-        renderizarPlanes(planes);
+        const planesActivos = planes.filter(p => p.activo);
+        estado.planes = planesActivos;
+        renderizarPlanes(planesActivos);
       }
     } catch (err) {
       console.error('Error cargando planes:', err);
@@ -3354,6 +3355,9 @@ async function saveMembresia() {
           return;
         }
         idCliente = dataReactivar.id_cliente;
+        estado.clienteId = idCliente;
+        estado.clienteNuevo = false;
+        estado.clienteEliminado = false;
 
       // Si es cliente nuevo, crearlo primero
       } else if (estado.clienteNuevo) {
@@ -3388,6 +3392,8 @@ async function saveMembresia() {
           return;
         }
         idCliente = dataCliente.id_cliente;
+        estado.clienteId = idCliente;
+        estado.clienteNuevo = false;
       }
 
       // Crear membresía con lógica completa de fraccionamiento

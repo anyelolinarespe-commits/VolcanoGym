@@ -424,6 +424,18 @@ export const updateProducto = async (req, res) => {
 export const deleteProducto = async (req, res) => {
     const { id } = req.params;
     try {
+        const stockRes = await pool.query(
+            `SELECT COALESCE(SUM(pp.stock_actual), 0) AS stock_total
+             FROM producto_presentacion pp
+             WHERE pp.id_producto = $1 AND pp.estado != 2`,
+            [id]
+        );
+        if (Number(stockRes.rows[0].stock_total) > 0) {
+            return res.status(400).json({
+                message: 'No se puede eliminar el producto porque tiene stock asignado. Ajusta el stock a 0 antes de eliminarlo.'
+            });
+        }
+
         const result = await pool.query(
             `UPDATE producto SET estado=2, eliminado_por=$1
              WHERE id_producto=$2 AND estado != 2 RETURNING id_producto`,

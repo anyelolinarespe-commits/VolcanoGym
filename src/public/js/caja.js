@@ -122,6 +122,8 @@ async function saveCajaRegistradora() {
   const estado = Number(document.getElementById('cajaRegEstado').value);
 
   if (!nombre) { showAlert('alertCajaRegistradora', 'El nombre es requerido'); return; }
+  if (isNaN(monto_apertura_default) || monto_apertura_default < 0) { showAlert('alertCajaRegistradora', 'El monto de apertura default no puede ser negativo'); return; }
+  if (monto_maximo_efectivo !== null && (isNaN(monto_maximo_efectivo) || monto_maximo_efectivo < 0)) { showAlert('alertCajaRegistradora', 'El monto máximo de efectivo no puede ser negativo'); return; }
 
   try {
     const payload = { nombre, descripcion, monto_apertura_default, monto_maximo_efectivo, estado };
@@ -568,7 +570,7 @@ const METODOS_DIGITALES_LABELS = [
 function denomInputHtml(prefix, idx, valor) {
   return `<div class="text-center">
     <div class="text-[11px] text-gray-500 mb-1">S/ ${valor}</div>
-    <input type="number" min="0" step="1" value="0" id="den_${prefix}${idx}" oninput="calcularArqueo()"
+    <input type="number" min="0" step="1" value="0" id="den_${prefix}${idx}" oninput="if(this.value<0) this.value=0; calcularArqueo()"
       class="w-full text-center border border-gray-300 rounded-lg py-1.5 text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400">
     <div class="text-[10px] text-gray-400 mt-1" id="den_sub_${prefix}${idx}">= S/ 0.00</div>
   </div>`;
@@ -614,14 +616,14 @@ function calcularArqueo() {
   let total, totalBilletes = 0, totalMonedas = 0;
   if (activo) {
     BILLETES.forEach((v, i) => {
-      const cant = Number(document.getElementById(`den_b${i}`)?.value) || 0;
+      const cant = Math.max(0, Number(document.getElementById(`den_b${i}`)?.value) || 0);
       const sub = cant * v;
       totalBilletes += sub;
       const subEl = document.getElementById(`den_sub_b${i}`);
       if (subEl) subEl.textContent = `= ${fmtMoney(sub)}`;
     });
     MONEDAS.forEach((v, i) => {
-      const cant = Number(document.getElementById(`den_m${i}`)?.value) || 0;
+      const cant = Math.max(0, Number(document.getElementById(`den_m${i}`)?.value) || 0);
       const sub = cant * v;
       totalMonedas += sub;
       const subEl = document.getElementById(`den_sub_m${i}`);

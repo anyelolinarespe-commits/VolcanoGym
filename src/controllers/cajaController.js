@@ -37,6 +37,10 @@ export const createCaja = async (req, res) => {
   try {
     const { nombre, descripcion, monto_apertura_default, monto_maximo_efectivo, estado } = req.body;
     if (!nombre?.trim()) return res.status(400).json({ message: 'El nombre es requerido' });
+    if (monto_apertura_default != null && Number(monto_apertura_default) < 0)
+      return res.status(400).json({ message: 'El monto de apertura default no puede ser negativo' });
+    if (monto_maximo_efectivo != null && Number(monto_maximo_efectivo) < 0)
+      return res.status(400).json({ message: 'El monto máximo de efectivo no puede ser negativo' });
 
     const numR = await pool.query(
       `SELECT COALESCE(MAX(CAST(SPLIT_PART(codigo,'-',2) AS INTEGER)),0)+1 AS sig FROM cajas_registradoras`
@@ -75,6 +79,10 @@ export const updateCaja = async (req, res) => {
     const { id } = req.params;
     const { nombre, descripcion, monto_apertura_default, monto_maximo_efectivo, estado } = req.body;
     if (!nombre?.trim()) return res.status(400).json({ message: 'El nombre es requerido' });
+    if (monto_apertura_default != null && Number(monto_apertura_default) < 0)
+      return res.status(400).json({ message: 'El monto de apertura default no puede ser negativo' });
+    if (monto_maximo_efectivo != null && Number(monto_maximo_efectivo) < 0)
+      return res.status(400).json({ message: 'El monto máximo de efectivo no puede ser negativo' });
 
     const prevRes = await pool.query('SELECT * FROM cajas_registradoras WHERE id_caja=$1', [id]);
     if (!prevRes.rows.length) return res.status(404).json({ message: 'Caja registradora no encontrada' });
