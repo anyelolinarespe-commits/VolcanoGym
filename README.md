@@ -22,9 +22,9 @@ Anteriormente, el gimnasio gestionaba el control de asistencia y el vencimiento 
 
 ## 🚀 Funcionalidades Principales
 
-* 🆔 **Control de Asistencia Inteligente:** Validación en milisegundos mediante escáner QR o DNI; el sistema indica visualmente si la membresía está vigente, vencida o con cuotas pendientes al momento del ingreso.
+* 🆔 **Control de Asistencia (Prototipo Funcional):** Validación en tiempo real del estado de membresía mediante código QR o digitación de DNI. Funciona como un prototipo a nivel de software, concebido arquitectónicamente para conectarse a futuro con hardware físico (torniquetes de acceso o lectores biométricos).
 * 📋 **Gestión Integral de Membresías:** Creación de planes flexibles, registro de inscripciones, control de cuotas, fechas límite y congelamientos temporales.
-* 👤 **Registro Rápido de Clientes:** Autocompletado de datos personales consumiendo la **API de RENIEC** al digitar el número de DNI.
+* 👤 **Onboarding Optimizado de Clientes:** Autocompletado de datos personales consumiendo una API externa al ingresar el DNI. Para optimizar la cuota mensual gratuita (100 peticiones/mes), la API solo se consulta en el registro de socios nuevos, persistiendo la información directamente en PostgreSQL para evitar llamadas innecesarias.
 * 🛒 **Registro y Gestión de Ventas:** Control y trazabilidad de transacciones comerciales con registro de cliente, asesor/vendedor, fecha, canal de venta, métodos de pago (efectivo, transferencia o mixto) y emisión de comprobantes internos.
 * 💵 **Gestión de Caja Chica:** Control de aperturas de turno, registro de ingresos/egresos rápidos y arqueo de cierre de caja para recepcionistas.
 * 🔐 **Seguridad y Auditoría (RBAC):** Control de acceso basado en roles por base de datos (SuperAdmin, Administrador, Recepcionista, Vendedor) y registro de auditoría de cada operación.
@@ -131,6 +131,7 @@ Proyecto desarrollado como trabajo final para el curso **Proyecto Integrador 1**
 * **Estado:** Proyecto académico finalizado.
 * **Próximas mejoras (Roadmap):**
   * Despliegue en la nube (Docker + Railway / Render).
+  * Integración con hardware físico de acceso (lectores biométricos de huella dactilar o escáneres ópticos para torniquetes).
   * Consolidación y pase a producción del módulo de notificaciones automáticas por correo y mensajería.
   * Integración con pasarela de pagos online en el portal web (Culqi / Stripe).
   * Integración con servicio de facturación electrónica (SUNAT).
