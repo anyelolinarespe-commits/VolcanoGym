@@ -52,7 +52,7 @@ Anteriormente, el gimnasio gestionaba el control de asistencia y el vencimiento 
 * **Seguridad y Auth:** JWT (JSON Web Tokens), cookies HTTP-only, encriptación Bcryptjs y control de roles por base de datos.
 * **Integraciones y Librerías:**
   * **API RENIEC** (Decolecta): Consulta y validación de identidad por documento.
-  * **Nodemailer:** Envío automatizado de avisos por correo.
+  * **Nodemailer / Socket.io:** Envío de avisos y alertas en tiempo real (módulo experimental / en fase de pruebas).
   * **SheetJS (xlsx):** Importación masiva de clientes desde archivos Excel.
 
 ---
@@ -125,6 +125,7 @@ Proyecto desarrollado como trabajo final para el curso **Proyecto Integrador 1**
 * **Estado:** Proyecto académico finalizado.
 * **Próximas mejoras (Roadmap):**
   * Despliegue en la nube (Docker + Railway / Render).
-  * Integración real con API de facturación electrónica (SUNAT).
-  * Pasarela de pagos online integrada en el portal web (Culqi / Stripe).
+  * Consolidación y pase a producción del módulo de notificaciones automáticas por correo y mensajería.
+  * Integración con pasarela de pagos online en el portal web (Culqi / Stripe).
+  * Integración con servicio de facturación electrónica (SUNAT).
   * Módulo de reportes avanzados con gráficos interactivos de retención de socios.
