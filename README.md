@@ -34,6 +34,7 @@ Anteriormente, el gimnasio gestionaba el control de asistencia y el vencimiento 
 
 ## 📸 Capturas de Pantalla
 
+### 🖥️ Sistema Administrativo (Dashboard)
 | Inicio de Sesión | Panel de Control / Clientes |
 | :---: | :---: |
 | ![Login](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/login.png) | ![Dashboard](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/dashboard.png) |
@@ -41,6 +42,11 @@ Anteriormente, el gimnasio gestionaba el control de asistencia y el vencimiento 
 | Validación de Asistencias (QR / DNI) | Registro y Control de Ventas |
 | :---: | :---: |
 | ![Asistencias](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/asistencia.png) | ![Ventas](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/pos.png) |
+
+### 🌐 Portal Web y Catálogo Online
+| Página de Inicio (Landing Page) | Catálogo de Productos |
+| :---: | :---: |
+| ![Página de Inicio](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/web-inicio.png) | ![Catálogo de Productos](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/web-catalogo.png) |
 
 ---
 
