@@ -25,7 +25,7 @@ Anteriormente, el gimnasio gestionaba el control de asistencia y el vencimiento 
 * 🆔 **Control de Asistencia Inteligente:** Validación en milisegundos mediante escáner QR o DNI; el sistema indica visualmente si la membresía está vigente, vencida o con cuotas pendientes al momento del ingreso.
 * 📋 **Gestión Integral de Membresías:** Creación de planes flexibles, registro de inscripciones, control de cuotas, fechas límite y congelamientos temporales.
 * 👤 **Registro Rápido de Clientes:** Autocompletado de datos personales consumiendo la **API de RENIEC** al digitar el número de DNI.
-* 🛒 **Punto de Venta (POS) e Inventario:** Registro de ventas de suplementos y productos físicos, soporte de pagos (efectivo, transferencia y pagos mixtos) y generación/impresión de comprobantes internos.
+* 🛒 **Registro y Gestión de Ventas:** Control y trazabilidad de transacciones comerciales con registro de cliente, asesor/vendedor, fecha, canal de venta, métodos de pago (efectivo, transferencia o mixto) y emisión de comprobantes internos.
 * 💵 **Gestión de Caja Chica:** Control de aperturas de turno, registro de ingresos/egresos rápidos y arqueo de cierre de caja para recepcionistas.
 * 🔐 **Seguridad y Auditoría (RBAC):** Control de acceso basado en roles por base de datos (SuperAdmin, Administrador, Recepcionista, Vendedor) y registro de auditoría de cada operación.
 * 📲 **Portal Web del Cliente:** Autoservicio donde el socio consulta su estado de cuenta, historial y su carnet digital con código QR dinámico.
@@ -38,7 +38,7 @@ Anteriormente, el gimnasio gestionaba el control de asistencia y el vencimiento 
 | :---: | :---: |
 | ![Login](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/login.png) | ![Dashboard](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/dashboard.png) |
 
-| Validación de Asistencias (QR / DNI) | Punto de Venta (POS) y Caja |
+| Validación de Asistencias (QR / DNI) | Registro y Control de Ventas |
 | :---: | :---: |
 | ![Asistencias](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/asistencia.png) | ![Ventas](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/pos.png) |
 
