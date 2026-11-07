@@ -36,11 +36,11 @@ Anteriormente, el gimnasio gestionaba el control de asistencia y el vencimiento 
 
 | Inicio de Sesión | Panel de Control / Clientes |
 | :---: | :---: |
-| ![Login](screenshots/login.png) | ![Dashboard](screenshots/dashboard.png) |
+| ![Login](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/login.png) | ![Dashboard](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/dashboard.png) |
 
 | Validación de Asistencias (QR / DNI) | Punto de Venta (POS) y Caja |
 | :---: | :---: |
-| ![Asistencias](screenshots/asistencia.png) | ![Ventas](screenshots/pos.png) |
+| ![Asistencias](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/asistencia.png) | ![Ventas](https://raw.githubusercontent.com/anyelolinarespe-commits/VolcanoGym/main/screenshots/pos.png) |
 
 ---
 
